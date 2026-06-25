@@ -9,6 +9,16 @@ export async function getDb() {
   return dbInstance;
 }
 
+// Closes the open connection pool and drops the cached handle. Used by
+// restore: the file can't be safely swapped while the plugin holds the
+// connection. After this, the next getDb() reopens the (restored) file.
+export async function closeDb() {
+  if (dbInstance) {
+    await dbInstance.close();
+    dbInstance = null;
+  }
+}
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 // ---------------------------------------------------------------------

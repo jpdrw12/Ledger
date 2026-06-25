@@ -145,9 +145,18 @@ export default function App() {
   };
 
   const handleRestore = async (fileName) => {
-    if (!confirm(`Restore "${fileName}"? Quit and reopen the app afterward.`)) return;
-    await restoreBackup(fileName);
-    setBackupMsg(`Restored ${fileName} — restart the app to load it.`);
+    if (!confirm(`Restore "${fileName}"? This replaces your current data.`)) return;
+    try {
+      // Close the connection so the plugin isn't holding the file open while
+      // restore_backup copies over it, then reopen and reload in place — no
+      // app restart needed.
+      await db.closeDb();
+      await restoreBackup(fileName);
+      await reload();
+      setBackupMsg(`Restored ${fileName}.`);
+    } catch (e) {
+      setBackupMsg(`Restore failed: ${e}`);
+    }
   };
 
   if (loadError) {

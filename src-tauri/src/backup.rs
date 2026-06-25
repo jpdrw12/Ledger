@@ -64,9 +64,10 @@ pub fn list_backups(app: AppHandle) -> Result<Vec<String>, String> {
 /// Restores a named backup over the live database.
 ///
 /// IMPORTANT: the SQL plugin holds an open connection to the live file.
-/// Call this only right before quitting the app, and prompt the user to
-/// restart afterwards — overwriting a file out from under an open
-/// SQLite connection is asking for trouble on some platforms.
+/// The caller (handleRestore in App.jsx) closes that connection via
+/// db.closeDb() before invoking this, then reopens and reloads — so the
+/// file is not being copied out from under a live connection. Don't call
+/// this without closing the connection first.
 #[tauri::command]
 pub fn restore_backup(app: AppHandle, file_name: String) -> Result<(), String> {
     let dest = db_path(&app)?;
