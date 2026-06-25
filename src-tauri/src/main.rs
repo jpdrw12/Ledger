@@ -40,7 +40,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             backup::backup_now,
             backup::list_backups,
+            backup::list_folder_backups,
             backup::restore_backup,
+            backup::restore_from_folder,
             backup::mirror_backup
         ])
         .run(tauri::generate_context!())

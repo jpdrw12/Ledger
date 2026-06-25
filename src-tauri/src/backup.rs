@@ -46,12 +46,11 @@ pub fn backup_now(app: AppHandle) -> Result<String, String> {
     Ok(file_name)
 }
 
-/// Lists local backup snapshots, most recent first.
-#[tauri::command]
-pub fn list_backups(app: AppHandle) -> Result<Vec<String>, String> {
-    let dir = backups_dir(&app)?;
-    let mut names: Vec<String> = fs::read_dir(&dir)
-        .map_err(|e| format!("could not read backups dir: {e}"))?
+/// Lists .db snapshots in a directory, most recent first (by name, which
+/// is timestamped). Shared by the local-dir and chosen-folder listings.
+fn list_db_files(dir: &PathBuf) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .map_err(|e| format!("could not read folder: {e}"))?
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| name.ends_with(".db"))
@@ -61,22 +60,62 @@ pub fn list_backups(app: AppHandle) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-/// Restores a named backup over the live database.
+/// Lists local backup snapshots, most recent first.
+#[tauri::command]
+pub fn list_backups(app: AppHandle) -> Result<Vec<String>, String> {
+    list_db_files(&backups_dir(&app)?)
+}
+
+/// Lists backup snapshots in a chosen folder (e.g. a Drive sync folder),
+/// most recent first. Returns an empty list if the folder is gone.
+#[tauri::command]
+pub fn list_folder_backups(dir: String) -> Result<Vec<String>, String> {
+    let path = PathBuf::from(&dir);
+    if !path.is_dir() {
+        return Ok(vec![]);
+    }
+    list_db_files(&path)
+}
+
+/// Copies a snapshot over the live database, then clears stale WAL sidecars.
 ///
 /// IMPORTANT: the SQL plugin holds an open connection to the live file.
 /// The caller (handleRestore in App.jsx) closes that connection via
 /// db.closeDb() before invoking this, then reopens and reloads — so the
 /// file is not being copied out from under a live connection. Don't call
 /// this without closing the connection first.
+fn restore_from_path(app: &AppHandle, source: PathBuf) -> Result<(), String> {
+    if !source.exists() {
+        return Err(format!("backup file not found: {}", source.display()));
+    }
+    let dest = db_path(app)?;
+    fs::copy(&source, &dest).map_err(|e| format!("restore failed: {e}"))?;
+
+    // The plugin runs in WAL mode. Any -wal/-shm left from the connection we
+    // just closed belongs to the OLD database; if left in place, SQLite would
+    // replay it on top of the restored file and clobber it. Remove them so the
+    // restored ledger.db opens clean.
+    for ext in ["-wal", "-shm"] {
+        let sidecar = dest.with_file_name(format!("ledger.db{ext}"));
+        if sidecar.exists() {
+            let _ = fs::remove_file(&sidecar);
+        }
+    }
+    Ok(())
+}
+
+/// Restores a named snapshot from the local backups dir.
 #[tauri::command]
 pub fn restore_backup(app: AppHandle, file_name: String) -> Result<(), String> {
-    let dest = db_path(&app)?;
     let source = backups_dir(&app)?.join(&file_name);
-    if !source.exists() {
-        return Err(format!("backup file not found: {file_name}"));
-    }
-    fs::copy(&source, &dest).map_err(|e| format!("restore failed: {e}"))?;
-    Ok(())
+    restore_from_path(&app, source)
+}
+
+/// Restores a named snapshot from a chosen folder (e.g. a Drive sync folder).
+#[tauri::command]
+pub fn restore_from_folder(app: AppHandle, dir: String, file_name: String) -> Result<(), String> {
+    let source = PathBuf::from(&dir).join(&file_name);
+    restore_from_path(&app, source)
 }
 
 /// Copies an existing local backup snapshot into an external folder

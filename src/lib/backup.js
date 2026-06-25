@@ -10,8 +10,17 @@ export async function listBackups() {
   return invoke("list_backups");
 }
 
+// Lists .db snapshots actually present in the chosen folder (live read).
+export async function listFolderBackups(dir) {
+  return invoke("list_folder_backups", { dir });
+}
+
 export async function restoreBackup(fileName) {
   return invoke("restore_backup", { fileName });
+}
+
+export async function restoreFromFolder(dir, fileName) {
+  return invoke("restore_from_folder", { dir, fileName });
 }
 
 // Offsite redundancy without any cloud account: copy a snapshot into a

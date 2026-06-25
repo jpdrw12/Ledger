@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2 } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, money } from "./lib/calc.js";
-import { backupNow, listBackups, restoreBackup, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder } from "./lib/backup.js";
+import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
@@ -31,10 +31,27 @@ export default function App() {
     }
   }, []);
 
+  // When a folder is chosen it's the source of truth — list what's actually
+  // there (live). Otherwise fall back to the local backups dir.
+  const refreshBackups = useCallback(async () => {
+    try {
+      const folder = getMirrorFolder();
+      const list = folder ? await listFolderBackups(folder) : await listBackups();
+      setBackups(list);
+    } catch (e) {
+      console.error("Failed to list backups:", e);
+    }
+  }, []);
+
   useEffect(() => {
     reload();
-    listBackups().then(setBackups).catch((e) => console.error("Failed to list backups:", e));
-  }, [reload]);
+    refreshBackups();
+  }, [reload, refreshBackups]);
+
+  // Re-read the backup folder live each time the Backups tab is opened.
+  useEffect(() => {
+    if (tab === "backups") refreshBackups();
+  }, [tab, refreshBackups]);
 
   // ---- cross-month logic: cloning a month's bill setup into another ----
   const cloneBillsInto = async (sourceBillPayments, targetMonthId, targetMonthLabel, bills) => {
@@ -97,8 +114,9 @@ export default function App() {
 
   const handleBackup = async () => {
     try {
+      // Flush WAL into ledger.db first, or the snapshot misses recent writes.
+      await db.checkpoint();
       const fileName = await backupNow();
-      setBackups(await listBackups());
       if (mirrorFolder) {
         try {
           await mirrorBackup(fileName, mirrorFolder);
@@ -109,6 +127,7 @@ export default function App() {
       } else {
         setBackupMsg(`Saved ${fileName}`);
       }
+      await refreshBackups();
     } catch (e) {
       setBackupMsg(String(e));
     }
@@ -121,24 +140,30 @@ export default function App() {
       setMirrorFolder(path);
       setMirrorFolderState(path);
       setBackupMsg(`Backup folder set to ${path}`);
+      await refreshBackups();
     } catch (e) {
       setBackupMsg(String(e));
     }
   };
 
-  const handleClearFolder = () => {
+  const handleClearFolder = async () => {
     setMirrorFolder("");
     setMirrorFolderState("");
-    setBackupMsg("Backup folder cleared — backups stay local only.");
+    setBackupMsg("Backup folder cleared — showing local backups only.");
+    await refreshBackups();
   };
 
   const handleCopyAllToFolder = async () => {
     if (!mirrorFolder) return;
     try {
-      for (const fileName of backups) {
+      // Seed the folder from the LOCAL dir, not the displayed list (which is
+      // already the folder's contents when a folder is selected).
+      const local = await listBackups();
+      for (const fileName of local) {
         await mirrorBackup(fileName, mirrorFolder);
       }
-      setBackupMsg(`Copied ${backups.length} backup${backups.length === 1 ? "" : "s"} to your backup folder.`);
+      setBackupMsg(`Copied ${local.length} local backup${local.length === 1 ? "" : "s"} to your backup folder.`);
+      await refreshBackups();
     } catch (e) {
       setBackupMsg(`Copy to backup folder failed: ${e}`);
     }
@@ -148,10 +173,11 @@ export default function App() {
     if (!confirm(`Restore "${fileName}"? This replaces your current data.`)) return;
     try {
       // Close the connection so the plugin isn't holding the file open while
-      // restore_backup copies over it, then reopen and reload in place — no
-      // app restart needed.
+      // the snapshot is copied over it, then reopen and reload in place — no
+      // app restart needed. Restore from the chosen folder when one is set.
       await db.closeDb();
-      await restoreBackup(fileName);
+      if (mirrorFolder) await restoreFromFolder(mirrorFolder, fileName);
+      else await restoreBackup(fileName);
       await reload();
       setBackupMsg(`Restored ${fileName}.`);
     } catch (e) {
@@ -272,7 +298,7 @@ export default function App() {
               <>
                 <span className="mono backup-folder-path" title={mirrorFolder}>{mirrorFolder}</span>
                 <button className="btn-secondary" onClick={handleChooseFolder}>Change</button>
-                <button className="btn-secondary" onClick={handleCopyAllToFolder} disabled={backups.length === 0}>
+                <button className="btn-secondary" onClick={handleCopyAllToFolder}>
                   Copy existing here
                 </button>
                 <button className="icon-btn" title="Stop copying backups offsite" onClick={handleClearFolder}>
@@ -285,6 +311,9 @@ export default function App() {
               </button>
             )}
           </div>
+          <p className="scroll-panel-label" style={{ marginTop: 14 }}>
+            Available backups {mirrorFolder ? "in your backup folder" : "(local)"}
+          </p>
           <ul className="backup-list">
             {backups.map((f) => (
               <li key={f}>
@@ -294,7 +323,11 @@ export default function App() {
                 </button>
               </li>
             ))}
-            {backups.length === 0 && <li className="empty">No backups yet.</li>}
+            {backups.length === 0 && (
+              <li className="empty">
+                {mirrorFolder ? "No backups in this folder yet." : "No backups yet."}
+              </li>
+            )}
           </ul>
         </div>
       )}

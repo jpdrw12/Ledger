@@ -9,6 +9,15 @@ export async function getDb() {
   return dbInstance;
 }
 
+// Folds the write-ahead log back into the main ledger.db file. The SQL
+// plugin runs in WAL mode, so recent writes live in ledger.db-wal until a
+// checkpoint — backup_now copies only ledger.db, so without this a backup
+// captures stale data. TRUNCATE also resets the -wal file to empty.
+export async function checkpoint() {
+  const db = await getDb();
+  await db.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+}
+
 // Closes the open connection pool and drops the cached handle. Used by
 // restore: the file can't be safely swapped while the plugin holds the
 // connection. After this, the next getDb() reopens the (restored) file.
