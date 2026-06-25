@@ -23,6 +23,31 @@ export async function restoreFromFolder(dir, fileName) {
   return invoke("restore_from_folder", { dir, fileName });
 }
 
+// --- Archiving --------------------------------------------------------
+// `dir` is the chosen backup folder, or "" for the local backups dir.
+
+// Compresses a month's loose snapshots into archive/<YYYY-MM>.zip and
+// removes the originals. Returns how many were archived.
+export async function archiveMonth(dir, yearMonth) {
+  return invoke("archive_month", { dir, yearMonth });
+}
+
+export async function listArchives(dir) {
+  return invoke("list_archives", { dir });
+}
+
+export async function listArchiveContents(dir, zipName) {
+  return invoke("list_archive_contents", { dir, zipName });
+}
+
+export async function restoreFromArchive(dir, zipName, fileName) {
+  return invoke("restore_from_archive", { dir, zipName, fileName });
+}
+
+export async function deleteArchive(dir, zipName) {
+  return invoke("delete_archive", { dir, zipName });
+}
+
 // Offsite redundancy without any cloud account: copy a snapshot into a
 // folder the user picked (typically a Drive/Dropbox desktop sync folder).
 // Returns the full destination path on success.
@@ -46,4 +71,22 @@ export function getMirrorFolder() {
 export function setMirrorFolder(path) {
   if (path) localStorage.setItem(MIRROR_FOLDER_KEY, path);
   else localStorage.removeItem(MIRROR_FOLDER_KEY);
+}
+
+// Auto-archive retention: keep the newest `keepMonths` months active; older
+// months are compressed into the archive after each backup.
+const RETENTION_KEY = "ledger.retention";
+
+export function getRetention() {
+  try {
+    const raw = localStorage.getItem(RETENTION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error("Bad retention setting:", e);
+  }
+  return { enabled: false, keepMonths: 3 };
+}
+
+export function setRetention(r) {
+  localStorage.setItem(RETENTION_KEY, JSON.stringify(r));
 }

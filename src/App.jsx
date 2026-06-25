@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2 } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, money } from "./lib/calc.js";
-import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder } from "./lib/backup.js";
+import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
@@ -11,14 +11,119 @@ import GoalsTab from "./components/GoalsTab.jsx";
 import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
 
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+// Groups backup filenames (ledger-backup-YYYY-MM-DD_HH-MM-SS.db) by month
+// and year. Input is already newest-first, so groups and their entries stay
+// in that order.
+function groupBackupsByMonth(files) {
+  const groups = [];
+  const byKey = {};
+  for (const f of files) {
+    const m = f.match(/(\d{4})-(\d{2})-(\d{2})/);
+    const key = m ? `${m[1]}-${m[2]}` : "other";
+    const label = m ? `${MONTH_NAMES[Number(m[2]) - 1]} ${m[1]}` : "Other";
+    if (!byKey[key]) {
+      byKey[key] = { key, label, files: [] };
+      groups.push(byKey[key]);
+    }
+    byKey[key].files.push(f);
+  }
+  return groups;
+}
+
+// A collapsible month/year group of active backups, with an Archive action
+// that compresses the whole month into a zip.
+function BackupGroup({ group, defaultOpen, onRestore, onArchive }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="backup-group">
+      <h4 className="backup-group-label">
+        <span className="backup-group-toggle" onClick={() => setOpen((o) => !o)}>
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {group.label}
+          <span className="backup-group-count">{group.files.length}</span>
+        </span>
+        <button className="btn-secondary" title="Compress this month into the archive" onClick={() => onArchive(group)}>
+          <Archive size={12} /> Archive
+        </button>
+      </h4>
+      {open && (
+        <ul className="backup-list">
+          {group.files.map((f) => (
+            <li key={f}>
+              <span className="mono">{f}</span>
+              <button className="btn-secondary" onClick={() => onRestore(f)}>
+                <RotateCcw size={12} /> Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// A collapsible archived month (a YYYY-MM.zip). Contents load lazily on
+// first expand, since reading a zip is more work than a dir listing.
+function ArchiveGroup({ zipName, dir, onRestore, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [contents, setContents] = useState(null);
+  const label = zipName.replace(/\.zip$/, "");
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && contents === null) {
+      try {
+        setContents(await listArchiveContents(dir, zipName));
+      } catch (e) {
+        console.error("Failed to read archive:", e);
+        setContents([]);
+      }
+    }
+  };
+
+  return (
+    <div className="backup-group">
+      <h4 className="backup-group-label">
+        <span className="backup-group-toggle" onClick={toggle}>
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {label}
+          <Archive size={12} className="backup-archive-icon" />
+        </span>
+        <button className="icon-btn" title="Delete this archive permanently" onClick={() => onDelete(zipName)}>
+          <Trash2 size={14} />
+        </button>
+      </h4>
+      {open && (
+        <ul className="backup-list">
+          {contents === null && <li className="empty">Reading archive…</li>}
+          {contents && contents.length === 0 && <li className="empty">Archive is empty.</li>}
+          {contents && contents.map((f) => (
+            <li key={f}>
+              <span className="mono">{f}</span>
+              <button className="btn-secondary" onClick={() => onRestore(zipName, f)}>
+                <RotateCcw size={12} /> Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [tab, setTab] = useState("months");
   const [openMonth, setOpenMonth] = useState(null);
   const [backups, setBackups] = useState([]);
+  const [archives, setArchives] = useState([]);
   const [backupMsg, setBackupMsg] = useState("");
   const [mirrorFolder, setMirrorFolderState] = useState(getMirrorFolder());
+  const [retention, setRetentionState] = useState(getRetention());
 
   const reload = useCallback(async () => {
     try {
@@ -38,6 +143,7 @@ export default function App() {
       const folder = getMirrorFolder();
       const list = folder ? await listFolderBackups(folder) : await listBackups();
       setBackups(list);
+      setArchives(await listArchives(folder));
     } catch (e) {
       console.error("Failed to list backups:", e);
     }
@@ -127,10 +233,30 @@ export default function App() {
       } else {
         setBackupMsg(`Saved ${fileName}`);
       }
+      await applyRetention();
       await refreshBackups();
     } catch (e) {
       setBackupMsg(String(e));
     }
+  };
+
+  // Auto-archive months older than the kept window. Runs after each backup
+  // when the retention policy is enabled.
+  const applyRetention = async () => {
+    const r = getRetention();
+    if (!r.enabled) return;
+    const folder = getMirrorFolder();
+    const list = folder ? await listFolderBackups(folder) : await listBackups();
+    const olderMonths = groupBackupsByMonth(list).slice(r.keepMonths);
+    for (const group of olderMonths) {
+      await archiveMonth(folder, group.key);
+    }
+  };
+
+  const handleRetentionChange = (patch) => {
+    const next = { ...retention, ...patch };
+    setRetention(next);
+    setRetentionState(next);
   };
 
   const handleChooseFolder = async () => {
@@ -182,6 +308,40 @@ export default function App() {
       setBackupMsg(`Restored ${fileName}.`);
     } catch (e) {
       setBackupMsg(`Restore failed: ${e}`);
+    }
+  };
+
+  const handleArchiveMonth = async (group) => {
+    if (!confirm(`Archive all ${group.files.length} backup(s) from ${group.label} into a compressed zip?`)) return;
+    try {
+      const n = await archiveMonth(mirrorFolder, group.key);
+      setBackupMsg(`Archived ${n} backup${n === 1 ? "" : "s"} from ${group.label}.`);
+      await refreshBackups();
+    } catch (e) {
+      setBackupMsg(`Archive failed: ${e}`);
+    }
+  };
+
+  const handleRestoreFromArchive = async (zipName, fileName) => {
+    if (!confirm(`Restore "${fileName}" from the archive? This replaces your current data.`)) return;
+    try {
+      await db.closeDb();
+      await restoreFromArchive(mirrorFolder, zipName, fileName);
+      await reload();
+      setBackupMsg(`Restored ${fileName} from archive.`);
+    } catch (e) {
+      setBackupMsg(`Restore failed: ${e}`);
+    }
+  };
+
+  const handleDeleteArchive = async (zipName) => {
+    if (!confirm(`Permanently delete the archive ${zipName}? This cannot be undone.`)) return;
+    try {
+      await deleteArchive(mirrorFolder, zipName);
+      setBackupMsg(`Deleted archive ${zipName}.`);
+      await refreshBackups();
+    } catch (e) {
+      setBackupMsg(`Delete failed: ${e}`);
     }
   };
 
@@ -311,24 +471,63 @@ export default function App() {
               </button>
             )}
           </div>
+
+          <div className="backup-folder">
+            <Archive size={15} />
+            <label className="retention-toggle">
+              <input
+                type="checkbox"
+                checked={retention.enabled}
+                onChange={(e) => handleRetentionChange({ enabled: e.target.checked })}
+              />
+              Auto-archive — keep the last
+            </label>
+            <input
+              className="day-input"
+              type="number"
+              min="1"
+              value={retention.keepMonths}
+              disabled={!retention.enabled}
+              onChange={(e) => handleRetentionChange({ keepMonths: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+            />
+            <span className="small-label">months active; older months move to the archive (not deleted).</span>
+          </div>
+
           <p className="scroll-panel-label" style={{ marginTop: 14 }}>
             Available backups {mirrorFolder ? "in your backup folder" : "(local)"}
           </p>
-          <ul className="backup-list">
-            {backups.map((f) => (
-              <li key={f}>
-                <span className="mono">{f}</span>
-                <button className="btn-secondary" onClick={() => handleRestore(f)}>
-                  <RotateCcw size={12} /> Restore
-                </button>
-              </li>
-            ))}
-            {backups.length === 0 && (
-              <li className="empty">
-                {mirrorFolder ? "No backups in this folder yet." : "No backups yet."}
-              </li>
-            )}
-          </ul>
+          {backups.length === 0 ? (
+            <p className="empty">
+              {mirrorFolder ? "No backups in this folder yet." : "No backups yet."}
+            </p>
+          ) : (
+            groupBackupsByMonth(backups).map((group) => (
+              <BackupGroup
+                key={group.key}
+                group={group}
+                defaultOpen={false}
+                onRestore={handleRestore}
+                onArchive={handleArchiveMonth}
+              />
+            ))
+          )}
+
+          {archives.length > 0 && (
+            <>
+              <p className="scroll-panel-label" style={{ marginTop: 18 }}>
+                <Archive size={12} /> Archived
+              </p>
+              {archives.map((zipName) => (
+                <ArchiveGroup
+                  key={zipName}
+                  zipName={zipName}
+                  dir={mirrorFolder}
+                  onRestore={handleRestoreFromArchive}
+                  onDelete={handleDeleteArchive}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,8 @@
 use chrono::Local;
+use std::collections::BTreeMap;
 use std::fs;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -135,6 +138,194 @@ pub fn mirror_backup(app: AppHandle, file_name: String, dest_dir: String) -> Res
     let dest = dir.join(&file_name);
     fs::copy(&source, &dest).map_err(|e| format!("copy to backup folder failed: {e}"))?;
     Ok(dest.to_string_lossy().to_string())
+}
+
+// ---------------------------------------------------------------------
+// Archiving — compress a month's loose .db snapshots into a single
+// archive/<YYYY-MM>.zip so the active list doesn't bloat. Archived
+// backups stay fully restorable (extracted on demand).
+
+/// Resolves the base backup location: empty dir means the local backups
+/// dir, otherwise the chosen folder.
+fn resolve_base(app: &AppHandle, dir: &str) -> Result<PathBuf, String> {
+    if dir.is_empty() {
+        backups_dir(app)
+    } else {
+        let p = PathBuf::from(dir);
+        if !p.is_dir() {
+            return Err(format!("backup folder no longer exists: {dir}"));
+        }
+        Ok(p)
+    }
+}
+
+fn archive_subdir(base: &PathBuf) -> Result<PathBuf, String> {
+    let d = base.join("archive");
+    fs::create_dir_all(&d).map_err(|e| format!("could not create archive dir: {e}"))?;
+    Ok(d)
+}
+
+/// Extracts the "YYYY-MM" prefix from a backup filename
+/// (ledger-backup-2026-06-25_...). Filenames are ASCII, so byte indexing
+/// is safe here.
+fn file_year_month(name: &str) -> Option<String> {
+    let b = name.as_bytes();
+    if b.len() < 7 {
+        return None;
+    }
+    for i in 0..=b.len() - 7 {
+        if b[i].is_ascii_digit()
+            && b[i + 1].is_ascii_digit()
+            && b[i + 2].is_ascii_digit()
+            && b[i + 3].is_ascii_digit()
+            && b[i + 4] == b'-'
+            && b[i + 5].is_ascii_digit()
+            && b[i + 6].is_ascii_digit()
+        {
+            return Some(name[i..i + 7].to_string());
+        }
+    }
+    None
+}
+
+/// Bundles every loose .db backup for the given month into
+/// archive/<YYYY-MM>.zip (merging into an existing zip), then deletes the
+/// loose originals. Returns how many snapshots were archived.
+#[tauri::command]
+pub fn archive_month(app: AppHandle, dir: String, year_month: String) -> Result<usize, String> {
+    let base = resolve_base(&app, &dir)?;
+    let to_archive: Vec<String> = list_db_files(&base)?
+        .into_iter()
+        .filter(|n| file_year_month(n).as_deref() == Some(year_month.as_str()))
+        .collect();
+    if to_archive.is_empty() {
+        return Ok(0);
+    }
+
+    let adir = archive_subdir(&base)?;
+    let zip_path = adir.join(format!("{year_month}.zip"));
+
+    // The zip crate can't append in place: read any existing entries, add the
+    // new ones, and rewrite. BTreeMap dedupes by name (timestamped, so safe).
+    let mut entries: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    if zip_path.exists() {
+        let f = File::open(&zip_path).map_err(|e| format!("open archive failed: {e}"))?;
+        let mut zr = zip::ZipArchive::new(f).map_err(|e| format!("read archive failed: {e}"))?;
+        for i in 0..zr.len() {
+            let mut zf = zr
+                .by_index(i)
+                .map_err(|e| format!("read archive entry failed: {e}"))?;
+            let name = zf.name().to_string();
+            let mut buf = Vec::new();
+            zf.read_to_end(&mut buf)
+                .map_err(|e| format!("read archive entry failed: {e}"))?;
+            entries.insert(name, buf);
+        }
+    }
+    for name in &to_archive {
+        let bytes = fs::read(base.join(name)).map_err(|e| format!("read backup failed: {e}"))?;
+        entries.insert(name.clone(), bytes);
+    }
+
+    // Write to a temp file, then atomically replace the real zip.
+    let tmp_path = adir.join(format!("{year_month}.zip.tmp"));
+    {
+        let tf = File::create(&tmp_path).map_err(|e| format!("create archive failed: {e}"))?;
+        let mut zw = zip::ZipWriter::new(tf);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in &entries {
+            zw.start_file(name, opts)
+                .map_err(|e| format!("write archive entry failed: {e}"))?;
+            zw.write_all(bytes)
+                .map_err(|e| format!("write archive entry failed: {e}"))?;
+        }
+        zw.finish().map_err(|e| format!("finalize archive failed: {e}"))?;
+    }
+    fs::rename(&tmp_path, &zip_path).map_err(|e| format!("replace archive failed: {e}"))?;
+
+    let count = to_archive.len();
+    for name in &to_archive {
+        let _ = fs::remove_file(base.join(name));
+    }
+    Ok(count)
+}
+
+/// Lists archive zips (YYYY-MM.zip) in the active location, newest first.
+#[tauri::command]
+pub fn list_archives(app: AppHandle, dir: String) -> Result<Vec<String>, String> {
+    let base = resolve_base(&app, &dir)?;
+    let adir = base.join("archive");
+    if !adir.is_dir() {
+        return Ok(vec![]);
+    }
+    let mut names: Vec<String> = fs::read_dir(&adir)
+        .map_err(|e| format!("could not read archive dir: {e}"))?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.ends_with(".zip"))
+        .collect();
+    names.sort();
+    names.reverse();
+    Ok(names)
+}
+
+/// Lists the .db snapshots inside one archive zip, newest first.
+#[tauri::command]
+pub fn list_archive_contents(
+    app: AppHandle,
+    dir: String,
+    zip_name: String,
+) -> Result<Vec<String>, String> {
+    let base = resolve_base(&app, &dir)?;
+    let zip_path = base.join("archive").join(&zip_name);
+    let f = File::open(&zip_path).map_err(|e| format!("open archive failed: {e}"))?;
+    let mut zr = zip::ZipArchive::new(f).map_err(|e| format!("read archive failed: {e}"))?;
+    let mut names: Vec<String> = (0..zr.len())
+        .filter_map(|i| zr.by_index(i).ok().map(|zf| zf.name().to_string()))
+        .filter(|n| n.ends_with(".db"))
+        .collect();
+    names.sort();
+    names.reverse();
+    Ok(names)
+}
+
+/// Extracts one snapshot from an archive zip and restores it over the live
+/// database (same close/reopen flow as restore_backup — see that fn).
+#[tauri::command]
+pub fn restore_from_archive(
+    app: AppHandle,
+    dir: String,
+    zip_name: String,
+    file_name: String,
+) -> Result<(), String> {
+    let base = resolve_base(&app, &dir)?;
+    let zip_path = base.join("archive").join(&zip_name);
+    let f = File::open(&zip_path).map_err(|e| format!("open archive failed: {e}"))?;
+    let mut zr = zip::ZipArchive::new(f).map_err(|e| format!("read archive failed: {e}"))?;
+    let mut zf = zr
+        .by_name(&file_name)
+        .map_err(|_| format!("not found in archive: {file_name}"))?;
+    let mut buf = Vec::new();
+    zf.read_to_end(&mut buf)
+        .map_err(|e| format!("read archive entry failed: {e}"))?;
+
+    let tmp = db_path(&app)?.with_file_name("restore-from-archive.tmp.db");
+    fs::write(&tmp, &buf).map_err(|e| format!("extract failed: {e}"))?;
+    let result = restore_from_path(&app, tmp.clone());
+    let _ = fs::remove_file(&tmp);
+    result
+}
+
+/// Permanently deletes an archive zip. UI confirms before calling this.
+#[tauri::command]
+pub fn delete_archive(app: AppHandle, dir: String, zip_name: String) -> Result<(), String> {
+    let base = resolve_base(&app, &dir)?;
+    let zip_path = base.join("archive").join(&zip_name);
+    if zip_path.exists() {
+        fs::remove_file(&zip_path).map_err(|e| format!("delete archive failed: {e}"))?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------

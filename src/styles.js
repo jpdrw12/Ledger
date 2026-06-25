@@ -158,6 +158,14 @@ export const css = `
   .backup-folder .btn-secondary { margin-top:0; }
   .backup-folder-path { font-size:12px; max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:4px 8px; }
   .backup-msg { font-size:12px; color:var(--ink-soft); }
+  .backup-group { margin-top:12px; }
+  .backup-group-label { display:flex; align-items:center; gap:8px; font-family: Georgia, serif; font-size:14px; margin:0; color:var(--ink); border-bottom:1px solid var(--paper-line); padding-bottom:3px; }
+  .backup-group-toggle { display:flex; align-items:center; gap:6px; flex:1; cursor:pointer; user-select:none; }
+  .backup-group-toggle:hover { color:var(--stamp); }
+  .backup-group-label .btn-secondary { margin-top:0; }
+  .backup-group-count { font-family: ui-monospace, monospace; font-size:11px; color:var(--ink-soft); background:var(--card); border:1px solid var(--paper-line); border-radius:10px; padding:1px 8px; }
+  .backup-archive-icon { color:var(--ink-soft); }
+  .retention-toggle { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft); cursor:pointer; }
   .backup-list { list-style:none; padding:0; margin:6px 0 0; font-size:12px; }
   .backup-list li { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid var(--paper-line); }
 
