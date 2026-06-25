@@ -31,7 +31,10 @@ export function DateInput({ defaultValue, onSave, className }) {
   useEffect(() => {
     const el = ref.current;
     const check = () => {
-      if (el.value && el.value !== lastSaved.current) {
+      // No truthiness guard: an empty value that differs from lastSaved means
+      // the user cleared a previously-set date, which should persist too.
+      // An untouched blank input never fires ("" === lastSaved).
+      if (el.value !== lastSaved.current) {
         lastSaved.current = el.value;
         onSaveRef.current(el.value);
       }
