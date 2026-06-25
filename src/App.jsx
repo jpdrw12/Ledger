@@ -85,6 +85,15 @@ export default function App() {
     }
   };
 
+  const handleReorderMonth = async (month, direction) => {
+    const idx = state.months.findIndex((m) => m.id === month.id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= state.months.length) return;
+    const other = state.months[swapIdx];
+    await db.swapMonthSequence(month.id, month.sequence, other.id, other.sequence);
+    await reload();
+  };
+
   const handleBackup = async () => {
     try {
       const fileName = await backupNow();
@@ -181,6 +190,7 @@ export default function App() {
           onChanged={reload}
           onAddMonth={handleAddMonth}
           onCopyForward={handleCopyForward}
+          onReorder={handleReorderMonth}
         />
       )}
       {tab === "bills" && <BillsTab bills={state.bills} onChanged={reload} />}

@@ -180,6 +180,16 @@ export async function renameMonth(monthId, monthLabel) {
   await db.execute("UPDATE months SET month_label = $1 WHERE id = $2", [monthLabel, monthId]);
 }
 
+// Swap the chronological position of two months. sequence is UNIQUE, so we
+// park one row at a sentinel value first to avoid a transient collision.
+// Reordering changes carry-over, since later months inherit earlier balances.
+export async function swapMonthSequence(idA, seqA, idB, seqB) {
+  const db = await getDb();
+  await db.execute("UPDATE months SET sequence = -1 WHERE id = $1", [idA]);
+  await db.execute("UPDATE months SET sequence = $1 WHERE id = $2", [seqA, idB]);
+  await db.execute("UPDATE months SET sequence = $1 WHERE id = $2", [seqB, idA]);
+}
+
 export async function updatePayBlock(payBlockId, { income, incomeAccountId }) {
   const db = await getDb();
   await db.execute("UPDATE pay_blocks SET income = $1, income_account_id = $2 WHERE id = $3", [income, incomeAccountId, payBlockId]);

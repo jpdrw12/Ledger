@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt } from "lucide-react";
+import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, computeDueDate } from "../lib/calc.js";
 import { Field, AccountSelect, DateInput } from "./Shared.jsx";
@@ -18,6 +18,7 @@ export default function MonthsTab({
   onChanged,
   onAddMonth,
   onCopyForward,
+  onReorder,
 }) {
   const [filter, setFilter] = useState("");
 
@@ -79,6 +80,10 @@ export default function MonthsTab({
               onChanged();
             }}
             onCopyForward={() => onCopyForward(m)}
+            onReorder={onReorder}
+            canReorder={!trimmed}
+            isFirst={months.indexOf(m) === 0}
+            isLast={months.indexOf(m) === months.length - 1}
             accounts={accounts}
             bills={bills}
             goals={goals}
@@ -300,7 +305,7 @@ function DebtPaymentRow({ dp, debt, accounts, onUpdate, onRemove, onApply }) {
   );
 }
 
-function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, accounts, bills, goals, goalBalances, debts, existingTags }) {
+function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags }) {
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
   const deficit = consolidatedCarryOut < 0;
@@ -402,6 +407,16 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
           <span className="stub-label">consolidated, carries to next month</span>
           <span className={`amount ${deficit ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut)}</span>
         </div>
+        {canReorder && (
+          <>
+            <button className="icon-btn" title="Move earlier" disabled={isFirst} onClick={(e) => { e.stopPropagation(); onReorder(month, "up"); }}>
+              <ArrowUp size={15} />
+            </button>
+            <button className="icon-btn" title="Move later" disabled={isLast} onClick={(e) => { e.stopPropagation(); onReorder(month, "down"); }}>
+              <ArrowDown size={15} />
+            </button>
+          </>
+        )}
         <button className="icon-btn" title="Copy this bill setup to next month" onClick={(e) => { e.stopPropagation(); onCopyForward(); }}>
           <ArrowRightCircle size={16} />
         </button>

@@ -39,6 +39,8 @@ export const css = `
   .btn-secondary:hover { border-color: var(--ink); color: var(--ink); }
   .icon-btn { background:none; border:none; cursor:pointer; color:var(--ink-soft); padding:4px; display:flex; }
   .icon-btn:hover { color: var(--deficit); }
+  .icon-btn:disabled { opacity:0.3; cursor:default; }
+  .icon-btn:disabled:hover { color: var(--ink-soft); }
 
   .empty { color: var(--ink-soft); font-size:13.5px; font-style:italic; }
   .empty.small { font-size:12px; margin:4px 0 8px; }
