@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, computeDueDate } from "../lib/calc.js";
-import { Field, AccountSelect, DateInput } from "./Shared.jsx";
+import { Field, AccountSelect, DateInput, parseNumberInput } from "./Shared.jsx";
 
 export default function MonthsTab({
   months,
@@ -76,6 +76,7 @@ export default function MonthsTab({
             onToggle={() => setOpenMonth(openMonth === m.id ? null : m.id)}
             onChanged={onChanged}
             onRemove={async () => {
+              if (!confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments? This can't be undone.`)) return;
               await db.deleteMonth(m.id);
               onChanged();
             }}
@@ -140,7 +141,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
           className="amount-input"
           type="number"
           defaultValue={bp.amountPaid}
-          onBlur={(e) => onUpdateBillPayment(bp, { amountPaid: parseFloat(e.target.value) || 0 })}
+          onBlur={(e) => onUpdateBillPayment(bp, { amountPaid: parseNumberInput(e, bp.amountPaid) })}
         />
         <button className="icon-btn" onClick={() => onRemoveBillPayment(bp.id)}>
           <Trash2 size={13} />
@@ -167,7 +168,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
           type="number"
           defaultValue={pay.income}
           onBlur={async (e) => {
-            await db.updatePayBlock(pay.payBlockId, { income: parseFloat(e.target.value) || 0, incomeAccountId: pay.incomeAccountId });
+            await db.updatePayBlock(pay.payBlockId, { income: parseNumberInput(e, pay.income), incomeAccountId: pay.incomeAccountId });
             onChanged();
           }}
         />
@@ -223,7 +224,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
             <input className="text-input" placeholder="Category (Groceries, Gas…)" defaultValue={e.category} onBlur={(ev) => onUpdateExpense(e, { category: ev.target.value })} />
             <input className="text-input tag-input" placeholder="Tag" list="tag-suggestions" defaultValue={e.tag || ""} onBlur={(ev) => onUpdateExpense(e, { tag: ev.target.value })} />
             <AccountSelect accounts={accounts} value={e.accountId} onChange={(v) => onUpdateExpense(e, { accountId: v })} />
-            <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => onUpdateExpense(e, { amount: parseFloat(ev.target.value) || 0 })} />
+            <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => onUpdateExpense(e, { amount: parseNumberInput(ev, e.amount) })} />
             <button className="icon-btn" onClick={() => onRemoveExpense(e.id)}>
               <Trash2 size={13} />
             </button>
@@ -245,7 +246,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
               className="amount-input"
               type="number"
               defaultValue={a.amount}
-              onBlur={(e) => updateAddition(a, { amount: parseFloat(e.target.value) || 0 })}
+              onBlur={(e) => updateAddition(a, { amount: parseNumberInput(e, a.amount) })}
             />
             <button className="icon-btn" onClick={() => removeAddition(a.id)}>
               <Trash2 size={13} />
@@ -310,6 +311,9 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
   const deficit = consolidatedCarryOut < 0;
   const totalExpenses = totalExpensesPay1 + totalExpensesPay2;
+  // Due dates auto-fill only when the month label parses as "MonthName Year".
+  // A custom label (e.g. "House Move") silently leaves them blank.
+  const dueDatesWontFill = computeDueDate(month.monthLabel, 1) === "";
 
   const addBillPayment = async (bill) => {
     await db.addBillPayment(month.id, {
@@ -437,6 +441,12 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             ))}
           </div>
 
+          {dueDatesWontFill && (
+            <p className="due-date-hint">
+              Due dates won't auto-fill: this month's label isn't a "Month Year" (e.g. "June 2026"), so bills added here need their due dates set by hand.
+            </p>
+          )}
+
           <div className="pay-stack">
             <PayBlock
               label="Pay 1" slot={1}
@@ -486,16 +496,17 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             <span className="mono">{money(totalAdditions)}</span>
           </div>
 
-          <h4 className="block-title"><PiggyBank size={13} /> Savings contributions</h4>
+          <h4 className="block-title"><PiggyBank size={13} /> Savings contributions <span className="block-hint">— use a negative amount to record a withdrawal</span></h4>
           <div className="scroll-panel">
             {(month.goalContributions || []).map((gc) => {
               const goal = goals.find((g) => g.id === gc.goalId);
+              const isWithdrawal = Number(gc.amount) < 0;
               return (
                 <div className="ledger-row" key={gc.id}>
-                  <span className="row-name">{goal ? goal.name : "Unknown goal"}</span>
+                  <span className="row-name">{goal ? goal.name : "Unknown goal"}{isWithdrawal && <span className="withdrawal-pill">withdrawal</span>}</span>
                   <span className="mono small-label">balance: {money(goalBalances[gc.goalId])}</span>
                   <AccountSelect accounts={accounts} value={gc.accountId} onChange={(v) => updateGoalContribution(gc, { accountId: v })} />
-                  <input className="amount-input" type="number" defaultValue={gc.amount} onBlur={(ev) => updateGoalContribution(gc, { amount: parseFloat(ev.target.value) || 0 })} />
+                  <input className="amount-input" type="number" defaultValue={gc.amount} onBlur={(ev) => updateGoalContribution(gc, { amount: parseNumberInput(ev, gc.amount) })} />
                   <button className="icon-btn" onClick={() => removeGoalContribution(gc.id)}>
                     <Trash2 size={13} />
                   </button>

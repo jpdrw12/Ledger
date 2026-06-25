@@ -2,7 +2,7 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field } from "./Shared.jsx";
+import { Field, parseNumberInput } from "./Shared.jsx";
 
 export default function AccountsTab({ accounts, balances, consolidated, onChanged }) {
   const addAccount = async () => {
@@ -60,7 +60,7 @@ export default function AccountsTab({ accounts, balances, consolidated, onChange
                 label="Starting balance"
                 type="number"
                 defaultValue={acc.startingBalance}
-                onBlur={(e) => updateAccount(acc, { startingBalance: parseFloat(e.target.value) || 0 })}
+                onBlur={(e) => updateAccount(acc, { startingBalance: parseNumberInput(e, acc.startingBalance) })}
               />
               <div className="field">
                 <span>Current balance</span>

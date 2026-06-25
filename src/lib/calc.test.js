@@ -6,6 +6,9 @@ import {
   money,
   nextMonthLabel,
   computeDueDate,
+  spendingByCategory,
+  monthlyEndingBalances,
+  buildLedgerCsv,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -122,6 +125,97 @@ describe("computeGoalBalances", () => {
     );
     expect(totals.g1).toBe(0);
   });
+
+  it("treats a negative contribution as a withdrawal", () => {
+    const totals = computeGoalBalances(
+      [{ id: "g1", startingBalance: 500 }],
+      [makeMonth("m1", { goalContributions: [{ goalId: "g1", amount: 200 }, { goalId: "g1", amount: -300 }] })]
+    );
+    expect(totals.g1).toBe(400); // 500 + 200 - 300
+  });
+});
+
+describe("goal withdrawal in the ledger", () => {
+  it("a negative goal contribution returns money to its account", () => {
+    const month = makeMonth("m1", {
+      goalContributions: [{ accountId: "a", amount: -150 }],
+    });
+    const ledger = computeLedger([month], [ACCT_A]);
+    // outflow of -150 means +150 back to the account: 100 - (-150) = 250
+    expect(ledger.m1.byAccount.a.carryOut).toBe(250);
+    expect(ledger.m1.totalGoals).toBe(-150);
+  });
+});
+
+describe("spendingByCategory", () => {
+  it("groups expenses by category across months, biggest first", () => {
+    const months = [
+      makeMonth("m1", { expensesPay1: [{ category: "Groceries", amount: 100 }], expensesPay2: [{ category: "Gas", amount: 40 }] }),
+      makeMonth("m2", { expensesPay1: [{ category: "Groceries", amount: 60 }] }),
+    ];
+    expect(spendingByCategory(months)).toEqual([
+      { category: "Groceries", total: 160 },
+      { category: "Gas", total: 40 },
+    ]);
+  });
+
+  it("rolls blank categories under Uncategorized", () => {
+    const months = [makeMonth("m1", { expensesPay1: [{ category: "", amount: 25 }, { category: "  ", amount: 5 }] })];
+    expect(spendingByCategory(months)).toEqual([{ category: "Uncategorized", total: 30 }]);
+  });
+});
+
+describe("monthlyEndingBalances", () => {
+  it("returns the consolidated ending balance per month in order", () => {
+    const months = [
+      makeMonth("m1", { pay1: { income: 500, incomeAccountId: "a", additions: [] }, pay2: { income: 0, incomeAccountId: "b", additions: [] } }),
+      makeMonth("m2", { billPayments: [{ accountId: "a", amountPaid: 100 }] }),
+    ];
+    const ledger = computeLedger(months, [ACCT_A, ACCT_B]);
+    expect(monthlyEndingBalances(months, ledger)).toEqual([
+      { id: "m1", label: undefined, value: 650 }, // 150 + 500
+      { id: "m2", label: undefined, value: 550 }, // 650 - 100
+    ]);
+  });
+});
+
+describe("buildLedgerCsv", () => {
+  const state = {
+    accounts: [{ id: "a", name: "EQ Bank", startingBalance: 100 }],
+    bills: [{ id: "b1", name: "Rent", defaultSlot: 1 }],
+    goals: [{ id: "g1", name: "Vacation" }],
+    debts: [{ id: "d1", name: "Visa" }],
+    months: [
+      makeMonth("m1", {
+        monthLabel: "June 2026",
+        pay1: { income: 2000, incomeAccountId: "a", additions: [] },
+        pay2: { income: 0, incomeAccountId: "a", additions: [] },
+        billPayments: [{ billId: "b1", accountId: "a", amountPaid: 800 }],
+        expensesPay1: [{ category: "Groceries", amount: 120, accountId: "a" }],
+      }),
+    ],
+  };
+
+  it("emits a header and a row per movement with signed amounts", () => {
+    const ledger = computeLedger(state.months, state.accounts);
+    const lines = buildLedgerCsv(state, ledger).split("\n");
+    expect(lines[0]).toBe("Month,Type,Name/Category,Account,Slot,Amount");
+    expect(lines).toContain("June 2026,Bill,Rent,EQ Bank,1,-800");
+    expect(lines).toContain("June 2026,Expense,Groceries,EQ Bank,1,-120");
+    expect(lines).toContain("June 2026,Income,Pay,EQ Bank,1,2000");
+    // ending balance row: 100 + 2000 - 800 - 120 = 1180
+    expect(lines).toContain("June 2026,Ending balance,Consolidated,,,1180");
+  });
+
+  it("escapes commas and quotes in category names", () => {
+    const s = {
+      ...state,
+      months: [makeMonth("m1", { monthLabel: "X", expensesPay1: [{ category: 'Food, "fancy"', amount: 10, accountId: "a" }] })],
+    };
+    const ledger = computeLedger(s.months, s.accounts);
+    const csv = buildLedgerCsv(s, ledger);
+    expect(csv).toContain('"Food, ""fancy"""');
+  });
 });
 
 describe("latestAccountBalances", () => {
@@ -140,7 +234,7 @@ describe("latestAccountBalances", () => {
 
 describe("money", () => {
   it("formats positive, negative, and non-numeric values", () => {
-    expect(money(1234.5)).toBe("$1234.50");
+    expect(money(1234.5)).toBe("$1,234.50");
     expect(money(-12.3)).toBe("-$12.30");
     expect(money(0)).toBe("$0.00");
     expect(money(undefined)).toBe("$0.00");

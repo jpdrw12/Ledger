@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field } from "./Shared.jsx";
+import { Field, parseNumberInput } from "./Shared.jsx";
 
 export default function DebtsTab({ debts, debtHistory, onChanged }) {
   const [paymentDrafts, setPaymentDrafts] = useState({});
@@ -18,8 +18,9 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
     onChanged();
   };
 
-  const removeDebt = async (id) => {
-    await db.deleteDebt(id);
+  const removeDebt = async (debt) => {
+    if (!confirm(`Delete the debt "${debt.name}" and its payment history? This can't be undone.`)) return;
+    await db.deleteDebt(debt.id);
     onChanged();
   };
 
@@ -64,7 +65,7 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
           <div className="debt-card" key={`${debt.id}-${debt.balance}`}>
             <div className="debt-top">
               <input className="text-input" defaultValue={debt.name} onBlur={(e) => updateDebt(debt, { name: e.target.value })} />
-              <button className="icon-btn" onClick={() => removeDebt(debt.id)}>
+              <button className="icon-btn" onClick={() => removeDebt(debt)}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -73,14 +74,14 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
                 label="Balance"
                 type="number"
                 defaultValue={debt.balance}
-                onBlur={(e) => updateDebt(debt, { balance: parseFloat(e.target.value) || 0 })}
+                onBlur={(e) => updateDebt(debt, { balance: parseNumberInput(e, debt.balance) })}
               />
               <Field
                 label="APR (e.g. 0.299)"
                 type="number"
                 step="0.001"
                 defaultValue={debt.apr}
-                onBlur={(e) => updateDebt(debt, { apr: parseFloat(e.target.value) || 0 })}
+                onBlur={(e) => updateDebt(debt, { apr: parseNumberInput(e, debt.apr) })}
               />
               <Field
                 label="Payment this month"

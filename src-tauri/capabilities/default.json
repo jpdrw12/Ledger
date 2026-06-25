@@ -11,6 +11,7 @@
     "sql:allow-select",
     "sql:allow-close",
     "dialog:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

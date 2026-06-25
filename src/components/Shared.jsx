@@ -9,6 +9,20 @@ export function TabButton({ active, onClick, icon, label }) {
   );
 }
 
+// Commits a number from a blur event. An empty field clears to 0 (explicit
+// intent), but non-numeric junk is rejected — the field reverts to `prev` and
+// the value is unchanged — so a typo never silently zeroes a real amount.
+export function parseNumberInput(e, prev) {
+  const raw = e.target.value.trim();
+  if (raw === "") return 0;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) {
+    e.target.value = prev;
+    return prev;
+  }
+  return n;
+}
+
 export function Field({ label, ...props }) {
   return (
     <label className="field">

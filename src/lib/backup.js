@@ -1,5 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
+
+// Prompts for a save location and writes text there. Returns the path, or
+// null if the user cancelled.
+export async function exportTextFile(defaultName, contents) {
+  const path = await save({ defaultPath: defaultName, filters: [{ name: "CSV", extensions: ["csv"] }] });
+  if (!path) return null;
+  await invoke("write_text_file", { path, contents });
+  return path;
+}
 
 export async function backupNow() {
   // Returns the created file name on success.

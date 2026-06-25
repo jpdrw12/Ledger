@@ -92,10 +92,70 @@ export function latestAccountBalances(accounts, months, ledger) {
   return out;
 }
 
+// Total expenses across all months grouped by category, biggest first.
+// Blank categories roll up under "Uncategorized".
+export function spendingByCategory(months) {
+  const totals = {};
+  months.forEach((m) => {
+    [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])].forEach((e) => {
+      const key = (e.category || "").trim() || "Uncategorized";
+      totals[key] = (totals[key] || 0) + (Number(e.amount) || 0);
+    });
+  });
+  return Object.entries(totals)
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// Consolidated ending balance per month, in chronological order — the series
+// behind the trend sparkline.
+export function monthlyEndingBalances(months, ledger) {
+  return months
+    .filter((m) => ledger[m.id])
+    .map((m) => ({ id: m.id, label: m.monthLabel, value: ledger[m.id].consolidatedCarryOut }));
+}
+
+// Flattens every money movement into CSV rows: one line per bill, expense,
+// addition, goal contribution, and debt payment, tagged with its month.
+export function buildLedgerCsv(state, ledger) {
+  const accountName = (id) => (state.accounts.find((a) => a.id === id) || {}).name || "";
+  const esc = (v) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = [["Month", "Type", "Name/Category", "Account", "Slot", "Amount"]];
+
+  state.months.forEach((m) => {
+    const billName = (bp) => (state.bills.find((b) => b.id === bp.billId) || {}).name || "Bill";
+    m.billPayments.forEach((bp) => {
+      const bill = state.bills.find((b) => b.id === bp.billId);
+      rows.push([m.monthLabel, "Bill", billName(bp), accountName(bp.accountId), bill?.defaultSlot ?? "", -(Number(bp.amountPaid) || 0)]);
+    });
+    [["1", m.expensesPay1], ["2", m.expensesPay2]].forEach(([slot, list]) => {
+      (list || []).forEach((e) => rows.push([m.monthLabel, "Expense", e.category || "Uncategorized", accountName(e.accountId), slot, -(Number(e.amount) || 0)]));
+    });
+    [["1", m.pay1], ["2", m.pay2]].forEach(([slot, pay]) => {
+      if (Number(pay.income)) rows.push([m.monthLabel, "Income", "Pay", accountName(pay.incomeAccountId), slot, Number(pay.income) || 0]);
+      (pay.additions || []).forEach((a) => rows.push([m.monthLabel, "Addition", a.name || "Addition", accountName(a.accountId), slot, Number(a.amount) || 0]));
+    });
+    (m.goalContributions || []).forEach((gc) => {
+      const goal = state.goals.find((g) => g.id === gc.goalId);
+      rows.push([m.monthLabel, "Goal", goal?.name || "Goal", accountName(gc.accountId), "", -(Number(gc.amount) || 0)]);
+    });
+    (m.debtPayments || []).forEach((d) => {
+      const debt = state.debts.find((x) => x.id === d.debtId);
+      rows.push([m.monthLabel, "Debt payment", debt?.name || "Debt", accountName(d.accountId), "", -(Number(d.amount) || 0)]);
+    });
+    if (ledger[m.id]) rows.push([m.monthLabel, "Ending balance", "Consolidated", "", "", ledger[m.id].consolidatedCarryOut]);
+  });
+
+  return rows.map((r) => r.map(esc).join(",")).join("\n");
+}
+
 export const money = (n) => {
   const v = Number(n) || 0;
   const sign = v < 0 ? "-" : "";
-  return `${sign}$${Math.abs(v).toFixed(2)}`;
+  return `${sign}$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];

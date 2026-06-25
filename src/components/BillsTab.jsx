@@ -1,6 +1,7 @@
 import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
+import { parseNumberInput } from "./Shared.jsx";
 
 export default function BillsTab({ bills, onChanged }) {
   const addBill = async () => {
@@ -13,8 +14,9 @@ export default function BillsTab({ bills, onChanged }) {
     onChanged();
   };
 
-  const removeBill = async (id) => {
-    await db.deleteBill(id);
+  const removeBill = async (bill) => {
+    if (!confirm(`Delete the bill template "${bill.name}"? Bills already added to months stay; only the template is removed.`)) return;
+    await db.deleteBill(bill.id);
     onChanged();
   };
 
@@ -56,7 +58,7 @@ export default function BillsTab({ bills, onChanged }) {
               className="amount-input"
               type="number"
               defaultValue={b.defaultAmount}
-              onBlur={(e) => updateBill(b, { defaultAmount: parseFloat(e.target.value) || 0 })}
+              onBlur={(e) => updateBill(b, { defaultAmount: parseNumberInput(e, b.defaultAmount) })}
             />
             <select defaultValue={b.defaultSlot} onChange={(e) => updateBill(b, { defaultSlot: Number(e.target.value) })}>
               <option value={1}>Pay 1</option>
@@ -73,7 +75,7 @@ export default function BillsTab({ bills, onChanged }) {
               title="Auto-include when adding a new month"
               style={{ width: 18, height: 18, cursor: "pointer" }}
             />
-            <button className="icon-btn" onClick={() => removeBill(b.id)}>
+            <button className="icon-btn" onClick={() => removeBill(b)}>
               <Trash2 size={14} />
             </button>
           </div>

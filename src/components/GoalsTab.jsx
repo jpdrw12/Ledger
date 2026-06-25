@@ -2,7 +2,7 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field } from "./Shared.jsx";
+import { Field, parseNumberInput } from "./Shared.jsx";
 
 export default function GoalsTab({ goals, goalBalances, onChanged }) {
   const addGoal = async () => {
@@ -15,8 +15,9 @@ export default function GoalsTab({ goals, goalBalances, onChanged }) {
     onChanged();
   };
 
-  const removeGoal = async (id) => {
-    await db.deleteGoal(id);
+  const removeGoal = async (goal) => {
+    if (!confirm(`Delete the goal "${goal.name}"? Its contribution history stays in past months but the goal is removed.`)) return;
+    await db.deleteGoal(goal.id);
     onChanged();
   };
 
@@ -39,7 +40,7 @@ export default function GoalsTab({ goals, goalBalances, onChanged }) {
             <div className="goal-card" key={g.id}>
               <div className="debt-top">
                 <input className="text-input" defaultValue={g.name} onBlur={(e) => updateGoal(g, { name: e.target.value })} />
-                <button className="icon-btn" onClick={() => removeGoal(g.id)}>
+                <button className="icon-btn" onClick={() => removeGoal(g)}>
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -48,13 +49,13 @@ export default function GoalsTab({ goals, goalBalances, onChanged }) {
                   label="Starting balance"
                   type="number"
                   defaultValue={g.startingBalance}
-                  onBlur={(e) => updateGoal(g, { startingBalance: parseFloat(e.target.value) || 0 })}
+                  onBlur={(e) => updateGoal(g, { startingBalance: parseNumberInput(e, g.startingBalance) })}
                 />
                 <Field
                   label="Target amount (optional)"
                   type="number"
                   defaultValue={g.targetAmount}
-                  onBlur={(e) => updateGoal(g, { targetAmount: parseFloat(e.target.value) || 0 })}
+                  onBlur={(e) => updateGoal(g, { targetAmount: parseNumberInput(e, g.targetAmount) })}
                 />
                 <div className="field">
                   <span>Current balance</span>

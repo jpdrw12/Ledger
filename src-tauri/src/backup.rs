@@ -140,6 +140,13 @@ pub fn mirror_backup(app: AppHandle, file_name: String, dest_dir: String) -> Res
     Ok(dest.to_string_lossy().to_string())
 }
 
+/// Writes text (e.g. a CSV export) to an arbitrary path the user chose via
+/// the save dialog. Plain file write — no app dirs involved.
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    fs::write(&path, contents).map_err(|e| format!("could not write file: {e}"))
+}
+
 // ---------------------------------------------------------------------
 // Archiving — compress a month's loose .db snapshots into a single
 // archive/<YYYY-MM>.zip so the active list doesn't bloat. Archived

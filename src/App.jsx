@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -10,6 +10,7 @@ import BillsTab from "./components/BillsTab.jsx";
 import GoalsTab from "./components/GoalsTab.jsx";
 import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
+import InsightsTab from "./components/InsightsTab.jsx";
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -124,8 +125,10 @@ export default function App() {
   const [backupMsg, setBackupMsg] = useState("");
   const [mirrorFolder, setMirrorFolderState] = useState(getMirrorFolder());
   const [retention, setRetentionState] = useState(getRetention());
+  const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
+    setBusy(true);
     try {
       const full = await db.loadFullState();
       setState(full);
@@ -133,6 +136,8 @@ export default function App() {
     } catch (e) {
       console.error("Failed to load ledger:", e);
       setLoadError(typeof e === "string" ? e : e?.message || JSON.stringify(e));
+    } finally {
+      setBusy(false);
     }
   }, []);
 
@@ -149,10 +154,44 @@ export default function App() {
     }
   }, []);
 
+  // Auto-archive months older than the kept window (no-op unless enabled).
+  const applyRetention = useCallback(async () => {
+    const r = getRetention();
+    if (!r.enabled) return;
+    const folder = getMirrorFolder();
+    const list = folder ? await listFolderBackups(folder) : await listBackups();
+    for (const group of groupBackupsByMonth(list).slice(r.keepMonths)) {
+      await archiveMonth(folder, group.key);
+    }
+  }, []);
+
+  // Once per calendar day, take a snapshot if none exists for today. Mirrors
+  // and applies retention like a manual backup. Silently skips if there's no
+  // database yet (fresh first launch).
+  const maybeAutoBackup = useCallback(async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const local = await listBackups();
+      if (local.some((f) => f.includes(today))) return;
+      const fileName = await backupNow();
+      const folder = getMirrorFolder();
+      if (folder) {
+        try { await mirrorBackup(fileName, folder); } catch (e) { console.warn("Auto-backup mirror failed:", e); }
+      }
+      await applyRetention();
+      setBackupMsg(`Auto-backup saved ${fileName}`);
+    } catch (e) {
+      console.warn("Auto-backup skipped:", e);
+    }
+  }, [applyRetention]);
+
   useEffect(() => {
-    reload();
-    refreshBackups();
-  }, [reload, refreshBackups]);
+    (async () => {
+      await reload();
+      await maybeAutoBackup();
+      await refreshBackups();
+    })();
+  }, [reload, refreshBackups, maybeAutoBackup]);
 
   // Re-read the backup folder live each time the Backups tab is opened.
   useEffect(() => {
@@ -237,19 +276,6 @@ export default function App() {
       await refreshBackups();
     } catch (e) {
       setBackupMsg(String(e));
-    }
-  };
-
-  // Auto-archive months older than the kept window. Runs after each backup
-  // when the retention policy is enabled.
-  const applyRetention = async () => {
-    const r = getRetention();
-    if (!r.enabled) return;
-    const folder = getMirrorFolder();
-    const list = folder ? await listFolderBackups(folder) : await listBackups();
-    const olderMonths = groupBackupsByMonth(list).slice(r.keepMonths);
-    for (const group of olderMonths) {
-      await archiveMonth(folder, group.key);
     }
   };
 
@@ -380,6 +406,7 @@ export default function App() {
   return (
     <div className="app">
       <style>{css}</style>
+      {busy && state && <div className="saving-pill">Saving…</div>}
       <header className="app-header">
         <BookOpen size={26} strokeWidth={1.5} />
         <div>
@@ -407,6 +434,7 @@ export default function App() {
         <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" />
         <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" />
         <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" />
+        <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" />
         <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" />
       </nav>
 
@@ -434,6 +462,7 @@ export default function App() {
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} />
       )}
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} />}
+      {tab === "insights" && <InsightsTab state={state} ledger={ledger} />}
 
       {tab === "backups" && (
         <div className="section">

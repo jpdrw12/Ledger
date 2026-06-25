@@ -153,6 +153,20 @@ export const css = `
   .history-table th:first-child, .history-table td:first-child { text-align:left; }
   .history-table td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--paper-line); }
 
+  .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:14px; margin-bottom:18px; }
+  .sparkline { width:100%; height:120px; display:block; }
+  .spark-line { stroke:var(--stamp); stroke-width:2; vector-effect:non-scaling-stroke; }
+  .spark-zero { stroke:var(--paper-line); stroke-width:1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }
+  .spark-dot { fill:var(--stamp); }
+  .spark-dot.deficit-dot { fill:var(--deficit); }
+  .spark-legend { display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-top:8px; }
+  .cat-row { display:flex; align-items:center; gap:12px; padding:5px 0; }
+  .cat-name { flex:0 0 140px; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cat-bar-track { flex:1; height:14px; background:#fff; border:1px solid var(--paper-line); border-radius:7px; overflow:hidden; }
+  .cat-bar-fill { height:100%; background:var(--stamp); opacity:0.55; }
+  .cat-amount { flex:0 0 90px; text-align:right; font-size:13px; }
+  .cat-total { border-top:1px solid var(--ink); margin-top:6px; padding-top:8px; font-weight:700; }
+
   .backup-row { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
   .backup-folder { display:flex; align-items:center; gap:10px; margin:10px 0 4px; color:var(--ink-soft); flex-wrap:wrap; }
   .backup-folder .btn-secondary { margin-top:0; }
@@ -166,6 +180,10 @@ export const css = `
   .backup-group-count { font-family: ui-monospace, monospace; font-size:11px; color:var(--ink-soft); background:var(--card); border:1px solid var(--paper-line); border-radius:10px; padding:1px 8px; }
   .backup-archive-icon { color:var(--ink-soft); }
   .retention-toggle { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft); cursor:pointer; }
+  .due-date-hint { font-size:12px; color:var(--stamp); background:#FBF3E0; border:1px solid #E8D6A8; border-radius:3px; padding:6px 10px; margin:10px 0 0; }
+  .saving-pill { position:fixed; top:12px; right:14px; z-index:50; background:var(--ink); color:var(--paper); font-size:12px; padding:5px 12px; border-radius:12px; opacity:0.9; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+  .block-hint { font-size:11px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-soft); }
+  .withdrawal-pill { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--deficit); border:1px solid var(--deficit); border-radius:8px; padding:1px 6px; margin-left:6px; }
   .backup-list { list-style:none; padding:0; margin:6px 0 0; font-size:12px; }
   .backup-list li { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid var(--paper-line); }
 
