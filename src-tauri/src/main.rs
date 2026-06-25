@@ -16,6 +16,12 @@ fn main() {
             sql: include_str!("../migrations/0002_auto_add_and_debt_payments.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "debt_payment_applied_flag",
+            sql: include_str!("../migrations/0003_debt_payment_applied.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

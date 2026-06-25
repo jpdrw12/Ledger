@@ -302,6 +302,20 @@ export async function updateMonthDebtPayment(id, { amount, accountId }) {
   await db.execute("UPDATE month_debt_payments SET amount = $1, account_id = $2 WHERE id = $3", [amount, accountId, id]);
 }
 
+export async function applyMonthDebtPayment(id, { debtId, amount, monthLabel, currentBalance, apr }) {
+  const db = await getDb();
+  const balanceAfterPayment = currentBalance - amount;
+  const interest = balanceAfterPayment * (apr / 12);
+  const newBalance = Math.round((balanceAfterPayment + interest) * 100) / 100;
+  await db.execute(
+    `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [uid(), debtId, monthLabel, currentBalance, amount, interest, newBalance]
+  );
+  await db.execute("UPDATE debts SET balance = $1 WHERE id = $2", [newBalance, debtId]);
+  await db.execute("UPDATE month_debt_payments SET applied = 1 WHERE id = $1", [id]);
+}
+
 export async function deleteMonthDebtPayment(id) {
   const db = await getDb();
   await db.execute("DELETE FROM month_debt_payments WHERE id = $1", [id]);
@@ -376,7 +390,7 @@ export async function loadFullState() {
         .map((g) => ({ id: g.id, goalId: g.goal_id, amount: g.amount, accountId: g.account_id })),
       debtPayments: debtPaymentRows
         .filter((d) => d.month_id === m.id)
-        .map((d) => ({ id: d.id, debtId: d.debt_id, amount: d.amount, accountId: d.account_id })),
+        .map((d) => ({ id: d.id, debtId: d.debt_id, amount: d.amount, accountId: d.account_id, applied: !!d.applied })),
     };
   });
 

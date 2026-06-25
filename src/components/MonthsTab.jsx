@@ -164,6 +164,43 @@ function PayBlock({ label, pay, accounts, onChanged }) {
   );
 }
 
+function DebtPaymentRow({ dp, debt, accounts, onUpdate, onRemove, onApply }) {
+  const [amount, setAmount] = useState(dp.amount);
+
+  const save = async (val) => {
+    await onUpdate(dp, { amount: val });
+  };
+
+  const handleApply = async () => {
+    await onApply({ ...dp, amount });
+  };
+
+  return (
+    <div className="ledger-row">
+      <span className="row-name">{debt ? debt.name : "Unknown debt"}</span>
+      <AccountSelect accounts={accounts} value={dp.accountId} onChange={(v) => onUpdate(dp, { accountId: v })} />
+      <input
+        className="amount-input"
+        type="number"
+        value={amount}
+        disabled={dp.applied}
+        onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+        onBlur={() => save(amount)}
+      />
+      {dp.applied ? (
+        <span className="debt-applied-badge"><Check size={11} /> Applied</span>
+      ) : (
+        <button className="btn-apply-debt" onClick={handleApply} title="Apply payment + interest to debt balance">
+          Apply
+        </button>
+      )}
+      <button className="icon-btn" onClick={() => onRemove(dp.id)}>
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
 function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, accounts, bills, goals, goalBalances, debts, existingTags }) {
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
@@ -224,6 +261,18 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
   };
   const removeDebtPayment = async (id) => {
     await db.deleteMonthDebtPayment(id);
+    onChanged();
+  };
+  const applyDebtPayment = async (dp) => {
+    const debt = debts.find((d) => d.id === dp.debtId);
+    if (!debt) return;
+    await db.applyMonthDebtPayment(dp.id, {
+      debtId: dp.debtId,
+      amount: dp.amount,
+      monthLabel: month.monthLabel,
+      currentBalance: debt.balance,
+      apr: debt.apr,
+    });
     onChanged();
   };
 
@@ -408,14 +457,15 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             {(month.debtPayments || []).map((dp) => {
               const debt = debts.find((d) => d.id === dp.debtId);
               return (
-                <div className="ledger-row" key={dp.id}>
-                  <span className="row-name">{debt ? debt.name : "Unknown debt"}</span>
-                  <AccountSelect accounts={accounts} value={dp.accountId} onChange={(v) => updateDebtPayment(dp, { accountId: v })} />
-                  <input className="amount-input" type="number" defaultValue={dp.amount} onBlur={(ev) => updateDebtPayment(dp, { amount: parseFloat(ev.target.value) || 0 })} />
-                  <button className="icon-btn" onClick={() => removeDebtPayment(dp.id)}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
+                <DebtPaymentRow
+                  key={dp.id}
+                  dp={dp}
+                  debt={debt}
+                  accounts={accounts}
+                  onUpdate={updateDebtPayment}
+                  onRemove={removeDebtPayment}
+                  onApply={applyDebtPayment}
+                />
               );
             })}
             {(month.debtPayments || []).length === 0 && <p className="empty small scroll-panel-empty">No debt payments logged yet.</p>}

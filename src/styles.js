@@ -50,6 +50,10 @@ export const css = `
   .stub-summary { display:flex; gap:6px; margin-right:12px; }
   .stub-summary-chip { font-size:11px; color:var(--ink-soft); background:var(--paper); border:1px solid var(--paper-line); border-radius:10px; padding:2px 8px; font-family:ui-monospace, monospace; }
 
+  .btn-apply-debt { font-size:11px; padding:3px 8px; background:var(--ink); color:var(--paper); border:none; border-radius:3px; cursor:pointer; white-space:nowrap; }
+  .btn-apply-debt:hover { background:var(--ink-soft); }
+  .debt-applied-badge { display:flex; align-items:center; gap:3px; font-size:11px; color:var(--surplus); white-space:nowrap; }
+
   .sticky-totals { position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--paper-line); padding-top:4px; margin-top:16px; }
 
   .stub-row { display:flex; flex-direction:column; gap:10px; }

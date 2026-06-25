@@ -1,0 +1,1 @@
+ALTER TABLE month_debt_payments ADD COLUMN applied INTEGER NOT NULL DEFAULT 0;
