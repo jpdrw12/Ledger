@@ -1,0 +1,123 @@
+import React, { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import * as db from "../lib/db.js";
+import { money } from "../lib/calc.js";
+import { Field } from "./Shared.jsx";
+
+export default function DebtsTab({ debts, debtHistory, onChanged }) {
+  const [paymentDrafts, setPaymentDrafts] = useState({});
+  const [monthDraft, setMonthDraft] = useState("This month");
+
+  const addDebt = async () => {
+    await db.upsertDebt({ name: "New debt", apr: 0.2, balance: 0 });
+    onChanged();
+  };
+
+  const updateDebt = async (debt, patch) => {
+    await db.upsertDebt({ ...debt, ...patch });
+    onChanged();
+  };
+
+  const removeDebt = async (id) => {
+    await db.deleteDebt(id);
+    onChanged();
+  };
+
+  const applyMonth = async (debt) => {
+    const paid = parseFloat(paymentDrafts[debt.id]) || 0;
+    const current = debt.balance - paid;
+    const interest = current * (debt.apr / 12);
+    const newBalance = Math.round((current + interest) * 100) / 100;
+
+    await db.logDebtHistory({
+      debtId: debt.id,
+      monthLabel: monthDraft,
+      previousBalance: debt.balance,
+      amountPaid: paid,
+      interest,
+      newBalance,
+    });
+    await db.upsertDebt({ ...debt, balance: newBalance });
+    setPaymentDrafts((p) => ({ ...p, [debt.id]: "" }));
+    onChanged();
+  };
+
+  return (
+    <div className="section">
+      <div className="section-head">
+        <h2>Debts</h2>
+        <button className="btn-primary" onClick={addDebt}>
+          <Plus size={15} /> Add debt
+        </button>
+      </div>
+      <div className="grid-2" style={{ maxWidth: 320, marginBottom: 16 }}>
+        <Field label="Label this month's update" value={monthDraft} onChange={(e) => setMonthDraft(e.target.value)} />
+      </div>
+
+      <div className="card-list">
+        {debts.map((debt) => (
+          <div className="debt-card" key={debt.id}>
+            <div className="debt-top">
+              <input className="text-input" defaultValue={debt.name} onBlur={(e) => updateDebt(debt, { name: e.target.value })} />
+              <button className="icon-btn" onClick={() => removeDebt(debt.id)}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <div className="grid-3">
+              <Field
+                label="Balance"
+                type="number"
+                defaultValue={debt.balance}
+                onBlur={(e) => updateDebt(debt, { balance: parseFloat(e.target.value) || 0 })}
+              />
+              <Field
+                label="APR (e.g. 0.299)"
+                type="number"
+                step="0.001"
+                defaultValue={debt.apr}
+                onBlur={(e) => updateDebt(debt, { apr: parseFloat(e.target.value) || 0 })}
+              />
+              <Field
+                label="Payment this month"
+                type="number"
+                value={paymentDrafts[debt.id] || ""}
+                onChange={(e) => setPaymentDrafts((p) => ({ ...p, [debt.id]: e.target.value }))}
+              />
+            </div>
+            <button className="btn-secondary" onClick={() => applyMonth(debt)}>
+              Apply payment + interest
+            </button>
+
+            {debtHistory.filter((h) => h.debt_id === debt.id).length > 0 && (
+              <table className="history-table">
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th>Previous</th>
+                    <th>Paid</th>
+                    <th>Interest</th>
+                    <th>New balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {debtHistory
+                    .filter((h) => h.debt_id === debt.id)
+                    .map((h) => (
+                      <tr key={h.id}>
+                        <td>{h.month_label}</td>
+                        <td className="mono">{money(h.previous_balance)}</td>
+                        <td className="mono">{money(h.amount_paid)}</td>
+                        <td className="mono">{money(h.interest)}</td>
+                        <td className="mono">{money(h.new_balance)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+        {debts.length === 0 && <p className="empty">No debts tracked yet.</p>}
+      </div>
+    </div>
+  );
+}
