@@ -43,11 +43,7 @@ export const css = `
 
   .stub-row { display:flex; flex-direction:column; gap:10px; }
   .stub { background: var(--card); border:1px solid var(--paper-line); border-radius:2px; position:relative; }
-  .stub::before {
-    content:""; position:absolute; left:0; top:0; bottom:0; width:6px;
-    background: repeating-linear-gradient(to bottom, var(--paper-line) 0 6px, transparent 6px 11px);
-  }
-  .stub-head { display:flex; align-items:center; gap:10px; padding:12px 14px 12px 18px; cursor:pointer; }
+  .stub-head { display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; }
   .stub-title { display:flex; flex-direction:column; flex:1; }
   .stub-eyebrow { font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--stamp); }
   .month-title-input {
@@ -62,7 +58,7 @@ export const css = `
   .amount.surplus, .surplus { color: var(--surplus); }
   .amount.deficit, .deficit { color: var(--deficit); }
 
-  .stub-body { padding:6px 18px 18px 18px; border-top:1px solid var(--paper-line); }
+  .stub-body { padding:6px 14px 18px 14px; border-top:1px solid var(--paper-line); }
   .block-title { display:flex; align-items:center; gap:6px; font-size:12.5px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-soft); margin:16px 0 8px; }
   .sub-title { display:flex; align-items:center; gap:5px; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); margin:10px 0 6px; }
 
@@ -124,9 +120,9 @@ export const css = `
   .consolidated-card .amount.deficit { color:#F2A38F; }
   .debt-top { display:flex; gap:8px; align-items:center; margin-bottom:4px; }
 
-  .progress-track { position:relative; height:18px; background:#fff; border:1px solid var(--paper-line); border-radius:9px; overflow:hidden; margin-top:6px; }
+  .progress-track { position:relative; height:26px; background:#fff; border:1px solid var(--paper-line); border-radius:13px; overflow:hidden; margin-top:6px; }
   .progress-fill { position:absolute; left:0; top:0; bottom:0; background:var(--stamp); opacity:0.55; }
-  .progress-label { position:relative; z-index:1; font-size:10.5px; line-height:18px; padding-left:8px; color:var(--ink); }
+  .progress-label { position:relative; z-index:1; font-size:12px; line-height:26px; padding-left:10px; color:var(--ink); }
 
   .history-table { width:100%; margin-top:12px; font-size:12.5px; border-collapse:collapse; }
   .history-table th { text-align:right; color:var(--ink-soft); font-weight:500; padding:5px 6px; border-bottom:1px solid var(--ink); }
