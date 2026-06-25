@@ -34,7 +34,9 @@ export const css = `
   .section-head h2 { font-family: Georgia, serif; font-size:19px; margin:0; }
 
   .btn-primary { display:flex; align-items:center; gap:6px; background:var(--ink); color:var(--paper); border:none; padding:8px 13px; border-radius:3px; cursor:pointer; font-size:13px; }
+  .btn-primary:hover { background: var(--ink-soft); }
   .btn-secondary { display:flex; align-items:center; gap:6px; background:none; border:1px dashed var(--ink-soft); color:var(--ink-soft); padding:6px 12px; border-radius:3px; cursor:pointer; font-size:12.5px; margin-top:6px; }
+  .btn-secondary:hover { border-color: var(--ink); color: var(--ink); }
   .icon-btn { background:none; border:none; cursor:pointer; color:var(--ink-soft); padding:4px; display:flex; }
   .icon-btn:hover { color: var(--deficit); }
 
@@ -42,7 +44,7 @@ export const css = `
   .empty.small { font-size:12px; margin:4px 0 8px; }
 
   .stub-row { display:flex; flex-direction:column; gap:10px; }
-  .stub { background: var(--card); border:1px solid var(--paper-line); border-radius:2px; position:relative; }
+  .stub { background: var(--card); border:1px solid var(--paper-line); border-radius:2px; }
   .stub-head { display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; }
   .stub-title { display:flex; flex-direction:column; flex:1; }
   .stub-eyebrow { font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--stamp); }
