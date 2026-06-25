@@ -3,13 +3,16 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-/// Where the live database lives: <app_data_dir>/ledger.db
-/// (this matches the "sqlite:ledger.db" path tauri-plugin-sql resolves to)
+/// Where the live database lives: <app_config_dir>/ledger.db
+/// tauri-plugin-sql resolves "sqlite:ledger.db" relative to the app
+/// *config* dir (~/.config/<id> on Linux), not the data dir — these
+/// differ on Linux, so this must match the plugin or backups can't
+/// find the database.
 fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
-        .app_data_dir()
-        .map_err(|e| format!("could not resolve app data dir: {e}"))?;
+        .app_config_dir()
+        .map_err(|e| format!("could not resolve app config dir: {e}"))?;
     Ok(dir.join("ledger.db"))
 }
 
