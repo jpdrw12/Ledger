@@ -1,0 +1,9 @@
+ALTER TABLE bills ADD COLUMN auto_add INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS month_debt_payments (
+  id TEXT PRIMARY KEY,
+  month_id TEXT NOT NULL REFERENCES months(id) ON DELETE CASCADE,
+  debt_id TEXT NOT NULL REFERENCES debts(id) ON DELETE CASCADE,
+  amount REAL NOT NULL DEFAULT 0,
+  account_id TEXT REFERENCES accounts(id)
+);

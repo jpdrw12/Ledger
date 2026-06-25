@@ -43,6 +43,15 @@ export const css = `
   .empty { color: var(--ink-soft); font-size:13.5px; font-style:italic; }
   .empty.small { font-size:12px; margin:4px 0 8px; }
 
+  .month-filter { display:flex; align-items:center; gap:8px; margin-bottom:14px; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:6px 10px; }
+  .month-filter-input { flex:1; border:none; background:none; font-size:13px; color:var(--ink); outline:none; font-family: ui-sans-serif, system-ui; }
+  .month-filter-input::placeholder { color:var(--ink-soft); }
+
+  .stub-summary { display:flex; gap:6px; margin-right:12px; }
+  .stub-summary-chip { font-size:11px; color:var(--ink-soft); background:var(--paper); border:1px solid var(--paper-line); border-radius:10px; padding:2px 8px; font-family:ui-monospace, monospace; }
+
+  .sticky-totals { position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--paper-line); padding-top:4px; margin-top:16px; }
+
   .stub-row { display:flex; flex-direction:column; gap:10px; }
   .stub { background: var(--card); border:1px solid var(--paper-line); border-radius:2px; }
   .stub-head { display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; }

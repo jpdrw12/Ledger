@@ -31,6 +31,9 @@ export function computeLedger(months, accounts) {
     (m.goalContributions || []).forEach((g) => {
       if (outflow[g.accountId] !== undefined) outflow[g.accountId] += Number(g.amount) || 0;
     });
+    (m.debtPayments || []).forEach((d) => {
+      if (outflow[d.accountId] !== undefined) outflow[d.accountId] += Number(d.amount) || 0;
+    });
 
     const byAccount = {};
     accounts.forEach((a) => {
@@ -45,6 +48,7 @@ export function computeLedger(months, accounts) {
     const totalExpensesPay1 = m.expensesPay1.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const totalExpensesPay2 = m.expensesPay2.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const totalGoals = (m.goalContributions || []).reduce((s, g) => s + (Number(g.amount) || 0), 0);
+    const totalDebtPayments = (m.debtPayments || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
     const consolidatedCarryIn = accounts.reduce((s, a) => s + byAccount[a.id].carryIn, 0);
     const consolidatedCarryOut = accounts.reduce((s, a) => s + byAccount[a.id].carryOut, 0);
 
@@ -56,6 +60,7 @@ export function computeLedger(months, accounts) {
       totalExpensesPay1,
       totalExpensesPay2,
       totalGoals,
+      totalDebtPayments,
       consolidatedCarryIn,
       consolidatedCarryOut,
     };

@@ -49,6 +49,7 @@ export async function reassignAccountReferences(fromId, toId) {
   await db.execute("UPDATE bill_payments SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
   await db.execute("UPDATE expenses SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
   await db.execute("UPDATE goal_contributions SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
+  await db.execute("UPDATE month_debt_payments SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
 }
 
 // ---------------------------------------------------------------------
@@ -65,6 +66,7 @@ export async function getBills() {
     defaultSlot: r.default_slot,
     dueDay: r.due_day,
     paymentType: r.payment_type,
+    autoAdd: r.auto_add === 1,
   }));
 }
 
@@ -72,11 +74,11 @@ export async function upsertBill(bill) {
   const db = await getDb();
   const id = bill.id || uid();
   await db.execute(
-    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, payment_type)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, payment_type, auto_add)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT(id) DO UPDATE SET
-       name = $2, category = $3, default_amount = $4, default_slot = $5, due_day = $6, payment_type = $7`,
-    [id, bill.name, bill.category, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.paymentType || "manual"]
+       name = $2, category = $3, default_amount = $4, default_slot = $5, due_day = $6, payment_type = $7, auto_add = $8`,
+    [id, bill.name, bill.category, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0]
   );
   return id;
 }
@@ -282,6 +284,30 @@ export async function deleteGoalContribution(id) {
 }
 
 // ---------------------------------------------------------------------
+// Month debt payments — tracks debt payments made within a month so they
+// count as account outflows. Interest calc / balance updates stay in DebtsTab.
+// ---------------------------------------------------------------------
+export async function addMonthDebtPayment(monthId, { debtId, amount, accountId }) {
+  const db = await getDb();
+  const id = uid();
+  await db.execute(
+    "INSERT INTO month_debt_payments (id, month_id, debt_id, amount, account_id) VALUES ($1, $2, $3, $4, $5)",
+    [id, monthId, debtId, amount || 0, accountId || null]
+  );
+  return id;
+}
+
+export async function updateMonthDebtPayment(id, { amount, accountId }) {
+  const db = await getDb();
+  await db.execute("UPDATE month_debt_payments SET amount = $1, account_id = $2 WHERE id = $3", [amount, accountId, id]);
+}
+
+export async function deleteMonthDebtPayment(id) {
+  const db = await getDb();
+  await db.execute("DELETE FROM month_debt_payments WHERE id = $1", [id]);
+}
+
+// ---------------------------------------------------------------------
 // loadFullState() — reassembles every relational table back into the
 // same nested shape (accounts, bills, goals, months[], debts,
 // debtHistory) that computeLedger()/computeGoalBalances() in calc.js
@@ -292,7 +318,7 @@ export async function deleteGoalContribution(id) {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows] =
+  const [accounts, bills, goals, debts, debtHistory, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -305,6 +331,7 @@ export async function loadFullState() {
       db.select("SELECT * FROM bill_payments"),
       db.select("SELECT * FROM expenses"),
       db.select("SELECT * FROM goal_contributions"),
+      db.select("SELECT * FROM month_debt_payments"),
     ]);
 
   const months = monthRows.map((m) => {
@@ -347,6 +374,9 @@ export async function loadFullState() {
       goalContributions: goalContribRows
         .filter((g) => g.month_id === m.id)
         .map((g) => ({ id: g.id, goalId: g.goal_id, amount: g.amount, accountId: g.account_id })),
+      debtPayments: debtPaymentRows
+        .filter((d) => d.month_id === m.id)
+        .map((d) => ({ id: d.id, debtId: d.debt_id, amount: d.amount, accountId: d.account_id })),
     };
   });
 

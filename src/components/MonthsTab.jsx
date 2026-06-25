@@ -1,5 +1,5 @@
-import React from "react";
-import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Zap, Hand, PiggyBank, TrendingUp } from "lucide-react";
+import React, { useState } from "react";
+import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, computeDueDate } from "../lib/calc.js";
 import { Field, AccountSelect } from "./Shared.jsx";
@@ -11,6 +11,7 @@ export default function MonthsTab({
   bills,
   goals,
   goalBalances,
+  debts,
   existingTags,
   openMonth,
   setOpenMonth,
@@ -18,6 +19,19 @@ export default function MonthsTab({
   onAddMonth,
   onCopyForward,
 }) {
+  const [filter, setFilter] = useState("");
+
+  const trimmed = filter.trim().toLowerCase();
+  const visibleMonths = trimmed
+    ? months.filter((m) =>
+        [...m.expensesPay1, ...m.expensesPay2].some(
+          (e) =>
+            e.category?.toLowerCase().includes(trimmed) ||
+            e.tag?.toLowerCase().includes(trimmed)
+        )
+      )
+    : months;
+
   return (
     <div className="section">
       <div className="section-head">
@@ -27,17 +41,36 @@ export default function MonthsTab({
         </button>
       </div>
 
+      <div className="month-filter">
+        <Search size={14} />
+        <input
+          className="month-filter-input"
+          placeholder="Filter by expense category or tag…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        {trimmed && (
+          <button className="icon-btn" onClick={() => setFilter("")} title="Clear filter">
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+
       {months.length === 0 && (
         <p className="empty">No months yet. Add one to start the chain — both pays land here together, and every account's balance carries forward automatically.</p>
       )}
 
+      {trimmed && visibleMonths.length === 0 && (
+        <p className="empty">No months contain expenses matching "{filter}".</p>
+      )}
+
       <div className="stub-row">
-        {months.map((m, i) => (
+        {visibleMonths.map((m, i) => (
           <MonthStub
             key={m.id}
             month={m}
             computed={ledger[m.id]}
-            index={i}
+            index={months.indexOf(m)}
             isOpen={openMonth === m.id}
             onToggle={() => setOpenMonth(openMonth === m.id ? null : m.id)}
             onChanged={onChanged}
@@ -50,6 +83,7 @@ export default function MonthsTab({
             bills={bills}
             goals={goals}
             goalBalances={goalBalances}
+            debts={debts}
             existingTags={existingTags}
           />
         ))}
@@ -130,10 +164,11 @@ function PayBlock({ label, pay, accounts, onChanged }) {
   );
 }
 
-function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, accounts, bills, goals, goalBalances, existingTags }) {
+function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, accounts, bills, goals, goalBalances, debts, existingTags }) {
   if (!computed) return null;
-  const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, consolidatedCarryOut } = computed;
+  const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
   const deficit = consolidatedCarryOut < 0;
+  const totalExpenses = totalExpensesPay1 + totalExpensesPay2;
 
   const addBillPayment = async (bill) => {
     await db.addBillPayment(month.id, {
@@ -176,6 +211,19 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
   };
   const removeGoalContribution = async (id) => {
     await db.deleteGoalContribution(id);
+    onChanged();
+  };
+
+  const addDebtPayment = async (debt) => {
+    await db.addMonthDebtPayment(month.id, { debtId: debt.id, amount: 0, accountId: accounts[0]?.id });
+    onChanged();
+  };
+  const updateDebtPayment = async (dp, patch) => {
+    await db.updateMonthDebtPayment(dp.id, { amount: dp.amount, accountId: dp.accountId, ...patch });
+    onChanged();
+  };
+  const removeDebtPayment = async (id) => {
+    await db.deleteMonthDebtPayment(id);
     onChanged();
   };
 
@@ -255,6 +303,10 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
               }
             }}
           />
+        </div>
+        <div className="stub-summary">
+          <span className="stub-summary-chip">Bills {money(totalBills)}</span>
+          <span className="stub-summary-chip">Exp {money(totalExpenses)}</span>
         </div>
         <div className="stub-balance">
           <span className="stub-label">consolidated, carries to next month</span>
@@ -351,21 +403,53 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             ))}
           </div>
 
-          <div className="ledger-row totals-row">
-            <span>Bills total</span>
-            <span className="mono">{money(totalBills)}</span>
+          <h4 className="block-title"><Landmark size={13} /> Debt payments</h4>
+          <div className="scroll-panel">
+            {(month.debtPayments || []).map((dp) => {
+              const debt = debts.find((d) => d.id === dp.debtId);
+              return (
+                <div className="ledger-row" key={dp.id}>
+                  <span className="row-name">{debt ? debt.name : "Unknown debt"}</span>
+                  <AccountSelect accounts={accounts} value={dp.accountId} onChange={(v) => updateDebtPayment(dp, { accountId: v })} />
+                  <input className="amount-input" type="number" defaultValue={dp.amount} onBlur={(ev) => updateDebtPayment(dp, { amount: parseFloat(ev.target.value) || 0 })} />
+                  <button className="icon-btn" onClick={() => removeDebtPayment(dp.id)}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              );
+            })}
+            {(month.debtPayments || []).length === 0 && <p className="empty small scroll-panel-empty">No debt payments logged yet.</p>}
           </div>
-          <div className="ledger-row totals-row">
-            <span>Expenses total (Pay 1 + Pay 2)</span>
-            <span className="mono">{money(totalExpensesPay1 + totalExpensesPay2)}</span>
+          <div className="quick-add">
+            <span>Quick add:</span>
+            {debts.map((d) => (
+              <button key={d.id} className="chip" onClick={() => addDebtPayment(d)}>
+                {d.name}
+              </button>
+            ))}
           </div>
-          <div className="ledger-row totals-row">
-            <span>Savings contributions</span>
-            <span className="mono">{money(totalGoals)}</span>
-          </div>
-          <div className="ledger-row totals-row final">
-            <span>Consolidated ending balance, carried to next month</span>
-            <span className={`mono ${deficit ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut)}</span>
+
+          <div className="sticky-totals">
+            <div className="ledger-row totals-row">
+              <span>Bills total</span>
+              <span className="mono">{money(totalBills)}</span>
+            </div>
+            <div className="ledger-row totals-row">
+              <span>Expenses total (Pay 1 + Pay 2)</span>
+              <span className="mono">{money(totalExpenses)}</span>
+            </div>
+            <div className="ledger-row totals-row">
+              <span>Savings contributions</span>
+              <span className="mono">{money(totalGoals)}</span>
+            </div>
+            <div className="ledger-row totals-row">
+              <span>Debt payments</span>
+              <span className="mono">{money(totalDebtPayments)}</span>
+            </div>
+            <div className="ledger-row totals-row final">
+              <span>Consolidated ending balance, carried to next month</span>
+              <span className={`mono ${deficit ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut)}</span>
+            </div>
           </div>
         </div>
       )}

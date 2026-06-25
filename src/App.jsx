@@ -53,8 +53,16 @@ export default function App() {
     const label = last ? nextMonthLabel(last.monthLabel) : "Month 1";
     const sequence = last ? last.sequence + 1 : 1;
     const monthId = await db.addMonth({ monthLabel: label, sequence, defaultAccountId: state.accounts[0]?.id });
-    if (last) {
-      await cloneBillsInto(last.billPayments, monthId, label, state.bills);
+    // Use auto_add bills as the default set for new months. Copy Forward (ArrowRightCircle)
+    // is the way to duplicate a specific month's exact bill setup.
+    const autoAddBills = state.bills.filter((b) => b.autoAdd);
+    for (const bill of autoAddBills) {
+      await db.addBillPayment(monthId, {
+        billId: bill.id,
+        amountPaid: bill.defaultAmount,
+        accountId: state.accounts[0]?.id,
+        dueDate: computeDueDate(label, bill.dueDay),
+      });
     }
     await reload();
     setOpenMonth(monthId);
@@ -166,6 +174,7 @@ export default function App() {
           bills={state.bills}
           goals={state.goals}
           goalBalances={goalBalances}
+          debts={state.debts}
           existingTags={existingTags}
           openMonth={openMonth}
           setOpenMonth={setOpenMonth}

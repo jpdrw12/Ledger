@@ -27,7 +27,7 @@ export default function BillsTab({ bills, onChanged }) {
         </button>
       </div>
       <p className="empty" style={{ marginBottom: 16 }}>
-        Pay slot, due day, and autopay/manual all carry into every month you quick-add this bill to. Which account it draws from is set per month, since that can change.
+        Pay slot, due day, and autopay/manual all carry into every month you quick-add this bill to. Which account it draws from is set per month, since that can change. Bills marked <strong>Auto-add</strong> are included automatically when you click "Add next month".
       </p>
       <div className="card-list">
         <div className="bill-card bill-card-header">
@@ -37,6 +37,7 @@ export default function BillsTab({ bills, onChanged }) {
           <span>Amount</span>
           <span>Pay slot</span>
           <span>Payment</span>
+          <span>Auto-add</span>
           <span />
         </div>
         {bills.map((b) => (
@@ -65,6 +66,13 @@ export default function BillsTab({ bills, onChanged }) {
               <option value="auto">Autopay</option>
               <option value="manual">Manual</option>
             </select>
+            <input
+              type="checkbox"
+              defaultChecked={b.autoAdd}
+              onChange={(e) => updateBill(b, { autoAdd: e.target.checked })}
+              title="Auto-include when adding a new month"
+              style={{ width: 18, height: 18, cursor: "pointer" }}
+            />
             <button className="icon-btn" onClick={() => removeBill(b.id)}>
               <Trash2 size={14} />
             </button>
