@@ -22,6 +22,12 @@ fn main() {
             sql: include_str!("../migrations/0003_debt_payment_applied.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "debt_history_payment_link",
+            sql: include_str!("../migrations/0004_debt_history_payment_link.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

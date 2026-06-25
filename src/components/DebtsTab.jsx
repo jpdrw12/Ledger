@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, RotateCcw } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
 import { Field } from "./Shared.jsx";
@@ -20,6 +20,11 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
 
   const removeDebt = async (id) => {
     await db.deleteDebt(id);
+    onChanged();
+  };
+
+  const removeHistoryEntry = async (historyId) => {
+    await db.deleteDebtHistoryEntry(historyId);
     onChanged();
   };
 
@@ -56,7 +61,7 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
 
       <div className="card-list">
         {debts.map((debt) => (
-          <div className="debt-card" key={debt.id}>
+          <div className="debt-card" key={`${debt.id}-${debt.balance}`}>
             <div className="debt-top">
               <input className="text-input" defaultValue={debt.name} onBlur={(e) => updateDebt(debt, { name: e.target.value })} />
               <button className="icon-btn" onClick={() => removeDebt(debt.id)}>
@@ -97,6 +102,7 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
                     <th>Paid</th>
                     <th>Interest</th>
                     <th>New balance</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -109,6 +115,15 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
                         <td className="mono">{money(h.amount_paid)}</td>
                         <td className="mono">{money(h.interest)}</td>
                         <td className="mono">{money(h.new_balance)}</td>
+                        <td>
+                          <button
+                            className="icon-btn"
+                            title="Remove this payment and restore previous balance"
+                            onClick={() => removeHistoryEntry(h.id)}
+                          >
+                            <RotateCcw size={12} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                 </tbody>

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search } from "lucide-react";
+import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, computeDueDate } from "../lib/calc.js";
-import { Field, AccountSelect } from "./Shared.jsx";
+import { Field, AccountSelect, DateInput } from "./Shared.jsx";
 
 export default function MonthsTab({
   months,
@@ -65,7 +65,7 @@ export default function MonthsTab({
       )}
 
       <div className="stub-row">
-        {visibleMonths.map((m, i) => (
+        {visibleMonths.map((m) => (
           <MonthStub
             key={m.id}
             month={m}
@@ -92,8 +92,13 @@ export default function MonthsTab({
   );
 }
 
-function PayBlock({ label, pay, accounts, onChanged }) {
+// Self-contained pay block: income + bills for this slot + expenses for this slot + additions.
+function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existingTags, accounts, onChanged,
+  onAddBillPayment, onUpdateBillPayment, onRemoveBillPayment, onAddExpense, onUpdateExpense, onRemoveExpense }) {
+
+  const [open, setOpen] = useState(false);
   const additionsTotal = pay.additions.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const incomeTotal = (Number(pay.income) || 0) + additionsTotal;
 
   const addAddition = async () => {
     await db.addAddition(pay.payBlockId, { name: "Extra pay", amount: 0, accountId: accounts[0]?.id });
@@ -108,9 +113,49 @@ function PayBlock({ label, pay, accounts, onChanged }) {
     onChanged();
   };
 
+  const slotBills = (type) =>
+    billPayments.filter((bp) => {
+      const bill = bills.find((b) => b.id === bp.billId);
+      return bill && bill.defaultSlot === slot && (bill.paymentType || "manual") === type;
+    });
+
+  const slotQuickAddBills = bills.filter((b) => b.defaultSlot === slot);
+
+  const renderBillRow = (bp) => {
+    const bill = bills.find((b) => b.id === bp.billId);
+    return (
+      <div className="ledger-row" key={bp.id}>
+        <button className="check" onClick={() => onUpdateBillPayment(bp, { paid: !bp.paid })}>
+          {bp.paid ? <Check size={13} /> : null}
+        </button>
+        <span className="row-name">{bill ? bill.name : "Unknown bill"}</span>
+        <DateInput className="date-input" defaultValue={bp.dueDate} onSave={(v) => onUpdateBillPayment(bp, { dueDate: v })} />
+        <AccountSelect accounts={accounts} value={bp.accountId} onChange={(v) => onUpdateBillPayment(bp, { accountId: v })} />
+        <input
+          className="amount-input"
+          type="number"
+          defaultValue={bp.amountPaid}
+          onBlur={(e) => onUpdateBillPayment(bp, { amountPaid: parseFloat(e.target.value) || 0 })}
+        />
+        <button className="icon-btn" onClick={() => onRemoveBillPayment(bp.id)}>
+          <Trash2 size={13} />
+        </button>
+      </div>
+    );
+  };
+
+  const autoBills = slotBills("auto");
+  const manualBills = slotBills("manual");
+
   return (
     <div className="pay-block">
-      <h4 className="block-title">{label}</h4>
+      <div className="pay-block-head" onClick={() => setOpen((o) => !o)}>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span className="pay-block-label">{label}</span>
+        <span className="mono pay-block-total">{money(incomeTotal)}</span>
+      </div>
+      {!open && null}
+      {open && <div className="pay-block-body">
       <div className="grid-2">
         <Field
           label="Income"
@@ -134,6 +179,57 @@ function PayBlock({ label, pay, accounts, onChanged }) {
         </div>
       </div>
 
+      {(autoBills.length > 0 || manualBills.length > 0 || slotQuickAddBills.length > 0) && (
+        <>
+          <h5 className="sub-title"><Receipt size={12} /> Bills</h5>
+          {autoBills.length > 0 && (
+            <div className="scroll-panel">
+              <div className="scroll-panel-label"><Zap size={11} /> Autopay</div>
+              {autoBills.map(renderBillRow)}
+            </div>
+          )}
+          {manualBills.length > 0 && (
+            <div className="scroll-panel" style={{ marginTop: autoBills.length > 0 ? 6 : 0 }}>
+              <div className="scroll-panel-label"><Hand size={11} /> Manual</div>
+              {manualBills.map(renderBillRow)}
+            </div>
+          )}
+          {autoBills.length === 0 && manualBills.length === 0 && (
+            <div className="scroll-panel">
+              <p className="empty small scroll-panel-empty">No bills assigned.</p>
+            </div>
+          )}
+          {slotQuickAddBills.length > 0 && (
+            <div className="quick-add">
+              {slotQuickAddBills.map((b) => (
+                <button key={b.id} className="chip" onClick={() => onAddBillPayment(b)}>
+                  {b.paymentType === "auto" ? <Zap size={11} /> : <Hand size={11} />} {b.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <h5 className="sub-title"><Receipt size={12} /> Expenses</h5>
+      <div className="scroll-panel">
+        {expenseList.map((e) => (
+          <div className="ledger-row" key={e.id}>
+            <input className="text-input" placeholder="Category (Groceries, Gas…)" defaultValue={e.category} onBlur={(ev) => onUpdateExpense(e, { category: ev.target.value })} />
+            <input className="text-input tag-input" placeholder="Tag" list="tag-suggestions" defaultValue={e.tag || ""} onBlur={(ev) => onUpdateExpense(e, { tag: ev.target.value })} />
+            <AccountSelect accounts={accounts} value={e.accountId} onChange={(v) => onUpdateExpense(e, { accountId: v })} />
+            <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => onUpdateExpense(e, { amount: parseFloat(ev.target.value) || 0 })} />
+            <button className="icon-btn" onClick={() => onRemoveExpense(e.id)}>
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ))}
+        {expenseList.length === 0 && <p className="empty small scroll-panel-empty">No expenses logged yet.</p>}
+      </div>
+      <button className="btn-secondary" onClick={() => onAddExpense(slot)}>
+        <Plus size={13} /> Add expense
+      </button>
+
       <h5 className="sub-title"><TrendingUp size={12} /> Additions (extra pay, credit, bonus…)</h5>
       <div className="scroll-panel">
         {pay.additions.map((a) => (
@@ -156,10 +252,13 @@ function PayBlock({ label, pay, accounts, onChanged }) {
       <button className="btn-secondary" onClick={addAddition}>
         <Plus size={13} /> Add addition
       </button>
-      <div className="ledger-row totals-row">
-        <span>Additions total (tallies into alt income)</span>
-        <span className="mono">{money(additionsTotal)}</span>
-      </div>
+      {pay.additions.length > 0 && (
+        <div className="ledger-row totals-row">
+          <span>Additions total</span>
+          <span className="mono">{money(additionsTotal)}</span>
+        </div>
+      )}
+      </div>}
     </div>
   );
 }
@@ -276,64 +375,6 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
     onChanged();
   };
 
-  const billsByType = (paymentType) =>
-    month.billPayments.filter((bp) => {
-      const bill = bills.find((b) => b.id === bp.billId);
-      return bill && (bill.paymentType || "manual") === paymentType;
-    });
-
-  const renderBillRow = (bp) => {
-    const bill = bills.find((b) => b.id === bp.billId);
-    return (
-      <div className="ledger-row" key={bp.id}>
-        <button className="check" onClick={() => updateBillPayment(bp, { paid: !bp.paid })}>
-          {bp.paid ? <Check size={13} /> : null}
-        </button>
-        <span className="row-name">
-          {bill ? bill.name : "Unknown bill"}
-          {bill && <span className="slot-pill">Pay {bill.defaultSlot}</span>}
-        </span>
-        <input className="date-input" type="date" defaultValue={bp.dueDate || ""} onBlur={(e) => updateBillPayment(bp, { dueDate: e.target.value })} />
-        <AccountSelect accounts={accounts} value={bp.accountId} onChange={(v) => updateBillPayment(bp, { accountId: v })} />
-        <input
-          className="amount-input"
-          type="number"
-          defaultValue={bp.amountPaid}
-          onBlur={(e) => updateBillPayment(bp, { amountPaid: parseFloat(e.target.value) || 0 })}
-        />
-        <button className="icon-btn" onClick={() => removeBillPayment(bp.id)}>
-          <Trash2 size={13} />
-        </button>
-      </div>
-    );
-  };
-
-  const renderExpenseSection = (slot) => {
-    const list = slot === 1 ? month.expensesPay1 : month.expensesPay2;
-    return (
-      <>
-        <h4 className="block-title">Expenses — Pay {slot}</h4>
-        <div className="scroll-panel">
-          {list.map((e) => (
-            <div className="ledger-row" key={e.id}>
-              <input className="text-input" placeholder="Category (Groceries, Gas…)" defaultValue={e.category} onBlur={(ev) => updateExpense(e, { category: ev.target.value })} />
-              <input className="text-input tag-input" placeholder="Tag (MC, JP MC…)" list="tag-suggestions" defaultValue={e.tag || ""} onBlur={(ev) => updateExpense(e, { tag: ev.target.value })} />
-              <AccountSelect accounts={accounts} value={e.accountId} onChange={(v) => updateExpense(e, { accountId: v })} />
-              <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => updateExpense(e, { amount: parseFloat(ev.target.value) || 0 })} />
-              <button className="icon-btn" onClick={() => removeExpense(e.id)}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
-          {list.length === 0 && <p className="empty small scroll-panel-empty">No expenses logged yet.</p>}
-        </div>
-        <button className="btn-secondary" onClick={() => addExpense(slot)}>
-          <Plus size={13} /> Add expense
-        </button>
-      </>
-    );
-  };
-
   return (
     <div className={`stub ${isOpen ? "open" : ""}`}>
       <div className="stub-head" onClick={onToggle}>
@@ -381,10 +422,45 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             ))}
           </div>
 
-          <div className="pay-grid">
-            <PayBlock label="Pay 1" pay={month.pay1} accounts={accounts} onChanged={onChanged} />
-            <PayBlock label="Pay 2" pay={month.pay2} accounts={accounts} onChanged={onChanged} />
+          <div className="pay-stack">
+            <PayBlock
+              label="Pay 1" slot={1}
+              pay={month.pay1}
+              billPayments={month.billPayments}
+              bills={bills}
+              expenseList={month.expensesPay1}
+              existingTags={existingTags}
+              accounts={accounts}
+              onChanged={onChanged}
+              onAddBillPayment={addBillPayment}
+              onUpdateBillPayment={updateBillPayment}
+              onRemoveBillPayment={removeBillPayment}
+              onAddExpense={addExpense}
+              onUpdateExpense={updateExpense}
+              onRemoveExpense={removeExpense}
+            />
+            <PayBlock
+              label="Pay 2" slot={2}
+              pay={month.pay2}
+              billPayments={month.billPayments}
+              bills={bills}
+              expenseList={month.expensesPay2}
+              existingTags={existingTags}
+              accounts={accounts}
+              onChanged={onChanged}
+              onAddBillPayment={addBillPayment}
+              onUpdateBillPayment={updateBillPayment}
+              onRemoveBillPayment={removeBillPayment}
+              onAddExpense={addExpense}
+              onUpdateExpense={updateExpense}
+              onRemoveExpense={removeExpense}
+            />
           </div>
+          <datalist id="tag-suggestions">
+            {existingTags.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
 
           <div className="ledger-row totals-row">
             <span>Total income (Pay 1 + Pay 2)</span>
@@ -394,36 +470,6 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             <span>Total alt income (all additions)</span>
             <span className="mono">{money(totalAdditions)}</span>
           </div>
-
-          <h4 className="block-title"><Zap size={13} /> Autopay bills</h4>
-          <div className="scroll-panel">
-            {billsByType("auto").length === 0 && <p className="empty small scroll-panel-empty">No autopay bills assigned.</p>}
-            {billsByType("auto").map(renderBillRow)}
-          </div>
-
-          <h4 className="block-title"><Hand size={13} /> Manually paid bills</h4>
-          <div className="scroll-panel">
-            {billsByType("manual").length === 0 && <p className="empty small scroll-panel-empty">No manual bills assigned.</p>}
-            {billsByType("manual").map(renderBillRow)}
-          </div>
-
-          <div className="quick-add">
-            <span>Quick add:</span>
-            {bills.map((b) => (
-              <button key={b.id} className="chip" onClick={() => addBillPayment(b)}>
-                {b.paymentType === "auto" ? <Zap size={11} /> : <Hand size={11} />} {b.name}
-                <span className="chip-slot">P{b.defaultSlot}</span>
-              </button>
-            ))}
-          </div>
-
-          {renderExpenseSection(1)}
-          {renderExpenseSection(2)}
-          <datalist id="tag-suggestions">
-            {existingTags.map((t) => (
-              <option key={t} value={t} />
-            ))}
-          </datalist>
 
           <h4 className="block-title"><PiggyBank size={13} /> Savings contributions</h4>
           <div className="scroll-panel">
@@ -458,7 +504,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
               const debt = debts.find((d) => d.id === dp.debtId);
               return (
                 <DebtPaymentRow
-                  key={dp.id}
+                  key={`${dp.id}-${dp.amount}-${dp.applied}`}
                   dp={dp}
                   debt={debt}
                   accounts={accounts}

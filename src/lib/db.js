@@ -307,17 +307,39 @@ export async function applyMonthDebtPayment(id, { debtId, amount, monthLabel, cu
   const balanceAfterPayment = currentBalance - amount;
   const interest = balanceAfterPayment * (apr / 12);
   const newBalance = Math.round((balanceAfterPayment + interest) * 100) / 100;
+  const historyId = uid();
   await db.execute(
-    `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [uid(), debtId, monthLabel, currentBalance, amount, interest, newBalance]
+    `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance, month_debt_payment_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [historyId, debtId, monthLabel, currentBalance, amount, interest, newBalance, id]
   );
   await db.execute("UPDATE debts SET balance = $1 WHERE id = $2", [newBalance, debtId]);
   await db.execute("UPDATE month_debt_payments SET applied = 1 WHERE id = $1", [id]);
 }
 
+export async function deleteDebtHistoryEntry(historyId) {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM debt_history WHERE id = $1", [historyId]);
+  if (!rows.length) return;
+  const entry = rows[0];
+  await db.execute("UPDATE debts SET balance = $1 WHERE id = $2", [entry.previous_balance, entry.debt_id]);
+  // Delete history first — it holds the FK reference to month_debt_payments,
+  // so the month payment can't be deleted while this row still points to it.
+  await db.execute("DELETE FROM debt_history WHERE id = $1", [historyId]);
+  if (entry.month_debt_payment_id) {
+    await db.execute("DELETE FROM month_debt_payments WHERE id = $1", [entry.month_debt_payment_id]);
+  }
+}
+
 export async function deleteMonthDebtPayment(id) {
   const db = await getDb();
+  const history = await db.select("SELECT * FROM debt_history WHERE month_debt_payment_id = $1", [id]);
+  if (history.length) {
+    const entry = history[0];
+    await db.execute("UPDATE debts SET balance = $1 WHERE id = $2", [entry.previous_balance, entry.debt_id]);
+    // Delete history before month_debt_payment — history holds the FK reference.
+    await db.execute("DELETE FROM debt_history WHERE id = $1", [entry.id]);
+  }
   await db.execute("DELETE FROM month_debt_payments WHERE id = $1", [id]);
 }
 

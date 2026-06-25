@@ -54,7 +54,7 @@ export const css = `
   .btn-apply-debt:hover { background:var(--ink-soft); }
   .debt-applied-badge { display:flex; align-items:center; gap:3px; font-size:11px; color:var(--surplus); white-space:nowrap; }
 
-  .sticky-totals { position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--paper-line); padding-top:4px; margin-top:16px; }
+  .sticky-totals { background:var(--card); border-top:1px solid var(--paper-line); padding-top:4px; margin-top:16px; }
 
   .stub-row { display:flex; flex-direction:column; gap:10px; }
   .stub { background: var(--card); border:1px solid var(--paper-line); border-radius:2px; }
@@ -81,7 +81,13 @@ export const css = `
   .per-account-chip { display:flex; flex-direction:column; background:#fff; border:1px solid var(--paper-line); border-radius:3px; padding:7px 12px; font-size:13px; gap:2px; }
 
   .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:14px 0; }
-  .pay-block { background:#fff; border:1px solid var(--paper-line); border-radius:3px; padding:12px; }
+  .pay-stack { display:flex; flex-direction:column; gap:8px; margin:14px 0; }
+  .pay-block { background:#fff; border:1px solid var(--paper-line); border-radius:3px; }
+  .pay-block-head { display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; user-select:none; }
+  .pay-block-head:hover { background: var(--card); border-radius:3px; }
+  .pay-block-label { flex:1; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
+  .pay-block-total { font-size:14px; color:var(--ink); }
+  .pay-block-body { padding:0 12px 12px; border-top:1px solid var(--paper-line); }
 
   .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0; }
   .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin:10px 0; }
@@ -113,10 +119,11 @@ export const css = `
   .scroll-panel::-webkit-scrollbar { width: 8px; }
   .scroll-panel::-webkit-scrollbar-thumb { background: var(--paper-line); border-radius: 4px; }
   .scroll-panel-empty { padding: 6px 0; }
+  .scroll-panel-label { display:flex; align-items:center; gap:4px; font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:4px 0 2px; }
   .amount-input { width:90px; font-family:ui-monospace, monospace; text-align:right; padding:6px 7px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; }
   .date-input { width:126px; font-family:ui-monospace, monospace; font-size:12px; padding:6px 6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; }
   .day-input { width:60px; font-family:ui-monospace, monospace; text-align:center; padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; }
-  .text-input { flex:1; padding:6px 8px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:13px; }
+  .text-input { flex:1; width:100%; padding:6px 8px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:13px; box-sizing:border-box; }
   .tag-input { flex:0 0 110px; }
   .account-select { font-size:12px; padding:6px 7px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; max-width:150px; }
 
@@ -125,9 +132,9 @@ export const css = `
   .chip:hover { border-color: var(--stamp); }
 
   .card-list { display:flex; flex-direction:column; gap:10px; }
-  .bill-card { display:flex; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }
+  .bill-card { display:grid; grid-template-columns:1fr 1fr 60px 90px 80px 100px 36px 28px; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }
   .bill-card-header { background:none; border:none; font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:0 10px; }
-  .bill-card select { padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:12.5px; }
+  .bill-card select { padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:12.5px; width:100%; }
 
   .goal-card, .debt-card { background:var(--card); border:1px solid var(--paper-line); border-radius:2px; padding:14px; }
   .consolidated-card { background:var(--ink); border-color:var(--ink); color:#fff; }
@@ -149,7 +156,4 @@ export const css = `
   .backup-list { list-style:none; padding:0; margin:6px 0 0; font-size:12px; }
   .backup-list li { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid var(--paper-line); }
 
-  @media (max-width: 700px) {
-    .pay-grid { grid-template-columns: 1fr; }
-  }
 `;
