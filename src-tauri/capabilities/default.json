@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window — grants access to the SQL plugin and our own backup commands.",
+  "description": "Capability for the main window — grants access to the SQL plugin, the folder-picker dialog, and our own backup commands.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -9,6 +9,8 @@
     "sql:allow-load",
     "sql:allow-execute",
     "sql:allow-select",
-    "sql:allow-close"
+    "sql:allow-close",
+    "dialog:default",
+    "dialog:allow-open"
   ]
 }

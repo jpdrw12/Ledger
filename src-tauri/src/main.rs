@@ -31,6 +31,7 @@ fn main() {
     ];
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:ledger.db", migrations)
@@ -39,7 +40,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             backup::backup_now,
             backup::list_backups,
-            backup::restore_backup
+            backup::restore_backup,
+            backup::mirror_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Household Ledger application");

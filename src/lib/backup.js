@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 
 export async function backupNow() {
   // Returns the created file name on success.
@@ -13,7 +14,27 @@ export async function restoreBackup(fileName) {
   return invoke("restore_backup", { fileName });
 }
 
-// backupToDrive() isn't wired up yet — see the notes in
-// src-tauri/src/backup.rs for what it takes (your own Google Cloud
-// OAuth client). Once that command exists on the Rust side, this
-// becomes a one-line invoke() call exactly like the ones above.
+// Offsite redundancy without any cloud account: copy a snapshot into a
+// folder the user picked (typically a Drive/Dropbox desktop sync folder).
+// Returns the full destination path on success.
+export async function mirrorBackup(fileName, destDir) {
+  return invoke("mirror_backup", { fileName, destDir });
+}
+
+// Opens the native folder picker; returns the chosen path, or null if
+// the user cancelled.
+export async function pickBackupFolder() {
+  const selected = await open({ directory: true, multiple: false, title: "Choose a backup folder" });
+  return typeof selected === "string" ? selected : null;
+}
+
+const MIRROR_FOLDER_KEY = "ledger.mirrorFolder";
+
+export function getMirrorFolder() {
+  return localStorage.getItem(MIRROR_FOLDER_KEY) || "";
+}
+
+export function setMirrorFolder(path) {
+  if (path) localStorage.setItem(MIRROR_FOLDER_KEY, path);
+  else localStorage.removeItem(MIRROR_FOLDER_KEY);
+}

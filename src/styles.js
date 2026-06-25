@@ -154,6 +154,9 @@ export const css = `
   .history-table td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--paper-line); }
 
   .backup-row { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .backup-folder { display:flex; align-items:center; gap:10px; margin:10px 0 4px; color:var(--ink-soft); flex-wrap:wrap; }
+  .backup-folder .btn-secondary { margin-top:0; }
+  .backup-folder-path { font-size:12px; max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:4px 8px; }
   .backup-msg { font-size:12px; color:var(--ink-soft); }
   .backup-list { list-style:none; padding:0; margin:6px 0 0; font-size:12px; }
   .backup-list li { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid var(--paper-line); }

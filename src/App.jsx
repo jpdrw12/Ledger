@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2 } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, money } from "./lib/calc.js";
-import { backupNow, listBackups, restoreBackup } from "./lib/backup.js";
+import { backupNow, listBackups, restoreBackup, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
@@ -18,6 +18,7 @@ export default function App() {
   const [openMonth, setOpenMonth] = useState(null);
   const [backups, setBackups] = useState([]);
   const [backupMsg, setBackupMsg] = useState("");
+  const [mirrorFolder, setMirrorFolderState] = useState(getMirrorFolder());
 
   const reload = useCallback(async () => {
     try {
@@ -97,10 +98,49 @@ export default function App() {
   const handleBackup = async () => {
     try {
       const fileName = await backupNow();
-      setBackupMsg(`Saved ${fileName}`);
       setBackups(await listBackups());
+      if (mirrorFolder) {
+        try {
+          await mirrorBackup(fileName, mirrorFolder);
+          setBackupMsg(`Saved ${fileName} (also copied to your backup folder)`);
+        } catch (e) {
+          setBackupMsg(`Saved ${fileName}, but copy to backup folder failed: ${e}`);
+        }
+      } else {
+        setBackupMsg(`Saved ${fileName}`);
+      }
     } catch (e) {
       setBackupMsg(String(e));
+    }
+  };
+
+  const handleChooseFolder = async () => {
+    try {
+      const path = await pickBackupFolder();
+      if (!path) return;
+      setMirrorFolder(path);
+      setMirrorFolderState(path);
+      setBackupMsg(`Backup folder set to ${path}`);
+    } catch (e) {
+      setBackupMsg(String(e));
+    }
+  };
+
+  const handleClearFolder = () => {
+    setMirrorFolder("");
+    setMirrorFolderState("");
+    setBackupMsg("Backup folder cleared — backups stay local only.");
+  };
+
+  const handleCopyAllToFolder = async () => {
+    if (!mirrorFolder) return;
+    try {
+      for (const fileName of backups) {
+        await mirrorBackup(fileName, mirrorFolder);
+      }
+      setBackupMsg(`Copied ${backups.length} backup${backups.length === 1 ? "" : "s"} to your backup folder.`);
+    } catch (e) {
+      setBackupMsg(`Copy to backup folder failed: ${e}`);
     }
   };
 
@@ -212,9 +252,30 @@ export default function App() {
             {backupMsg && <span className="backup-msg">{backupMsg}</span>}
           </div>
           <p className="empty small">
-            Snapshots are saved locally. Google Drive upload isn't wired up yet — see the comment block in{" "}
-            <code>src-tauri/src/backup.rs</code> for what that takes.
+            Snapshots are saved locally. Optionally pick a backup folder — point it at a Google Drive or
+            Dropbox desktop sync folder and every backup is also copied there for offsite redundancy.
+            No accounts, no sign-in: it's a plain file copy your sync client picks up.
           </p>
+
+          <div className="backup-folder">
+            <FolderSync size={15} />
+            {mirrorFolder ? (
+              <>
+                <span className="mono backup-folder-path" title={mirrorFolder}>{mirrorFolder}</span>
+                <button className="btn-secondary" onClick={handleChooseFolder}>Change</button>
+                <button className="btn-secondary" onClick={handleCopyAllToFolder} disabled={backups.length === 0}>
+                  Copy existing here
+                </button>
+                <button className="icon-btn" title="Stop copying backups offsite" onClick={handleClearFolder}>
+                  <Trash2 size={14} />
+                </button>
+              </>
+            ) : (
+              <button className="btn-secondary" onClick={handleChooseFolder}>
+                <FolderSync size={13} /> Choose backup folder…
+              </button>
+            )}
+          </div>
           <ul className="backup-list">
             {backups.map((f) => (
               <li key={f}>

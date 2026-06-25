@@ -75,6 +75,25 @@ pub fn restore_backup(app: AppHandle, file_name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Copies an existing local backup snapshot into an external folder
+/// (e.g. a Google Drive or Dropbox desktop sync folder) for offsite
+/// redundancy. This is a plain file copy — no network, no credentials,
+/// no tokens. The "cloud" part is whatever sync client owns that folder.
+#[tauri::command]
+pub fn mirror_backup(app: AppHandle, file_name: String, dest_dir: String) -> Result<String, String> {
+    let source = backups_dir(&app)?.join(&file_name);
+    if !source.exists() {
+        return Err(format!("backup file not found: {file_name}"));
+    }
+    let dir = PathBuf::from(&dest_dir);
+    if !dir.is_dir() {
+        return Err(format!("backup folder no longer exists: {dest_dir}"));
+    }
+    let dest = dir.join(&file_name);
+    fs::copy(&source, &dest).map_err(|e| format!("copy to backup folder failed: {e}"))?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
 // ---------------------------------------------------------------------
 // Google Drive upload — intentionally left as a stub.
 //
