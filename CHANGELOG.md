@@ -5,6 +5,20 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.1.3]
+
+### Changed
+- Commit workflow now updates this changelog under the new version on every
+  commit, alongside the `./bump-version.sh` bump.
+
+## [0.1.2]
+
+### Added
+- `db.js` debt apply/reverse test suite via an in-memory SQLite harness
+  (`testdb.js`) running the real migrations; 31 tests total.
+- `CHANGELOG.md` and `Release.sh` (build current version into a `.deb` and
+  install it).
+
 ## [0.1.1]
 
 ### Added
