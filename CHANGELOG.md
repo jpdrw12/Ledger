@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.2.1]
+
+### Added
+- Release CI: pushing a `vX.Y.Z` tag builds the Linux `.deb` and publishes a
+  GitHub Release (`.github/workflows/release.yml`). `tag-release.sh` tags the
+  current version and pushes it to trigger the build.
+
 ## [0.2.0]
 
 ### Added
