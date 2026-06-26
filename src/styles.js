@@ -179,6 +179,14 @@ export const css = `
   .history-table td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--paper-line); }
 
   .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:14px; margin-bottom:18px; }
+  .networth-row { display:flex; align-items:stretch; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+  .networth-card { display:flex; flex-direction:column; gap:4px; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:10px 16px; min-width:120px; }
+  .networth-card.networth-total { background:var(--ink); border-color:var(--ink); }
+  .networth-total .networth-label { color:#C3D0B7; }
+  .networth-total .surplus { color:#9FE3BC; }
+  .networth-total .deficit { color:#F2A38F; }
+  .networth-label { font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
+  .networth-op { display:flex; align-items:center; font-size:18px; color:var(--ink-soft); }
   .sparkline { width:100%; height:120px; display:block; }
   .spark-line { stroke:var(--stamp); stroke-width:2; vector-effect:non-scaling-stroke; }
   .spark-zero { stroke:var(--paper-line); stroke-width:1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }

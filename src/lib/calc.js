@@ -115,6 +115,16 @@ export function monthlyEndingBalances(months, ledger) {
     .map((m) => ({ id: m.id, label: m.monthLabel, value: ledger[m.id].consolidatedCarryOut }));
 }
 
+// Current net worth: latest consolidated account balance (assets) minus the
+// total of all debt balances. Per-month history isn't derivable — debts only
+// store a current balance — so this is a present-day snapshot.
+export function netWorthSnapshot(months, ledger, debts) {
+  const series = monthlyEndingBalances(months, ledger);
+  const assets = series.length ? series[series.length - 1].value : 0;
+  const debt = (debts || []).reduce((s, d) => s + (Number(d.balance) || 0), 0);
+  return { assets, debt, net: assets - debt };
+}
+
 // Compares each budgeted category's spend in the latest month against its
 // monthly target. Returns rows sorted with over-budget first, then by overage.
 export function budgetReport(months, budgets) {

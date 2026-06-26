@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Download, TrendingUp, Receipt, Target, Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
-import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, money } from "../lib/calc.js";
+import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
 import { useToast } from "./Toast.jsx";
 
@@ -43,6 +43,7 @@ export default function InsightsTab({ state, ledger, onChanged }) {
 
   const budgets = budgetReport(state.months, state.categoryBudgets);
   const latestLabel = state.months.length ? state.months[state.months.length - 1].monthLabel : null;
+  const nw = netWorthSnapshot(state.months, ledger, state.debts);
 
   const saveBudget = async (category, amount) => {
     if (!category.trim()) return;
@@ -82,6 +83,23 @@ export default function InsightsTab({ state, ledger, onChanged }) {
         <button className="btn-primary" onClick={handleExport}>
           <Download size={15} /> Export CSV
         </button>
+      </div>
+
+      <div className="networth-row">
+        <div className="networth-card">
+          <span className="networth-label">Assets</span>
+          <span className="amount surplus">{money(nw.assets)}</span>
+        </div>
+        <span className="networth-op">−</span>
+        <div className="networth-card">
+          <span className="networth-label">Debts</span>
+          <span className="amount deficit">{money(nw.debt)}</span>
+        </div>
+        <span className="networth-op">=</span>
+        <div className="networth-card networth-total">
+          <span className="networth-label">Net worth</span>
+          <span className={`amount ${nw.net < 0 ? "deficit" : "surplus"}`}>{money(nw.net)}</span>
+        </div>
       </div>
 
       <h4 className="block-title"><TrendingUp size={13} /> Consolidated ending balance over time</h4>

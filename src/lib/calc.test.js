@@ -10,6 +10,7 @@ import {
   monthlyEndingBalances,
   buildLedgerCsv,
   budgetReport,
+  netWorthSnapshot,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -177,6 +178,20 @@ describe("monthlyEndingBalances", () => {
       { id: "m1", label: undefined, value: 650 }, // 150 + 500
       { id: "m2", label: undefined, value: 550 }, // 650 - 100
     ]);
+  });
+});
+
+describe("netWorthSnapshot", () => {
+  it("computes assets (latest ending balance) minus total debts", () => {
+    const months = [makeMonth("m1", { pay1: { income: 1000, incomeAccountId: "a", additions: [] }, pay2: { income: 0, incomeAccountId: "b", additions: [] } })];
+    const ledger = computeLedger(months, [ACCT_A, ACCT_B]);
+    // assets: 150 starting + 1000 = 1150; debts: 400 + 100 = 500; net 650
+    const snap = netWorthSnapshot(months, ledger, [{ balance: 400 }, { balance: 100 }]);
+    expect(snap).toEqual({ assets: 1150, debt: 500, net: 650 });
+  });
+
+  it("is zero assets with no months", () => {
+    expect(netWorthSnapshot([], {}, [{ balance: 200 }])).toEqual({ assets: 0, debt: 200, net: -200 });
   });
 });
 
