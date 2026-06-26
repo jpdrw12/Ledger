@@ -11,6 +11,30 @@ export const css = `
     --deficit: #A93E2C;
     --card: #F3F6EE;
   }
+  :root[data-theme="dark"] {
+    --paper: #181D19;
+    --paper-line: #36423A;
+    --ink: #E4EAE0;
+    --ink-soft: #9DB0A0;
+    --stamp: #D9A847;
+    --surplus: #6FCF97;
+    --deficit: #E07A68;
+    --card: #222923;
+  }
+  :root[data-theme="dark"] body { background: #181D19; }
+  :root[data-theme="dark"] input,
+  :root[data-theme="dark"] select,
+  :root[data-theme="dark"] textarea { background: #11150F; color: var(--ink); }
+  :root[data-theme="dark"] .progress-fill,
+  :root[data-theme="dark"] .cat-bar-fill { opacity: 0.4; }
+  :root[data-theme="dark"] .scroll-panel,
+  :root[data-theme="dark"] .per-account-chip,
+  :root[data-theme="dark"] .pay-block,
+  :root[data-theme="dark"] .progress-track,
+  :root[data-theme="dark"] .cat-bar-track,
+  :root[data-theme="dark"] .balance-chip,
+  :root[data-theme="dark"] .chip { background: #11150F; }
+  :root[data-theme="dark"] .month-title-input:focus { background: #11150F; }
   .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; padding: 24px 20px 60px; }
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
 
