@@ -5,29 +5,44 @@
 set -e
 
 cd "$(dirname "$0")"
-DEB_DIR="src-tauri/target/release/bundle/deb"
+DEB_DIR="$(pwd)/src-tauri/target/release/bundle/deb"
 
-# If launched without a terminal (e.g. double-clicked in a file manager),
-# relaunch inside a terminal window so install progress is actually visible.
+# Pick the newest .deb (absolute path, so apt treats it as a local file and
+# not a package name — and so the spaced/versioned filename stays intact).
+find_deb() {
+  ls -t "$DEB_DIR"/*.deb 2>/dev/null | head -n1
+}
+
+# If launched without a terminal (e.g. double-clicked), relaunch inside a
+# terminal so install progress is visible. A temp wrapper script keeps this
+# robust across the various terminals' differing -e handling.
 if [ ! -t 0 ]; then
+  WRAP=$(mktemp --suffix=.sh)
+  cat > "$WRAP" <<EOF
+#!/bin/bash
+"$0"
+echo
+read -rp "Press Enter to close…"
+rm -f "$WRAP"
+EOF
+  chmod +x "$WRAP"
   for term in x-terminal-emulator gnome-terminal konsole xfce4-terminal xterm; do
     if command -v "$term" >/dev/null 2>&1; then
       if [ "$term" = "gnome-terminal" ]; then
-        exec "$term" -- bash -c "\"$0\"; echo; read -rp 'Press Enter to close…'"
+        exec "$term" -- "$WRAP"
       else
-        exec "$term" -e bash -c "\"$0\"; echo; read -rp 'Press Enter to close…'"
+        exec "$term" -e "$WRAP"
       fi
     fi
   done
-  # No terminal emulator found — fall back to a graphical password prompt.
-  DEB=$(ls -t "$DEB_DIR"/*.deb 2>/dev/null | head -n1)
+  # No terminal emulator — fall back to a graphical password prompt.
+  DEB=$(find_deb)
   [ -n "$DEB" ] && exec pkexec apt install -y "$DEB"
   echo "No terminal available and no .deb found."
   exit 1
 fi
 
-# Pick the newest .deb in the bundle dir (handles the spaced/versioned name).
-DEB=$(ls -t "$DEB_DIR"/*.deb 2>/dev/null | head -n1)
+DEB=$(find_deb)
 if [ -z "$DEB" ]; then
   echo "No .deb found in $DEB_DIR — run 'npm run tauri build' first."
   exit 1
@@ -46,6 +61,5 @@ echo "  ✅ Install complete."
 echo "  Launch 'Household Ledger' from your apps menu."
 echo "──────────────────────────────────────────────"
 
-# Best-effort desktop notification (ignored if notify-send isn't present).
 command -v notify-send >/dev/null 2>&1 && \
   notify-send "Household Ledger" "Installation complete." || true
