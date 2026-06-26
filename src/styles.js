@@ -189,6 +189,11 @@ export const css = `
   .cat-name { flex:0 0 140px; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cat-bar-track { flex:1; height:14px; background:#fff; border:1px solid var(--paper-line); border-radius:7px; overflow:hidden; }
   .cat-bar-fill { height:100%; background:var(--stamp); opacity:0.55; }
+  .cat-bar-fill.under { background:var(--surplus); }
+  .cat-bar-fill.over { background:var(--deficit); opacity:0.7; }
+  .budget-add { gap:8px; margin-top:10px; padding-top:10px; border-top:1px dashed var(--paper-line); }
+  .budget-add .text-input { flex:0 0 160px; }
+  .budget-add .btn-secondary { margin-top:0; }
   .cat-amount { flex:0 0 90px; text-align:right; font-size:13px; }
   .cat-total { border-top:1px solid var(--ink); margin-top:6px; padding-top:8px; font-weight:700; }
 

@@ -115,6 +115,25 @@ export function monthlyEndingBalances(months, ledger) {
     .map((m) => ({ id: m.id, label: m.monthLabel, value: ledger[m.id].consolidatedCarryOut }));
 }
 
+// Compares each budgeted category's spend in the latest month against its
+// monthly target. Returns rows sorted with over-budget first, then by overage.
+export function budgetReport(months, budgets) {
+  const latest = months[months.length - 1];
+  const spend = {};
+  if (latest) {
+    [...(latest.expensesPay1 || []), ...(latest.expensesPay2 || [])].forEach((e) => {
+      const key = (e.category || "").trim() || "Uncategorized";
+      spend[key] = (spend[key] || 0) + (Number(e.amount) || 0);
+    });
+  }
+  return (budgets || [])
+    .map((b) => {
+      const actual = spend[b.category] || 0;
+      return { category: b.category, budget: b.amount, actual, remaining: b.amount - actual, over: actual > b.amount };
+    })
+    .sort((a, b) => (a.over === b.over ? b.actual - a.actual : a.over ? -1 : 1));
+}
+
 // Flattens every money movement into CSV rows: one line per bill, expense,
 // addition, goal contribution, and debt payment, tagged with its month.
 export function buildLedgerCsv(state, ledger) {

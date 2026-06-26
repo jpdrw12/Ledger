@@ -479,7 +479,7 @@ export default function App() {
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} />
       )}
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} />}
-      {tab === "insights" && <InsightsTab state={state} ledger={ledger} />}
+      {tab === "insights" && <InsightsTab state={state} ledger={ledger} onChanged={reload} />}
       {tab === "settings" && (
         <SettingsTab
           theme={theme}

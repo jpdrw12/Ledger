@@ -28,6 +28,12 @@ fn main() {
             sql: include_str!("../migrations/0004_debt_history_payment_link.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "category_budgets",
+            sql: include_str!("../migrations/0005_category_budgets.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

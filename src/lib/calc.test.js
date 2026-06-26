@@ -9,6 +9,7 @@ import {
   spendingByCategory,
   monthlyEndingBalances,
   buildLedgerCsv,
+  budgetReport,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -176,6 +177,29 @@ describe("monthlyEndingBalances", () => {
       { id: "m1", label: undefined, value: 650 }, // 150 + 500
       { id: "m2", label: undefined, value: 550 }, // 650 - 100
     ]);
+  });
+});
+
+describe("budgetReport", () => {
+  const months = [
+    makeMonth("m1", { monthLabel: "May 2026", expensesPay1: [{ category: "Groceries", amount: 999 }] }),
+    makeMonth("m2", { monthLabel: "June 2026", expensesPay1: [{ category: "Groceries", amount: 120 }], expensesPay2: [{ category: "Gas", amount: 80 }] }),
+  ];
+
+  it("compares the latest month's spend to each budget, over-budget first", () => {
+    const report = budgetReport(months, [{ category: "Gas", amount: 60 }, { category: "Groceries", amount: 200 }]);
+    expect(report[0]).toEqual({ category: "Gas", budget: 60, actual: 80, remaining: -20, over: true });
+    expect(report[1]).toEqual({ category: "Groceries", budget: 200, actual: 120, remaining: 80, over: false });
+  });
+
+  it("reports zero actual for a budgeted category with no spend in the latest month", () => {
+    const report = budgetReport(months, [{ category: "Dining", amount: 100 }]);
+    expect(report[0]).toMatchObject({ category: "Dining", actual: 0, over: false });
+  });
+
+  it("handles no months and no budgets", () => {
+    expect(budgetReport([], [{ category: "X", amount: 10 }])[0]).toMatchObject({ actual: 0 });
+    expect(budgetReport(months, [])).toEqual([]);
   });
 });
 
