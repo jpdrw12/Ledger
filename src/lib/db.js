@@ -9,6 +9,13 @@ export async function getDb() {
   return dbInstance;
 }
 
+// Test-only seam: inject an object exposing the same select()/execute() API
+// the SQL plugin provides, so db.js logic can run against an in-memory SQLite
+// without the Tauri runtime. Not used by the app.
+export function __setTestDb(adapter) {
+  dbInstance = adapter;
+}
+
 // Folds the write-ahead log back into the main ledger.db file. The SQL
 // plugin runs in WAL mode, so recent writes live in ledger.db-wal until a
 // checkpoint — backup_now copies only ledger.db, so without this a backup

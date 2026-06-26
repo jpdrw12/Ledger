@@ -1,7 +1,7 @@
 {
   "name": "ledger-desktop",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,6 +22,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@vitejs/plugin-react": "^4",
+    "better-sqlite3": "^12.11.1",
     "vite": "^5",
     "vitest": "^4.1.9"
   }
