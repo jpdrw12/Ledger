@@ -183,6 +183,20 @@ export const css = `
   .retention-toggle { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft); cursor:pointer; }
   .due-date-hint { font-size:12px; color:var(--stamp); background:#FBF3E0; border:1px solid #E8D6A8; border-radius:3px; padding:6px 10px; margin:10px 0 0; }
   .saving-pill { position:fixed; top:12px; right:14px; z-index:50; background:var(--ink); color:var(--paper); font-size:12px; padding:5px 12px; border-radius:12px; opacity:0.9; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+
+  .toast-stack { position:fixed; bottom:18px; right:18px; z-index:100; display:flex; flex-direction:column; gap:8px; max-width:360px; }
+  .toast { display:flex; align-items:center; gap:8px; background:var(--ink); color:var(--paper); font-size:13px; padding:10px 12px; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.25); cursor:pointer; }
+  .toast span { flex:1; }
+  .toast-close { opacity:0.6; }
+  .toast-success { background:var(--surplus); }
+  .toast-error { background:var(--deficit); }
+
+  .modal-backdrop { position:fixed; inset:0; z-index:110; background:rgba(30,43,34,0.45); display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal-card { background:var(--card); border:1px solid var(--paper-line); border-radius:5px; padding:20px; max-width:440px; box-shadow:0 6px 24px rgba(0,0,0,0.3); }
+  .modal-message { margin:0 0 16px; font-size:14px; color:var(--ink); line-height:1.5; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:10px; }
+  .btn-danger { display:flex; align-items:center; gap:6px; background:var(--deficit); color:#fff; border:none; padding:8px 14px; border-radius:3px; cursor:pointer; font-size:13px; }
+  .btn-danger:hover { background:#8f3322; }
   .block-hint { font-size:11px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-soft); }
   .withdrawal-pill { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--deficit); border:1px solid var(--deficit); border-radius:8px; padding:1px 6px; margin-left:6px; }
   .backup-list { list-style:none; padding:0; margin:6px 0 0; font-size:12px; }

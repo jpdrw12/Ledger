@@ -3,8 +3,10 @@ import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
 
 export default function GoalsTab({ goals, goalBalances, onChanged }) {
+  const { confirm } = useToast();
   const addGoal = async () => {
     await db.upsertGoal({ name: "New goal", targetAmount: 0, startingBalance: 0 });
     onChanged();
@@ -16,7 +18,7 @@ export default function GoalsTab({ goals, goalBalances, onChanged }) {
   };
 
   const removeGoal = async (goal) => {
-    if (!confirm(`Delete the goal "${goal.name}"? Its contribution history stays in past months but the goal is removed.`)) return;
+    if (!(await confirm(`Delete the goal "${goal.name}"? Its contribution history stays in past months but the goal is removed.`, { danger: true, confirmLabel: "Delete" }))) return;
     await db.deleteGoal(goal.id);
     onChanged();
   };

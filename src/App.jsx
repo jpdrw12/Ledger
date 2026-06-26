@@ -5,6 +5,7 @@ import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLab
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
+import { useToast } from "./components/Toast.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
 import BillsTab from "./components/BillsTab.jsx";
 import GoalsTab from "./components/GoalsTab.jsx";
@@ -119,6 +120,7 @@ function ArchiveGroup({ zipName, dir, onRestore, onDelete }) {
 }
 
 export default function App() {
+  const { confirm } = useToast();
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [tab, setTab] = useState("months");
@@ -328,7 +330,7 @@ export default function App() {
   };
 
   const handleRestore = async (fileName) => {
-    if (!confirm(`Restore "${fileName}"? This replaces your current data.`)) return;
+    if (!(await confirm(`Restore "${fileName}"? This replaces your current data.`, { danger: true, confirmLabel: "Restore" }))) return;
     try {
       // Close the connection so the plugin isn't holding the file open while
       // the snapshot is copied over it, then reopen and reload in place — no
@@ -344,7 +346,7 @@ export default function App() {
   };
 
   const handleArchiveMonth = async (group) => {
-    if (!confirm(`Archive all ${group.files.length} backup(s) from ${group.label} into a compressed zip?`)) return;
+    if (!(await confirm(`Archive all ${group.files.length} backup(s) from ${group.label} into a compressed zip?`, { confirmLabel: "Archive" }))) return;
     try {
       const n = await archiveMonth(mirrorFolder, group.key);
       setBackupMsg(`Archived ${n} backup${n === 1 ? "" : "s"} from ${group.label}.`);
@@ -355,7 +357,7 @@ export default function App() {
   };
 
   const handleRestoreFromArchive = async (zipName, fileName) => {
-    if (!confirm(`Restore "${fileName}" from the archive? This replaces your current data.`)) return;
+    if (!(await confirm(`Restore "${fileName}" from the archive? This replaces your current data.`, { danger: true, confirmLabel: "Restore" }))) return;
     try {
       await db.closeDb();
       await restoreFromArchive(mirrorFolder, zipName, fileName);
@@ -367,7 +369,7 @@ export default function App() {
   };
 
   const handleDeleteArchive = async (zipName) => {
-    if (!confirm(`Permanently delete the archive ${zipName}? This cannot be undone.`)) return;
+    if (!(await confirm(`Permanently delete the archive ${zipName}? This cannot be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteArchive(mirrorFolder, zipName);
       setBackupMsg(`Deleted archive ${zipName}.`);

@@ -3,6 +3,7 @@ import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Arrow
 import * as db from "../lib/db.js";
 import { money, computeDueDate } from "../lib/calc.js";
 import { Field, AccountSelect, DateInput, parseNumberInput } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
 
 export default function MonthsTab({
   months,
@@ -20,6 +21,7 @@ export default function MonthsTab({
   onCopyForward,
   onReorder,
 }) {
+  const { confirm } = useToast();
   const [filter, setFilter] = useState("");
 
   const trimmed = filter.trim().toLowerCase();
@@ -76,7 +78,7 @@ export default function MonthsTab({
             onToggle={() => setOpenMonth(openMonth === m.id ? null : m.id)}
             onChanged={onChanged}
             onRemove={async () => {
-              if (!confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments? This can't be undone.`)) return;
+              if (!(await confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments? This can't be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
               await db.deleteMonth(m.id);
               onChanged();
             }}

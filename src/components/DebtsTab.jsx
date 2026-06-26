@@ -3,8 +3,10 @@ import { Plus, Trash2, RotateCcw } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
 
 export default function DebtsTab({ debts, debtHistory, onChanged }) {
+  const { confirm } = useToast();
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [monthDraft, setMonthDraft] = useState("This month");
 
@@ -19,7 +21,7 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
   };
 
   const removeDebt = async (debt) => {
-    if (!confirm(`Delete the debt "${debt.name}" and its payment history? This can't be undone.`)) return;
+    if (!(await confirm(`Delete the debt "${debt.name}" and its payment history? This can't be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
     await db.deleteDebt(debt.id);
     onChanged();
   };

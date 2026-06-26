@@ -2,6 +2,7 @@ import React from "react";
 import { Download, TrendingUp, Receipt } from "lucide-react";
 import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
+import { useToast } from "./Toast.jsx";
 
 // Inline SVG line chart of consolidated ending balance over time. No deps.
 function Sparkline({ series }) {
@@ -31,6 +32,7 @@ function Sparkline({ series }) {
 }
 
 export default function InsightsTab({ state, ledger }) {
+  const { toast } = useToast();
   const categories = spendingByCategory(state.months);
   const series = monthlyEndingBalances(state.months, ledger);
   const totalSpend = categories.reduce((s, c) => s + c.total, 0);
@@ -41,9 +43,9 @@ export default function InsightsTab({ state, ledger }) {
       const csv = buildLedgerCsv(state, ledger);
       const stamp = new Date().toISOString().slice(0, 10);
       const path = await exportTextFile(`ledger-export-${stamp}.csv`, csv);
-      if (path) alert(`Exported to ${path}`);
+      if (path) toast(`Exported to ${path}`, "success");
     } catch (e) {
-      alert(`Export failed: ${e}`);
+      toast(`Export failed: ${e}`, "error");
     }
   };
 
