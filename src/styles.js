@@ -35,6 +35,11 @@ export const css = `
   :root[data-theme="dark"] .balance-chip,
   :root[data-theme="dark"] .chip { background: #11150F; }
   :root[data-theme="dark"] .month-title-input:focus { background: #11150F; }
+  /* Consolidated/accent cards use var(--ink) as a dark background in light
+     mode; in dark mode --ink is light, so pin them to a fixed dark accent. */
+  :root[data-theme="dark"] .balance-chip.consolidated,
+  :root[data-theme="dark"] .consolidated-card,
+  :root[data-theme="dark"] .networth-card.networth-total { background: #2C3A30; border-color: #3A4D40; }
   .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; padding: 24px 20px 60px; }
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
 
