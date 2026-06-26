@@ -115,6 +115,30 @@ export function monthlyEndingBalances(months, ledger) {
     .map((m) => ({ id: m.id, label: m.monthLabel, value: ledger[m.id].consolidatedCarryOut }));
 }
 
+// Adds days to a YYYY-MM-DD date string (UTC arithmetic, tz-safe).
+function addDays(iso, days) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+// Counts unpaid bills (with a due date) that are overdue or due within the
+// next `window` days, relative to `todayStr` (YYYY-MM-DD).
+export function billStatus(months, todayStr, window = 7) {
+  const soonStr = addDays(todayStr, window);
+  let overdue = 0;
+  let dueSoon = 0;
+  (months || []).forEach((m) => {
+    (m.billPayments || []).forEach((bp) => {
+      if (bp.paid || !bp.dueDate) return;
+      if (bp.dueDate < todayStr) overdue++;
+      else if (bp.dueDate <= soonStr) dueSoon++;
+    });
+  });
+  return { overdue, dueSoon };
+}
+
 // Current net worth: latest consolidated account balance (assets) minus the
 // total of all debt balances. Per-month history isn't derivable — debts only
 // store a current balance — so this is a present-day snapshot.

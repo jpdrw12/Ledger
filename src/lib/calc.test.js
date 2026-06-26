@@ -11,6 +11,7 @@ import {
   buildLedgerCsv,
   budgetReport,
   netWorthSnapshot,
+  billStatus,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -178,6 +179,29 @@ describe("monthlyEndingBalances", () => {
       { id: "m1", label: undefined, value: 650 }, // 150 + 500
       { id: "m2", label: undefined, value: 550 }, // 650 - 100
     ]);
+  });
+});
+
+describe("billStatus", () => {
+  const today = "2026-06-15";
+  const months = [
+    makeMonth("m1", {
+      billPayments: [
+        { dueDate: "2026-06-10", paid: false, amountPaid: 100 }, // overdue
+        { dueDate: "2026-06-18", paid: false, amountPaid: 50 },  // due soon (within 7d)
+        { dueDate: "2026-06-30", paid: false, amountPaid: 75 },  // later
+        { dueDate: "2026-06-05", paid: true, amountPaid: 200 },  // overdue but paid → ignored
+        { dueDate: null, paid: false, amountPaid: 25 },           // no due date → ignored
+      ],
+    }),
+  ];
+
+  it("counts overdue and due-soon unpaid bills", () => {
+    expect(billStatus(months, today)).toEqual({ overdue: 1, dueSoon: 1 });
+  });
+
+  it("respects a custom window", () => {
+    expect(billStatus(months, today, 20)).toEqual({ overdue: 1, dueSoon: 2 });
   });
 });
 

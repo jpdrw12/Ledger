@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings } from "lucide-react";
 import * as db from "./lib/db.js";
-import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, money } from "./lib/calc.js";
+import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
@@ -415,6 +415,8 @@ export default function App() {
   const goalBalances = computeGoalBalances(state.goals, state.months);
   const balances = latestAccountBalances(state.accounts, state.months, ledger);
   const consolidated = state.accounts.reduce((s, a) => s + (balances[a.id] || 0), 0);
+  const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+  const { overdue, dueSoon } = billStatus(state.months, today);
   const existingTags = Array.from(
     new Set(state.months.flatMap((m) => [...m.expensesPay1, ...m.expensesPay2].map((e) => e.tag).filter(Boolean)))
   );
@@ -429,6 +431,13 @@ export default function App() {
           <h1>The Household Ledger <span className="app-version">v{APP_VERSION}</span></h1>
           <p className="tagline">Local-first — nothing leaves this computer unless you back it up.</p>
         </div>
+        {(overdue > 0 || dueSoon > 0) && (
+          <button className="due-chip" onClick={() => setTab("months")} title="Go to Months">
+            {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
+            {overdue > 0 && dueSoon > 0 && " · "}
+            {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
+          </button>
+        )}
       </header>
 
       <div className="balance-strip">
