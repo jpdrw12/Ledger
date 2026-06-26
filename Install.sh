@@ -16,4 +16,15 @@ if [ -z "$DEB" ]; then
 fi
 
 echo "Installing: $DEB"
-sudo apt install -y "$DEB"
+
+# Use sudo when run from a terminal; fall back to pkexec (graphical password
+# prompt) when double-clicked from a file manager with no terminal attached.
+if [ -t 0 ]; then
+  sudo apt install -y "$DEB"
+elif command -v pkexec >/dev/null 2>&1; then
+  pkexec apt install -y "$DEB"
+else
+  echo "No terminal for sudo and pkexec not found."
+  echo "Run this from a terminal:  ./Install.sh"
+  exit 1
+fi

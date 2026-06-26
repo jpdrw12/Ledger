@@ -170,7 +170,10 @@ export default function App() {
   // database yet (fresh first launch).
   const maybeAutoBackup = useCallback(async () => {
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      // Local date (YYYY-MM-DD) to match the Rust backup filename, which uses
+      // Local::now(). Using UTC here would disagree near midnight.
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const local = await listBackups();
       if (local.some((f) => f.includes(today))) return;
       const fileName = await backupNow();
