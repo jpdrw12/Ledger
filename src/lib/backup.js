@@ -10,6 +10,13 @@ export async function exportTextFile(defaultName, contents) {
   return path;
 }
 
+// Prompts for a CSV file and returns its text, or null if cancelled.
+export async function importTextFile() {
+  const path = await open({ multiple: false, filters: [{ name: "CSV", extensions: ["csv"] }], title: "Choose a CSV to import" });
+  if (typeof path !== "string") return null;
+  return invoke("read_text_file", { path });
+}
+
 export async function backupNow() {
   // Returns the created file name on success.
   return invoke("backup_now");

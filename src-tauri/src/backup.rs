@@ -147,6 +147,12 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
     fs::write(&path, contents).map_err(|e| format!("could not write file: {e}"))
 }
 
+/// Reads a text file the user chose via the open dialog (e.g. a CSV to import).
+#[tauri::command]
+pub fn read_text_file(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("could not read file: {e}"))
+}
+
 // ---------------------------------------------------------------------
 // Archiving — compress a month's loose .db snapshots into a single
 // archive/<YYYY-MM>.zip so the active list doesn't bloat. Archived

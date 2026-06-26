@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt } from "lucide-react";
+import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, computeDueDate } from "../lib/calc.js";
+import { money, computeDueDate, parseExpensesCsv } from "../lib/calc.js";
+import { importTextFile } from "../lib/backup.js";
 import { Field, AccountSelect, DateInput, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
@@ -319,6 +320,7 @@ function DebtPaymentRow({ dp, debt, accounts, onUpdate, onRemove, onApply }) {
 }
 
 function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags }) {
+  const { toast } = useToast();
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
   const deficit = consolidatedCarryOut < 0;
@@ -349,6 +351,24 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
   const addExpense = async (slot) => {
     await db.addExpense(month.id, slot, { category: "", amount: 0, tag: "", accountId: accounts[0]?.id });
     onChanged();
+  };
+  const importExpenses = async () => {
+    try {
+      const text = await importTextFile();
+      if (text == null) return;
+      const rows = parseExpensesCsv(text);
+      if (!rows.length) {
+        toast("No expense rows found in that file.", "error");
+        return;
+      }
+      for (const r of rows) {
+        await db.addExpense(month.id, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId: accounts[0]?.id });
+      }
+      onChanged();
+      toast(`Imported ${rows.length} expense${rows.length === 1 ? "" : "s"} into ${month.monthLabel} (Pay 1).`, "success");
+    } catch (e) {
+      toast(`Import failed: ${e}`, "error");
+    }
   };
   const updateExpense = async (e, patch) => {
     await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, ...patch });
@@ -459,6 +479,12 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
               Due dates won't auto-fill: this month's label isn't a "Month Year" (e.g. "June 2026"), so bills added here need their due dates set by hand.
             </p>
           )}
+
+          <div className="month-toolbar">
+            <button className="btn-secondary" onClick={importExpenses} title="Import expenses from a CSV (Category, Amount, Tag) into Pay 1">
+              <Upload size={13} /> Import expenses CSV
+            </button>
+          </div>
 
           <div className="pay-stack">
             <PayBlock

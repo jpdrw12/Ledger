@@ -12,6 +12,8 @@ import {
   budgetReport,
   netWorthSnapshot,
   billStatus,
+  parseCsv,
+  parseExpensesCsv,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -178,6 +180,35 @@ describe("monthlyEndingBalances", () => {
     expect(monthlyEndingBalances(months, ledger)).toEqual([
       { id: "m1", label: undefined, value: 650 }, // 150 + 500
       { id: "m2", label: undefined, value: 550 }, // 650 - 100
+    ]);
+  });
+});
+
+describe("parseCsv", () => {
+  it("handles quoted fields with commas and escaped quotes", () => {
+    expect(parseCsv('a,"b,c","d""e"\n1,2,3')).toEqual([["a", "b,c", 'd"e'], ["1", "2", "3"]]);
+  });
+});
+
+describe("parseExpensesCsv", () => {
+  it("reads a Category/Amount/Tag header in any order, magnitudes for amounts", () => {
+    const csv = "Amount,Category,Tag\n-120,Groceries,food\n-40,Gas,";
+    expect(parseExpensesCsv(csv)).toEqual([
+      { category: "Groceries", amount: 120, tag: "food" },
+      { category: "Gas", amount: 40, tag: "" },
+    ]);
+  });
+
+  it("falls back to column order when there's no header", () => {
+    expect(parseExpensesCsv("Groceries,55\nGas,30")).toEqual([
+      { category: "Groceries", amount: 55, tag: "" },
+      { category: "Gas", amount: 30, tag: "" },
+    ]);
+  });
+
+  it("skips blank rows and ignores currency symbols/separators", () => {
+    expect(parseExpensesCsv('Category,Amount\nGroceries,"$1,200.50"\n\n')).toEqual([
+      { category: "Groceries", amount: 1200.5, tag: "" },
     ]);
   });
 });

@@ -55,7 +55,8 @@ fn main() {
             backup::list_archive_contents,
             backup::restore_from_archive,
             backup::delete_archive,
-            backup::write_text_file
+            backup::write_text_file,
+            backup::read_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Household Ledger application");

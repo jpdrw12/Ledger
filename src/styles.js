@@ -224,6 +224,8 @@ export const css = `
   .backup-archive-icon { color:var(--ink-soft); }
   .retention-toggle { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft); cursor:pointer; }
   .due-date-hint { font-size:12px; color:var(--stamp); background:#FBF3E0; border:1px solid #E8D6A8; border-radius:3px; padding:6px 10px; margin:10px 0 0; }
+  .month-toolbar { display:flex; gap:8px; margin:10px 0 0; }
+  .month-toolbar .btn-secondary { margin-top:0; }
   .saving-pill { position:fixed; top:12px; right:14px; z-index:50; background:var(--ink); color:var(--paper); font-size:12px; padding:5px 12px; border-radius:12px; opacity:0.9; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
 
   .toast-stack { position:fixed; bottom:18px; right:18px; z-index:100; display:flex; flex-direction:column; gap:8px; max-width:360px; }
