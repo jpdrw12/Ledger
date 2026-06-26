@@ -12,6 +12,9 @@ import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
 import InsightsTab from "./components/InsightsTab.jsx";
 
+// Injected by Vite's define from package.json (kept current by bump-version.sh).
+const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 // Groups backup filenames (ledger-backup-YYYY-MM-DD_HH-MM-SS.db) by month
@@ -413,7 +416,7 @@ export default function App() {
       <header className="app-header">
         <BookOpen size={26} strokeWidth={1.5} />
         <div>
-          <h1>The Household Ledger</h1>
+          <h1>The Household Ledger <span className="app-version">v{APP_VERSION}</span></h1>
           <p className="tagline">Local-first — nothing leaves this computer unless you back it up.</p>
         </div>
       </header>

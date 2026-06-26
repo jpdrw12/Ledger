@@ -5,6 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.1.4]
+
+### Added
+- App version shown in the header (injected from `package.json` at build time).
+
 ## [0.1.3]
 
 ### Changed

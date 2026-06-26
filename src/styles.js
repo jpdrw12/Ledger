@@ -16,6 +16,7 @@ export const css = `
 
   .app-header { display:flex; gap:14px; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:16px; margin-bottom:16px; }
   .app-header h1 { font-family: Georgia, 'Iowan Old Style', serif; font-size:26px; margin:0 0 4px; letter-spacing:0.2px; }
+  .app-version { font-family: ui-monospace, monospace; font-size:12px; font-weight:400; color:var(--ink-soft); vertical-align:middle; margin-left:6px; }
   .tagline { margin:0; color: var(--ink-soft); font-size:13px; }
 
   .balance-strip { display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
