@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.1.5]
+
+### Added
+- `docs/mobile-plan.md` — tabled plan for a Tauri mobile target (Android-first,
+  shared core, backup interchange). Planning only; no code yet.
+
 ## [0.1.4]
 
 ### Added
