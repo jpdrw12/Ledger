@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.2.0]
+
+### Added
+- **Insights**: current net-worth card (assets − debts) and **per-category
+  budgets** with actual-vs-budget bars (green under / red over).
+- **Settings tab** consolidating theme, offsite backup folder, and
+  auto-archive retention.
+- **Dark mode** (toggle in Settings, persisted).
+- **Toast notifications + modal confirm** replacing all native
+  `alert()`/`confirm()`.
+- **Bill due status**: header chip ("N overdue / N due soon"), overdue pills,
+  and an "outstanding (unpaid bills)" total per month.
+- **CSV import** of expenses into a month.
+- **GitHub Actions** workflow running the test suite on push/PR.
+
+### Changed
+- Test suite grown to 42 (added budgets, net worth, bill status, CSV parsing).
+
 ## [0.1.5]
 
 ### Added

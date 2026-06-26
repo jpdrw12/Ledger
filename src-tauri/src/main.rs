@@ -28,6 +28,12 @@ fn main() {
             sql: include_str!("../migrations/0004_debt_history_payment_link.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "category_budgets",
+            sql: include_str!("../migrations/0005_category_budgets.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -49,7 +55,8 @@ fn main() {
             backup::list_archive_contents,
             backup::restore_from_archive,
             backup::delete_archive,
-            backup::write_text_file
+            backup::write_text_file,
+            backup::read_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Household Ledger application");

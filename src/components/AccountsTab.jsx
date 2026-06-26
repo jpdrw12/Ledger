@@ -3,8 +3,10 @@ import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
 
 export default function AccountsTab({ accounts, balances, consolidated, onChanged }) {
+  const { toast, confirm } = useToast();
   const addAccount = async () => {
     await db.upsertAccount({ name: "New account", startingBalance: 0 });
     onChanged();
@@ -18,12 +20,13 @@ export default function AccountsTab({ accounts, balances, consolidated, onChange
   const removeAccount = async (acc) => {
     const others = accounts.filter((a) => a.id !== acc.id);
     if (others.length === 0) {
-      alert("This is your only account — add another one first if you want to remove this one.");
+      toast("This is your only account — add another one first if you want to remove this one.", "error");
       return;
     }
     const fallback = others[0];
-    const ok = confirm(
-      `Delete "${acc.name}"? Every bill, expense, addition, and contribution currently assigned to it will be moved to "${fallback.name}" first, so that money doesn't just disappear from the ledger.`
+    const ok = await confirm(
+      `Delete "${acc.name}"? Every bill, expense, addition, and contribution currently assigned to it will be moved to "${fallback.name}" first, so that money doesn't just disappear from the ledger.`,
+      { danger: true, confirmLabel: "Delete" }
     );
     if (!ok) return;
     try {
@@ -31,7 +34,7 @@ export default function AccountsTab({ accounts, balances, consolidated, onChange
       await db.deleteAccount(acc.id);
       onChanged();
     } catch (e) {
-      alert(`Couldn't delete account: ${e?.message || e}`);
+      toast(`Couldn't delete account: ${e?.message || e}`, "error");
     }
   };
 

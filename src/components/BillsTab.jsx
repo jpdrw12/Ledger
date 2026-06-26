@@ -2,8 +2,10 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { parseNumberInput } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
 
 export default function BillsTab({ bills, onChanged }) {
+  const { confirm } = useToast();
   const addBill = async () => {
     await db.upsertBill({ name: "New bill", category: "", defaultAmount: 0, defaultSlot: 1, dueDay: 1, paymentType: "manual" });
     onChanged();
@@ -15,7 +17,7 @@ export default function BillsTab({ bills, onChanged }) {
   };
 
   const removeBill = async (bill) => {
-    if (!confirm(`Delete the bill template "${bill.name}"? Bills already added to months stay; only the template is removed.`)) return;
+    if (!(await confirm(`Delete the bill template "${bill.name}"? Bills already added to months stay; only the template is removed.`, { danger: true, confirmLabel: "Delete" }))) return;
     await db.deleteBill(bill.id);
     onChanged();
   };

@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings } from "lucide-react";
 import * as db from "./lib/db.js";
-import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, money } from "./lib/calc.js";
+import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
+import { useToast } from "./components/Toast.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
 import BillsTab from "./components/BillsTab.jsx";
 import GoalsTab from "./components/GoalsTab.jsx";
 import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
 import InsightsTab from "./components/InsightsTab.jsx";
+import SettingsTab from "./components/SettingsTab.jsx";
 
 // Injected by Vite's define from package.json (kept current by bump-version.sh).
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
@@ -119,6 +121,7 @@ function ArchiveGroup({ zipName, dir, onRestore, onDelete }) {
 }
 
 export default function App() {
+  const { confirm } = useToast();
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [tab, setTab] = useState("months");
@@ -129,6 +132,13 @@ export default function App() {
   const [mirrorFolder, setMirrorFolderState] = useState(getMirrorFolder());
   const [retention, setRetentionState] = useState(getRetention());
   const [busy, setBusy] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("ledger.theme", theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
   const reload = useCallback(async () => {
     setBusy(true);
@@ -328,7 +338,7 @@ export default function App() {
   };
 
   const handleRestore = async (fileName) => {
-    if (!confirm(`Restore "${fileName}"? This replaces your current data.`)) return;
+    if (!(await confirm(`Restore "${fileName}"? This replaces your current data.`, { danger: true, confirmLabel: "Restore" }))) return;
     try {
       // Close the connection so the plugin isn't holding the file open while
       // the snapshot is copied over it, then reopen and reload in place — no
@@ -344,7 +354,7 @@ export default function App() {
   };
 
   const handleArchiveMonth = async (group) => {
-    if (!confirm(`Archive all ${group.files.length} backup(s) from ${group.label} into a compressed zip?`)) return;
+    if (!(await confirm(`Archive all ${group.files.length} backup(s) from ${group.label} into a compressed zip?`, { confirmLabel: "Archive" }))) return;
     try {
       const n = await archiveMonth(mirrorFolder, group.key);
       setBackupMsg(`Archived ${n} backup${n === 1 ? "" : "s"} from ${group.label}.`);
@@ -355,7 +365,7 @@ export default function App() {
   };
 
   const handleRestoreFromArchive = async (zipName, fileName) => {
-    if (!confirm(`Restore "${fileName}" from the archive? This replaces your current data.`)) return;
+    if (!(await confirm(`Restore "${fileName}" from the archive? This replaces your current data.`, { danger: true, confirmLabel: "Restore" }))) return;
     try {
       await db.closeDb();
       await restoreFromArchive(mirrorFolder, zipName, fileName);
@@ -367,7 +377,7 @@ export default function App() {
   };
 
   const handleDeleteArchive = async (zipName) => {
-    if (!confirm(`Permanently delete the archive ${zipName}? This cannot be undone.`)) return;
+    if (!(await confirm(`Permanently delete the archive ${zipName}? This cannot be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteArchive(mirrorFolder, zipName);
       setBackupMsg(`Deleted archive ${zipName}.`);
@@ -405,6 +415,8 @@ export default function App() {
   const goalBalances = computeGoalBalances(state.goals, state.months);
   const balances = latestAccountBalances(state.accounts, state.months, ledger);
   const consolidated = state.accounts.reduce((s, a) => s + (balances[a.id] || 0), 0);
+  const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+  const { overdue, dueSoon } = billStatus(state.months, today);
   const existingTags = Array.from(
     new Set(state.months.flatMap((m) => [...m.expensesPay1, ...m.expensesPay2].map((e) => e.tag).filter(Boolean)))
   );
@@ -419,6 +431,13 @@ export default function App() {
           <h1>The Household Ledger <span className="app-version">v{APP_VERSION}</span></h1>
           <p className="tagline">Local-first — nothing leaves this computer unless you back it up.</p>
         </div>
+        {(overdue > 0 || dueSoon > 0) && (
+          <button className="due-chip" onClick={() => setTab("months")} title="Go to Months">
+            {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
+            {overdue > 0 && dueSoon > 0 && " · "}
+            {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
+          </button>
+        )}
       </header>
 
       <div className="balance-strip">
@@ -442,6 +461,7 @@ export default function App() {
         <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" />
         <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" />
         <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" />
+        <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
       </nav>
 
       {tab === "months" && (
@@ -468,7 +488,19 @@ export default function App() {
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} />
       )}
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} />}
-      {tab === "insights" && <InsightsTab state={state} ledger={ledger} />}
+      {tab === "insights" && <InsightsTab state={state} ledger={ledger} onChanged={reload} />}
+      {tab === "settings" && (
+        <SettingsTab
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          mirrorFolder={mirrorFolder}
+          onChooseFolder={handleChooseFolder}
+          onClearFolder={handleClearFolder}
+          onCopyAllToFolder={handleCopyAllToFolder}
+          retention={retention}
+          onRetentionChange={handleRetentionChange}
+        />
+      )}
 
       {tab === "backups" && (
         <div className="section">
@@ -482,51 +514,9 @@ export default function App() {
             {backupMsg && <span className="backup-msg">{backupMsg}</span>}
           </div>
           <p className="empty small">
-            Snapshots are saved locally. Optionally pick a backup folder — point it at a Google Drive or
-            Dropbox desktop sync folder and every backup is also copied there for offsite redundancy.
-            No accounts, no sign-in: it's a plain file copy your sync client picks up.
+            Snapshots are saved locally. Set an offsite backup folder and auto-archive
+            options in <strong>Settings</strong>.
           </p>
-
-          <div className="backup-folder">
-            <FolderSync size={15} />
-            {mirrorFolder ? (
-              <>
-                <span className="mono backup-folder-path" title={mirrorFolder}>{mirrorFolder}</span>
-                <button className="btn-secondary" onClick={handleChooseFolder}>Change</button>
-                <button className="btn-secondary" onClick={handleCopyAllToFolder}>
-                  Copy existing here
-                </button>
-                <button className="icon-btn" title="Stop copying backups offsite" onClick={handleClearFolder}>
-                  <Trash2 size={14} />
-                </button>
-              </>
-            ) : (
-              <button className="btn-secondary" onClick={handleChooseFolder}>
-                <FolderSync size={13} /> Choose backup folder…
-              </button>
-            )}
-          </div>
-
-          <div className="backup-folder">
-            <Archive size={15} />
-            <label className="retention-toggle">
-              <input
-                type="checkbox"
-                checked={retention.enabled}
-                onChange={(e) => handleRetentionChange({ enabled: e.target.checked })}
-              />
-              Auto-archive — keep the last
-            </label>
-            <input
-              className="day-input"
-              type="number"
-              min="1"
-              value={retention.keepMonths}
-              disabled={!retention.enabled}
-              onChange={(e) => handleRetentionChange({ keepMonths: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-            />
-            <span className="small-label">months active; older months move to the archive (not deleted).</span>
-          </div>
 
           <p className="scroll-panel-label" style={{ marginTop: 14 }}>
             Available backups {mirrorFolder ? "in your backup folder" : "(local)"}

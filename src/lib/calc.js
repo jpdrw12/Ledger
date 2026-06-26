@@ -115,6 +115,59 @@ export function monthlyEndingBalances(months, ledger) {
     .map((m) => ({ id: m.id, label: m.monthLabel, value: ledger[m.id].consolidatedCarryOut }));
 }
 
+// Adds days to a YYYY-MM-DD date string (UTC arithmetic, tz-safe).
+function addDays(iso, days) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+// Counts unpaid bills (with a due date) that are overdue or due within the
+// next `window` days, relative to `todayStr` (YYYY-MM-DD).
+export function billStatus(months, todayStr, window = 7) {
+  const soonStr = addDays(todayStr, window);
+  let overdue = 0;
+  let dueSoon = 0;
+  (months || []).forEach((m) => {
+    (m.billPayments || []).forEach((bp) => {
+      if (bp.paid || !bp.dueDate) return;
+      if (bp.dueDate < todayStr) overdue++;
+      else if (bp.dueDate <= soonStr) dueSoon++;
+    });
+  });
+  return { overdue, dueSoon };
+}
+
+// Current net worth: latest consolidated account balance (assets) minus the
+// total of all debt balances. Per-month history isn't derivable — debts only
+// store a current balance — so this is a present-day snapshot.
+export function netWorthSnapshot(months, ledger, debts) {
+  const series = monthlyEndingBalances(months, ledger);
+  const assets = series.length ? series[series.length - 1].value : 0;
+  const debt = (debts || []).reduce((s, d) => s + (Number(d.balance) || 0), 0);
+  return { assets, debt, net: assets - debt };
+}
+
+// Compares each budgeted category's spend in the latest month against its
+// monthly target. Returns rows sorted with over-budget first, then by overage.
+export function budgetReport(months, budgets) {
+  const latest = months[months.length - 1];
+  const spend = {};
+  if (latest) {
+    [...(latest.expensesPay1 || []), ...(latest.expensesPay2 || [])].forEach((e) => {
+      const key = (e.category || "").trim() || "Uncategorized";
+      spend[key] = (spend[key] || 0) + (Number(e.amount) || 0);
+    });
+  }
+  return (budgets || [])
+    .map((b) => {
+      const actual = spend[b.category] || 0;
+      return { category: b.category, budget: b.amount, actual, remaining: b.amount - actual, over: actual > b.amount };
+    })
+    .sort((a, b) => (a.over === b.over ? b.actual - a.actual : a.over ? -1 : 1));
+}
+
 // Flattens every money movement into CSV rows: one line per bill, expense,
 // addition, goal contribution, and debt payment, tagged with its month.
 export function buildLedgerCsv(state, ledger) {
@@ -150,6 +203,62 @@ export function buildLedgerCsv(state, ledger) {
   });
 
   return rows.map((r) => r.map(esc).join(",")).join("\n");
+}
+
+// Minimal RFC-4180-ish CSV parser: handles quoted fields, escaped quotes,
+// and commas/newlines inside quotes. Returns an array of row arrays.
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c !== "\r") field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// Parses expense rows from CSV text. Recognizes a Category/Amount/Tag header
+// (any order); otherwise assumes column order category, amount, tag. Amounts
+// are taken as magnitudes (so the negative amounts our export writes import
+// cleanly). Skips blank rows.
+export function parseExpensesCsv(text) {
+  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
+  if (!rows.length) return [];
+  let catIdx = 0;
+  let amtIdx = 1;
+  let tagIdx = 2;
+  let start = 0;
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  if (header.some((h) => h === "category" || h === "amount" || h === "tag")) {
+    const ci = header.indexOf("category");
+    const ai = header.indexOf("amount");
+    const ti = header.indexOf("tag");
+    if (ci >= 0) catIdx = ci;
+    if (ai >= 0) amtIdx = ai;
+    tagIdx = ti;
+    start = 1;
+  }
+  const out = [];
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i];
+    const category = (r[catIdx] || "").trim();
+    const amount = Math.abs(parseFloat((r[amtIdx] || "").replace(/[^0-9.\-]/g, "")) || 0);
+    const tag = tagIdx >= 0 ? (r[tagIdx] || "").trim() : "";
+    if (!category && !amount) continue;
+    out.push({ category, amount, tag });
+  }
+  return out;
 }
 
 export const money = (n) => {

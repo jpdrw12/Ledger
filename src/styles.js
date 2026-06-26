@@ -11,12 +11,46 @@ export const css = `
     --deficit: #A93E2C;
     --card: #F3F6EE;
   }
+  :root[data-theme="dark"] {
+    --paper: #181D19;
+    --paper-line: #36423A;
+    --ink: #E4EAE0;
+    --ink-soft: #9DB0A0;
+    --stamp: #D9A847;
+    --surplus: #6FCF97;
+    --deficit: #E07A68;
+    --card: #222923;
+  }
+  :root[data-theme="dark"] body { background: #181D19; }
+  :root[data-theme="dark"] input,
+  :root[data-theme="dark"] select,
+  :root[data-theme="dark"] textarea { background: #11150F; color: var(--ink); }
+  :root[data-theme="dark"] .progress-fill,
+  :root[data-theme="dark"] .cat-bar-fill { opacity: 0.4; }
+  :root[data-theme="dark"] .scroll-panel,
+  :root[data-theme="dark"] .per-account-chip,
+  :root[data-theme="dark"] .pay-block,
+  :root[data-theme="dark"] .progress-track,
+  :root[data-theme="dark"] .cat-bar-track,
+  :root[data-theme="dark"] .balance-chip,
+  :root[data-theme="dark"] .chip { background: #11150F; }
+  :root[data-theme="dark"] .month-title-input:focus { background: #11150F; }
+  /* Consolidated/accent cards use var(--ink) as a dark background in light
+     mode; in dark mode --ink is light, so pin them to a fixed dark accent. */
+  :root[data-theme="dark"] .balance-chip.consolidated,
+  :root[data-theme="dark"] .consolidated-card,
+  :root[data-theme="dark"] .networth-card.networth-total { background: #2C3A30; border-color: #3A4D40; }
   .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; padding: 24px 20px 60px; }
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
 
   .app-header { display:flex; gap:14px; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:16px; margin-bottom:16px; }
   .app-header h1 { font-family: Georgia, 'Iowan Old Style', serif; font-size:26px; margin:0 0 4px; letter-spacing:0.2px; }
   .app-version { font-family: ui-monospace, monospace; font-size:12px; font-weight:400; color:var(--ink-soft); vertical-align:middle; margin-left:6px; }
+  .due-chip { margin-left:auto; align-self:center; background:var(--card); border:1px solid var(--paper-line); border-radius:14px; padding:6px 12px; font-size:12.5px; cursor:pointer; color:var(--ink); }
+  .due-chip:hover { border-color:var(--stamp); }
+  .due-chip-over { color:var(--deficit); font-weight:600; }
+  .due-chip-soon { color:var(--stamp); }
+  .overdue-pill { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--deficit); border:1px solid var(--deficit); border-radius:8px; padding:1px 6px; margin-left:6px; }
   .tagline { margin:0; color: var(--ink-soft); font-size:13px; }
 
   .balance-strip { display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
@@ -155,6 +189,14 @@ export const css = `
   .history-table td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--paper-line); }
 
   .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:14px; margin-bottom:18px; }
+  .networth-row { display:flex; align-items:stretch; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+  .networth-card { display:flex; flex-direction:column; gap:4px; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:10px 16px; min-width:120px; }
+  .networth-card.networth-total { background:var(--ink); border-color:var(--ink); }
+  .networth-total .networth-label { color:#C3D0B7; }
+  .networth-total .surplus { color:#9FE3BC; }
+  .networth-total .deficit { color:#F2A38F; }
+  .networth-label { font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
+  .networth-op { display:flex; align-items:center; font-size:18px; color:var(--ink-soft); }
   .sparkline { width:100%; height:120px; display:block; }
   .spark-line { stroke:var(--stamp); stroke-width:2; vector-effect:non-scaling-stroke; }
   .spark-zero { stroke:var(--paper-line); stroke-width:1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }
@@ -165,6 +207,11 @@ export const css = `
   .cat-name { flex:0 0 140px; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cat-bar-track { flex:1; height:14px; background:#fff; border:1px solid var(--paper-line); border-radius:7px; overflow:hidden; }
   .cat-bar-fill { height:100%; background:var(--stamp); opacity:0.55; }
+  .cat-bar-fill.under { background:var(--surplus); }
+  .cat-bar-fill.over { background:var(--deficit); opacity:0.7; }
+  .budget-add { gap:8px; margin-top:10px; padding-top:10px; border-top:1px dashed var(--paper-line); }
+  .budget-add .text-input { flex:0 0 160px; }
+  .budget-add .btn-secondary { margin-top:0; }
   .cat-amount { flex:0 0 90px; text-align:right; font-size:13px; }
   .cat-total { border-top:1px solid var(--ink); margin-top:6px; padding-top:8px; font-weight:700; }
 
@@ -182,7 +229,23 @@ export const css = `
   .backup-archive-icon { color:var(--ink-soft); }
   .retention-toggle { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft); cursor:pointer; }
   .due-date-hint { font-size:12px; color:var(--stamp); background:#FBF3E0; border:1px solid #E8D6A8; border-radius:3px; padding:6px 10px; margin:10px 0 0; }
+  .month-toolbar { display:flex; gap:8px; margin:10px 0 0; }
+  .month-toolbar .btn-secondary { margin-top:0; }
   .saving-pill { position:fixed; top:12px; right:14px; z-index:50; background:var(--ink); color:var(--paper); font-size:12px; padding:5px 12px; border-radius:12px; opacity:0.9; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+
+  .toast-stack { position:fixed; bottom:18px; right:18px; z-index:100; display:flex; flex-direction:column; gap:8px; max-width:360px; }
+  .toast { display:flex; align-items:center; gap:8px; background:var(--ink); color:var(--paper); font-size:13px; padding:10px 12px; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.25); cursor:pointer; }
+  .toast span { flex:1; }
+  .toast-close { opacity:0.6; }
+  .toast-success { background:var(--surplus); }
+  .toast-error { background:var(--deficit); }
+
+  .modal-backdrop { position:fixed; inset:0; z-index:110; background:rgba(30,43,34,0.45); display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal-card { background:var(--card); border:1px solid var(--paper-line); border-radius:5px; padding:20px; max-width:440px; box-shadow:0 6px 24px rgba(0,0,0,0.3); }
+  .modal-message { margin:0 0 16px; font-size:14px; color:var(--ink); line-height:1.5; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:10px; }
+  .btn-danger { display:flex; align-items:center; gap:6px; background:var(--deficit); color:#fff; border:none; padding:8px 14px; border-radius:3px; cursor:pointer; font-size:13px; }
+  .btn-danger:hover { background:#8f3322; }
   .block-hint { font-size:11px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-soft); }
   .withdrawal-pill { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--deficit); border:1px solid var(--deficit); border-radius:8px; padding:1px 6px; margin-left:6px; }
   .backup-list { list-style:none; padding:0; margin:6px 0 0; font-size:12px; }

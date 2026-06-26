@@ -1,7 +1,9 @@
-import React from "react";
-import { Download, TrendingUp, Receipt } from "lucide-react";
-import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, money } from "../lib/calc.js";
+import React, { useState } from "react";
+import { Download, TrendingUp, Receipt, Target, Plus, Trash2 } from "lucide-react";
+import * as db from "../lib/db.js";
+import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
+import { useToast } from "./Toast.jsx";
 
 // Inline SVG line chart of consolidated ending balance over time. No deps.
 function Sparkline({ series }) {
@@ -30,20 +32,47 @@ function Sparkline({ series }) {
   );
 }
 
-export default function InsightsTab({ state, ledger }) {
+export default function InsightsTab({ state, ledger, onChanged }) {
+  const { toast } = useToast();
+  const [newCat, setNewCat] = useState("");
+  const [newAmt, setNewAmt] = useState("");
   const categories = spendingByCategory(state.months);
   const series = monthlyEndingBalances(state.months, ledger);
   const totalSpend = categories.reduce((s, c) => s + c.total, 0);
   const maxCat = categories.length ? Math.max(...categories.map((c) => c.total)) : 0;
+
+  const budgets = budgetReport(state.months, state.categoryBudgets);
+  const latestLabel = state.months.length ? state.months[state.months.length - 1].monthLabel : null;
+  const nw = netWorthSnapshot(state.months, ledger, state.debts);
+
+  const saveBudget = async (category, amount) => {
+    if (!category.trim()) return;
+    await db.upsertCategoryBudget(category.trim(), amount);
+    onChanged();
+  };
+  const addBudget = async () => {
+    const amt = parseFloat(newAmt) || 0;
+    if (!newCat.trim() || amt <= 0) {
+      toast("Enter a category and a positive amount.", "error");
+      return;
+    }
+    await saveBudget(newCat, amt);
+    setNewCat("");
+    setNewAmt("");
+  };
+  const removeBudget = async (category) => {
+    await db.deleteCategoryBudget(category);
+    onChanged();
+  };
 
   const handleExport = async () => {
     try {
       const csv = buildLedgerCsv(state, ledger);
       const stamp = new Date().toISOString().slice(0, 10);
       const path = await exportTextFile(`ledger-export-${stamp}.csv`, csv);
-      if (path) alert(`Exported to ${path}`);
+      if (path) toast(`Exported to ${path}`, "success");
     } catch (e) {
-      alert(`Export failed: ${e}`);
+      toast(`Export failed: ${e}`, "error");
     }
   };
 
@@ -54,6 +83,23 @@ export default function InsightsTab({ state, ledger }) {
         <button className="btn-primary" onClick={handleExport}>
           <Download size={15} /> Export CSV
         </button>
+      </div>
+
+      <div className="networth-row">
+        <div className="networth-card">
+          <span className="networth-label">Assets</span>
+          <span className="amount surplus">{money(nw.assets)}</span>
+        </div>
+        <span className="networth-op">−</span>
+        <div className="networth-card">
+          <span className="networth-label">Debts</span>
+          <span className="amount deficit">{money(nw.debt)}</span>
+        </div>
+        <span className="networth-op">=</span>
+        <div className="networth-card networth-total">
+          <span className="networth-label">Net worth</span>
+          <span className={`amount ${nw.net < 0 ? "deficit" : "surplus"}`}>{money(nw.net)}</span>
+        </div>
       </div>
 
       <h4 className="block-title"><TrendingUp size={13} /> Consolidated ending balance over time</h4>
@@ -86,6 +132,58 @@ export default function InsightsTab({ state, ledger }) {
             <span className="cat-amount mono">{money(totalSpend)}</span>
           </div>
         )}
+      </div>
+
+      <h4 className="block-title">
+        <Target size={13} /> Budgets {latestLabel ? `vs ${latestLabel}` : ""}
+      </h4>
+      <div className="insight-card">
+        {budgets.length === 0 && <p className="empty small">No budgets set. Add one below to track a category against a monthly target.</p>}
+        {budgets.map((b) => {
+          const pct = b.budget > 0 ? Math.min(100, (b.actual / b.budget) * 100) : 0;
+          return (
+            <div className="cat-row" key={b.category}>
+              <span className="cat-name">{b.category}</span>
+              <div className="cat-bar-track" title={`${money(b.actual)} of ${money(b.budget)}`}>
+                <div className={`cat-bar-fill ${b.over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
+              </div>
+              <span className={`cat-amount mono ${b.over ? "deficit" : "surplus"}`}>
+                {money(b.actual)} / {money(b.budget)}
+              </span>
+              <input
+                className="amount-input"
+                type="number"
+                defaultValue={b.budget}
+                onBlur={(e) => saveBudget(b.category, parseFloat(e.target.value) || 0)}
+              />
+              <button className="icon-btn" title="Remove budget" onClick={() => removeBudget(b.category)}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          );
+        })}
+        <div className="cat-row budget-add">
+          <input
+            className="text-input"
+            list="budget-cat-suggestions"
+            placeholder="Category"
+            value={newCat}
+            onChange={(e) => setNewCat(e.target.value)}
+          />
+          <datalist id="budget-cat-suggestions">
+            {categories.map((c) => <option key={c.category} value={c.category} />)}
+          </datalist>
+          <input
+            className="amount-input"
+            type="number"
+            placeholder="Monthly $"
+            value={newAmt}
+            onChange={(e) => setNewAmt(e.target.value)}
+          />
+          <button className="btn-secondary" onClick={addBudget}>
+            <Plus size={13} /> Add budget
+          </button>
+        </div>
       </div>
     </div>
   );

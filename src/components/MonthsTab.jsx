@@ -1,8 +1,16 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt } from "lucide-react";
+import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, computeDueDate } from "../lib/calc.js";
+import { money, computeDueDate, parseExpensesCsv } from "../lib/calc.js";
+import { importTextFile } from "../lib/backup.js";
 import { Field, AccountSelect, DateInput, parseNumberInput } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
+
+// Local YYYY-MM-DD (matches how due dates are stored/compared).
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 export default function MonthsTab({
   months,
@@ -20,6 +28,7 @@ export default function MonthsTab({
   onCopyForward,
   onReorder,
 }) {
+  const { confirm } = useToast();
   const [filter, setFilter] = useState("");
 
   const trimmed = filter.trim().toLowerCase();
@@ -76,7 +85,7 @@ export default function MonthsTab({
             onToggle={() => setOpenMonth(openMonth === m.id ? null : m.id)}
             onChanged={onChanged}
             onRemove={async () => {
-              if (!confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments? This can't be undone.`)) return;
+              if (!(await confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments? This can't be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
               await db.deleteMonth(m.id);
               onChanged();
             }}
@@ -129,12 +138,16 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
 
   const renderBillRow = (bp) => {
     const bill = bills.find((b) => b.id === bp.billId);
+    const overdue = !bp.paid && bp.dueDate && bp.dueDate < localToday();
     return (
       <div className="ledger-row" key={bp.id}>
         <button className="check" onClick={() => onUpdateBillPayment(bp, { paid: !bp.paid })}>
           {bp.paid ? <Check size={13} /> : null}
         </button>
-        <span className="row-name">{bill ? bill.name : "Unknown bill"}</span>
+        <span className="row-name">
+          {bill ? bill.name : "Unknown bill"}
+          {overdue && <span className="overdue-pill">overdue</span>}
+        </span>
         <DateInput className="date-input" defaultValue={bp.dueDate} onSave={(v) => onUpdateBillPayment(bp, { dueDate: v })} />
         <AccountSelect accounts={accounts} value={bp.accountId} onChange={(v) => onUpdateBillPayment(bp, { accountId: v })} />
         <input
@@ -307,10 +320,12 @@ function DebtPaymentRow({ dp, debt, accounts, onUpdate, onRemove, onApply }) {
 }
 
 function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags }) {
+  const { toast } = useToast();
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
   const deficit = consolidatedCarryOut < 0;
   const totalExpenses = totalExpensesPay1 + totalExpensesPay2;
+  const outstandingBills = month.billPayments.reduce((s, bp) => s + (bp.paid ? 0 : Number(bp.amountPaid) || 0), 0);
   // Due dates auto-fill only when the month label parses as "MonthName Year".
   // A custom label (e.g. "House Move") silently leaves them blank.
   const dueDatesWontFill = computeDueDate(month.monthLabel, 1) === "";
@@ -336,6 +351,24 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
   const addExpense = async (slot) => {
     await db.addExpense(month.id, slot, { category: "", amount: 0, tag: "", accountId: accounts[0]?.id });
     onChanged();
+  };
+  const importExpenses = async () => {
+    try {
+      const text = await importTextFile();
+      if (text == null) return;
+      const rows = parseExpensesCsv(text);
+      if (!rows.length) {
+        toast("No expense rows found in that file.", "error");
+        return;
+      }
+      for (const r of rows) {
+        await db.addExpense(month.id, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId: accounts[0]?.id });
+      }
+      onChanged();
+      toast(`Imported ${rows.length} expense${rows.length === 1 ? "" : "s"} into ${month.monthLabel} (Pay 1).`, "success");
+    } catch (e) {
+      toast(`Import failed: ${e}`, "error");
+    }
   };
   const updateExpense = async (e, patch) => {
     await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, ...patch });
@@ -447,6 +480,12 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             </p>
           )}
 
+          <div className="month-toolbar">
+            <button className="btn-secondary" onClick={importExpenses} title="Import expenses from a CSV (Category, Amount, Tag) into Pay 1">
+              <Upload size={13} /> Import expenses CSV
+            </button>
+          </div>
+
           <div className="pay-stack">
             <PayBlock
               label="Pay 1" slot={1}
@@ -555,6 +594,10 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
             <div className="ledger-row totals-row">
               <span>Bills total</span>
               <span className="mono">{money(totalBills)}</span>
+            </div>
+            <div className="ledger-row totals-row">
+              <span>Outstanding (unpaid bills)</span>
+              <span className={`mono ${outstandingBills > 0 ? "deficit" : "surplus"}`}>{money(outstandingBills)}</span>
             </div>
             <div className="ledger-row totals-row">
               <span>Expenses total (Pay 1 + Pay 2)</span>

@@ -9,6 +9,11 @@ import {
   spendingByCategory,
   monthlyEndingBalances,
   buildLedgerCsv,
+  budgetReport,
+  netWorthSnapshot,
+  billStatus,
+  parseCsv,
+  parseExpensesCsv,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -176,6 +181,95 @@ describe("monthlyEndingBalances", () => {
       { id: "m1", label: undefined, value: 650 }, // 150 + 500
       { id: "m2", label: undefined, value: 550 }, // 650 - 100
     ]);
+  });
+});
+
+describe("parseCsv", () => {
+  it("handles quoted fields with commas and escaped quotes", () => {
+    expect(parseCsv('a,"b,c","d""e"\n1,2,3')).toEqual([["a", "b,c", 'd"e'], ["1", "2", "3"]]);
+  });
+});
+
+describe("parseExpensesCsv", () => {
+  it("reads a Category/Amount/Tag header in any order, magnitudes for amounts", () => {
+    const csv = "Amount,Category,Tag\n-120,Groceries,food\n-40,Gas,";
+    expect(parseExpensesCsv(csv)).toEqual([
+      { category: "Groceries", amount: 120, tag: "food" },
+      { category: "Gas", amount: 40, tag: "" },
+    ]);
+  });
+
+  it("falls back to column order when there's no header", () => {
+    expect(parseExpensesCsv("Groceries,55\nGas,30")).toEqual([
+      { category: "Groceries", amount: 55, tag: "" },
+      { category: "Gas", amount: 30, tag: "" },
+    ]);
+  });
+
+  it("skips blank rows and ignores currency symbols/separators", () => {
+    expect(parseExpensesCsv('Category,Amount\nGroceries,"$1,200.50"\n\n')).toEqual([
+      { category: "Groceries", amount: 1200.5, tag: "" },
+    ]);
+  });
+});
+
+describe("billStatus", () => {
+  const today = "2026-06-15";
+  const months = [
+    makeMonth("m1", {
+      billPayments: [
+        { dueDate: "2026-06-10", paid: false, amountPaid: 100 }, // overdue
+        { dueDate: "2026-06-18", paid: false, amountPaid: 50 },  // due soon (within 7d)
+        { dueDate: "2026-06-30", paid: false, amountPaid: 75 },  // later
+        { dueDate: "2026-06-05", paid: true, amountPaid: 200 },  // overdue but paid → ignored
+        { dueDate: null, paid: false, amountPaid: 25 },           // no due date → ignored
+      ],
+    }),
+  ];
+
+  it("counts overdue and due-soon unpaid bills", () => {
+    expect(billStatus(months, today)).toEqual({ overdue: 1, dueSoon: 1 });
+  });
+
+  it("respects a custom window", () => {
+    expect(billStatus(months, today, 20)).toEqual({ overdue: 1, dueSoon: 2 });
+  });
+});
+
+describe("netWorthSnapshot", () => {
+  it("computes assets (latest ending balance) minus total debts", () => {
+    const months = [makeMonth("m1", { pay1: { income: 1000, incomeAccountId: "a", additions: [] }, pay2: { income: 0, incomeAccountId: "b", additions: [] } })];
+    const ledger = computeLedger(months, [ACCT_A, ACCT_B]);
+    // assets: 150 starting + 1000 = 1150; debts: 400 + 100 = 500; net 650
+    const snap = netWorthSnapshot(months, ledger, [{ balance: 400 }, { balance: 100 }]);
+    expect(snap).toEqual({ assets: 1150, debt: 500, net: 650 });
+  });
+
+  it("is zero assets with no months", () => {
+    expect(netWorthSnapshot([], {}, [{ balance: 200 }])).toEqual({ assets: 0, debt: 200, net: -200 });
+  });
+});
+
+describe("budgetReport", () => {
+  const months = [
+    makeMonth("m1", { monthLabel: "May 2026", expensesPay1: [{ category: "Groceries", amount: 999 }] }),
+    makeMonth("m2", { monthLabel: "June 2026", expensesPay1: [{ category: "Groceries", amount: 120 }], expensesPay2: [{ category: "Gas", amount: 80 }] }),
+  ];
+
+  it("compares the latest month's spend to each budget, over-budget first", () => {
+    const report = budgetReport(months, [{ category: "Gas", amount: 60 }, { category: "Groceries", amount: 200 }]);
+    expect(report[0]).toEqual({ category: "Gas", budget: 60, actual: 80, remaining: -20, over: true });
+    expect(report[1]).toEqual({ category: "Groceries", budget: 200, actual: 120, remaining: 80, over: false });
+  });
+
+  it("reports zero actual for a budgeted category with no spend in the latest month", () => {
+    const report = budgetReport(months, [{ category: "Dining", amount: 100 }]);
+    expect(report[0]).toMatchObject({ category: "Dining", actual: 0, over: false });
+  });
+
+  it("handles no months and no budgets", () => {
+    expect(budgetReport([], [{ category: "X", amount: 10 }])[0]).toMatchObject({ actual: 0 });
+    expect(budgetReport(months, [])).toEqual([]);
   });
 });
 

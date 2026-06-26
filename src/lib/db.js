@@ -320,6 +320,28 @@ export async function deleteGoalContribution(id) {
 }
 
 // ---------------------------------------------------------------------
+// Category budgets — optional monthly spending target per expense category.
+// ---------------------------------------------------------------------
+export async function getCategoryBudgets() {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM category_budgets ORDER BY category");
+  return rows.map((r) => ({ category: r.category, amount: r.amount }));
+}
+
+export async function upsertCategoryBudget(category, amount) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO category_budgets (category, amount) VALUES ($1, $2) ON CONFLICT(category) DO UPDATE SET amount = $2",
+    [category, amount || 0]
+  );
+}
+
+export async function deleteCategoryBudget(category) {
+  const db = await getDb();
+  await db.execute("DELETE FROM category_budgets WHERE category = $1", [category]);
+}
+
+// ---------------------------------------------------------------------
 // Month debt payments — tracks debt payments made within a month so they
 // count as account outflows. Interest calc / balance updates stay in DebtsTab.
 // ---------------------------------------------------------------------
@@ -390,13 +412,14 @@ export async function deleteMonthDebtPayment(id) {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
       getGoals(),
       getDebts(),
       getDebtHistory(),
+      getCategoryBudgets(),
       db.select("SELECT * FROM months ORDER BY sequence"),
       db.select("SELECT * FROM pay_blocks"),
       db.select("SELECT * FROM additions"),
@@ -452,5 +475,5 @@ export async function loadFullState() {
     };
   });
 
-  return { accounts, bills, goals, months, debts, debtHistory };
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets };
 }
