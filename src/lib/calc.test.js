@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeLedger,
   projectLedger,
+  averageNetChange,
   computeGoalBalances,
   latestAccountBalances,
   money,
@@ -146,6 +147,22 @@ describe("computeLedger", () => {
     expect(ledger.m1.totalBills).toBe(600);
     // 100 starting - 300 - 300 = -500
     expect(ledger.m1.byAccount.a.carryOut).toBe(-500);
+  });
+});
+
+describe("averageNetChange", () => {
+  it("averages each month's change in consolidated balance", () => {
+    // m1: total starts at 150 (100 + 50), +500 income -> ends 650. delta +500.
+    const m1 = makeMonth("m1", { pay1: { income: 500, incomeAccountId: "a", additions: [] } });
+    // m2: carries in 650, -200 bill -> ends 450. delta -200.
+    const m2 = makeMonth("m2", { billPayments: [{ accountId: "a", amountPaid: 200 }] });
+    const ledger = computeLedger([m1, m2], [ACCT_A, ACCT_B]);
+    // average of (+500, -200) = +150
+    expect(averageNetChange([m1, m2], ledger)).toBe(150);
+  });
+
+  it("returns 0 when there are no months", () => {
+    expect(averageNetChange([], {})).toBe(0);
   });
 });
 

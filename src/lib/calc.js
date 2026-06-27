@@ -176,6 +176,16 @@ export function spendingByCategory(months) {
 
 // Consolidated ending balance per month, in chronological order — the series
 // behind the trend sparkline.
+// Average change in the consolidated balance per month (carryOut - carryIn).
+// Positive means you're saving on average, negative means drawing down.
+export function averageNetChange(months, ledger) {
+  const deltas = (months || [])
+    .filter((m) => ledger[m.id])
+    .map((m) => ledger[m.id].consolidatedCarryOut - ledger[m.id].consolidatedCarryIn);
+  if (deltas.length === 0) return 0;
+  return deltas.reduce((s, d) => s + d, 0) / deltas.length;
+}
+
 export function monthlyEndingBalances(months, ledger) {
   return months
     .filter((m) => ledger[m.id])

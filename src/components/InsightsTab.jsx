@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Download, TrendingUp, Receipt, Target, Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
-import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, money } from "../lib/calc.js";
+import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
 import { useToast } from "./Toast.jsx";
 
@@ -64,6 +64,7 @@ function InsightsTab({ state, ledger, onChanged }) {
   const budgets = budgetReport(state.months, state.categoryBudgets);
   const latestLabel = state.months.length ? state.months[state.months.length - 1].monthLabel : null;
   const nw = netWorthSnapshot(state.months, ledger, state.debts);
+  const avgNet = averageNetChange(state.months, ledger);
 
   const saveBudget = async (category, amount) => {
     if (!category.trim()) return;
@@ -124,6 +125,14 @@ function InsightsTab({ state, ledger, onChanged }) {
 
       <h4 className="block-title"><TrendingUp size={13} /> Consolidated ending balance over time</h4>
       <div className="insight-card">
+        {series.length >= 2 && (
+          <p className="empty small" style={{ marginTop: 0 }}>
+            Average monthly change:{" "}
+            <span className={`mono ${avgNet < 0 ? "deficit" : "surplus"}`}>
+              {avgNet >= 0 ? "+" : ""}{money(avgNet)}
+            </span>
+          </p>
+        )}
         <Sparkline series={series} />
         {series.length >= 2 && (
           <div className="spark-legend">
