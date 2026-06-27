@@ -163,6 +163,12 @@ export default function App() {
     localStorage.setItem("ledger.accent", accent);
   }, [accent]);
 
+  // Optimistic local patch: apply a change to in-memory state immediately so
+  // the edit shows instantly, before the persist + reload reconcile lands.
+  const patchState = useCallback((updater) => {
+    setState((prev) => (prev ? updater(prev) : prev));
+  }, []);
+
   const reload = useCallback(async () => {
     setBusy(true);
     try {
@@ -537,6 +543,7 @@ export default function App() {
           openMonth={openMonth}
           setOpenMonth={setOpenMonth}
           onChanged={reload}
+          onPatch={patchState}
           onAddMonth={handleAddMonth}
           onCopyForward={handleCopyForward}
           onReorder={handleReorderMonth}

@@ -1,7 +1,9 @@
 name: Release
 
-# Builds the Linux .deb and publishes a GitHub Release when a version tag
-# (e.g. v0.2.0) is pushed. Create the tag with ./tag-release.sh after bumping.
+# Builds installers for Linux, macOS, and Windows and publishes a GitHub
+# Release when a version tag (e.g. v0.2.0) is pushed. Create the tag with
+# ./tag-release.sh after bumping. Each matrix job uploads its artifacts to
+# the same release (tauri-action finds-or-creates it by tag).
 on:
   push:
     tags:
@@ -13,11 +15,22 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04        # Linux: .deb / .rpm / .AppImage
+            args: ""
+          - platform: macos-latest        # macOS: universal .dmg (Intel + Apple Silicon)
+            args: "--target universal-apple-darwin"
+          - platform: windows-latest       # Windows: .msi / .exe (NSIS)
+            args: ""
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -33,6 +46,9 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          # macOS universal binary needs both arch targets.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -55,3 +71,4 @@ jobs:
           releaseBody: "Automated build. See CHANGELOG.md for what's in this version."
           releaseDraft: false
           prerelease: false
+          args: ${{ matrix.args }}

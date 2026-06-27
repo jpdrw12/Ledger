@@ -24,6 +24,7 @@ function MonthsTab({
   openMonth,
   setOpenMonth,
   onChanged,
+  onPatch,
   onAddMonth,
   onCopyForward,
   onReorder,
@@ -84,6 +85,7 @@ function MonthsTab({
             isOpen={openMonth === m.id}
             onToggle={() => setOpenMonth(openMonth === m.id ? null : m.id)}
             onChanged={onChanged}
+            onPatch={onPatch}
             onRemove={async () => {
               if (!(await confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments? This can't be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
               await db.deleteMonth(m.id);
@@ -319,7 +321,26 @@ function DebtPaymentRow({ dp, debt, accounts, onUpdate, onRemove, onApply }) {
   );
 }
 
-function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags }) {
+// Immutably patch one row (matched by id) inside the given month's collections.
+// `keys` lists which arrays on the month might hold the row (expenses live in
+// two slot arrays, so both are searched).
+function patchMonthRow(state, monthId, rowId, patch, keys) {
+  return {
+    ...state,
+    months: state.months.map((m) => {
+      if (m.id !== monthId) return m;
+      const next = { ...m };
+      for (const k of keys) {
+        if (next[k]?.some((r) => r.id === rowId)) {
+          next[k] = next[k].map((r) => (r.id === rowId ? { ...r, ...patch } : r));
+        }
+      }
+      return next;
+    }),
+  };
+}
+
+function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags }) {
   const { toast } = useToast();
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
@@ -341,6 +362,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
     onChanged();
   };
   const updateBillPayment = async (bp, patch) => {
+    onPatch((s) => patchMonthRow(s, month.id, bp.id, patch, ["billPayments"]));
     await db.updateBillPayment(bp.id, { amountPaid: bp.amountPaid, paid: bp.paid, accountId: bp.accountId, dueDate: bp.dueDate, ...patch });
     onChanged();
   };
@@ -372,6 +394,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
     }
   };
   const updateExpense = async (e, patch) => {
+    onPatch((s) => patchMonthRow(s, month.id, e.id, patch, ["expensesPay1", "expensesPay2"]));
     await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, ...patch });
     onChanged();
   };
@@ -385,6 +408,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
     onChanged();
   };
   const updateGoalContribution = async (gc, patch) => {
+    onPatch((s) => patchMonthRow(s, month.id, gc.id, patch, ["goalContributions"]));
     await db.updateGoalContribution(gc.id, { amount: gc.amount, accountId: gc.accountId, ...patch });
     onChanged();
   };
@@ -398,6 +422,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
     onChanged();
   };
   const updateDebtPayment = async (dp, patch) => {
+    onPatch((s) => patchMonthRow(s, month.id, dp.id, patch, ["debtPayments"]));
     await db.updateMonthDebtPayment(dp.id, { amount: dp.amount, accountId: dp.accountId, ...patch });
     onChanged();
   };
