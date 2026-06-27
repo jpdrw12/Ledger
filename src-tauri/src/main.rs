@@ -40,6 +40,12 @@ fn main() {
             sql: include_str!("../migrations/0006_bill_dual_slot.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "transfers",
+            sql: include_str!("../migrations/0007_transfers.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

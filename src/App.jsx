@@ -163,6 +163,22 @@ export default function App() {
     localStorage.setItem("ledger.accent", accent);
   }, [accent]);
 
+  // Enter commits an input. The app's inputs commit on blur (defaultValue +
+  // onBlur), so blurring the focused field on Enter reuses that exact path —
+  // no per-input wiring. Skips checkbox/radio/button/range (Enter is a click
+  // there) and textareas (Enter inserts a newline).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Enter" || e.shiftKey) return;
+      const el = e.target;
+      if (el instanceof HTMLInputElement && !["checkbox", "radio", "button", "submit", "range"].includes(el.type)) {
+        el.blur();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   // Optimistic local patch: apply a change to in-memory state immediately so
   // the edit shows instantly, before the persist + reload reconcile lands.
   const patchState = useCallback((updater) => {

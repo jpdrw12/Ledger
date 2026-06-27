@@ -76,6 +76,8 @@ export async function reassignAccountReferences(fromId, toId) {
   await db.execute("UPDATE expenses SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
   await db.execute("UPDATE goal_contributions SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
   await db.execute("UPDATE month_debt_payments SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
+  await db.execute("UPDATE transfers SET from_account_id = $1 WHERE from_account_id = $2", [toId, fromId]);
+  await db.execute("UPDATE transfers SET to_account_id = $1 WHERE to_account_id = $2", [toId, fromId]);
 }
 
 // ---------------------------------------------------------------------
@@ -275,6 +277,33 @@ export async function clearBillPaymentsForMonth(monthId) {
   await db.execute("DELETE FROM bill_payments WHERE month_id = $1", [monthId]);
 }
 
+// ---------------------------------------------------------------------
+// Transfers (account -> account, within a month)
+// ---------------------------------------------------------------------
+export async function addTransfer(monthId, { fromAccountId, toAccountId, amount, note }) {
+  const db = await getDb();
+  const id = uid();
+  await db.execute(
+    `INSERT INTO transfers (id, month_id, from_account_id, to_account_id, amount, note)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, monthId, fromAccountId || null, toAccountId || null, amount || 0, note || null]
+  );
+  return id;
+}
+
+export async function updateTransfer(id, { fromAccountId, toAccountId, amount, note }) {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE transfers SET from_account_id = $1, to_account_id = $2, amount = $3, note = $4 WHERE id = $5",
+    [fromAccountId || null, toAccountId || null, amount || 0, note || null, id]
+  );
+}
+
+export async function deleteTransfer(id) {
+  const db = await getDb();
+  await db.execute("DELETE FROM transfers WHERE id = $1", [id]);
+}
+
 export async function addExpense(monthId, slot, { category, amount, tag, accountId }) {
   const db = await getDb();
   const id = uid();
@@ -414,7 +443,7 @@ export async function deleteMonthDebtPayment(id) {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -429,6 +458,7 @@ export async function loadFullState() {
       db.select("SELECT * FROM expenses"),
       db.select("SELECT * FROM goal_contributions"),
       db.select("SELECT * FROM month_debt_payments"),
+      db.select("SELECT * FROM transfers"),
     ]);
 
   const months = monthRows.map((m) => {
@@ -475,6 +505,9 @@ export async function loadFullState() {
       debtPayments: debtPaymentRows
         .filter((d) => d.month_id === m.id)
         .map((d) => ({ id: d.id, debtId: d.debt_id, amount: d.amount, accountId: d.account_id, applied: !!d.applied })),
+      transfers: transferRows
+        .filter((t) => t.month_id === m.id)
+        .map((t) => ({ id: t.id, fromAccountId: t.from_account_id, toAccountId: t.to_account_id, amount: t.amount, note: t.note })),
     };
   });
 

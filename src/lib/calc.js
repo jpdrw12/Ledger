@@ -34,6 +34,13 @@ export function computeLedger(months, accounts) {
     (m.debtPayments || []).forEach((d) => {
       if (outflow[d.accountId] !== undefined) outflow[d.accountId] += Number(d.amount) || 0;
     });
+    // Transfers move money between accounts: debit the source, credit the
+    // destination. Net-zero to the consolidated total.
+    (m.transfers || []).forEach((t) => {
+      const amt = Number(t.amount) || 0;
+      if (outflow[t.fromAccountId] !== undefined) outflow[t.fromAccountId] += amt;
+      if (inflow[t.toAccountId] !== undefined) inflow[t.toAccountId] += amt;
+    });
 
     const byAccount = {};
     accounts.forEach((a) => {
@@ -67,6 +74,66 @@ export function computeLedger(months, accounts) {
   });
 
   return result;
+}
+
+// Projects `count` future months by reusing computeLedger over synthetic
+// months. Each projected month repeats the most recent real month's income
+// (both pay slots + additions), the recurring auto-add bills at their default
+// amounts, and a single "Projected spending" expense equal to the average of
+// the last `expenseLookback` real months' total expenses. Pure — no I/O, and
+// the synthetic months are never persisted. Returns the combined month list,
+// the ledger over all of them, and the ids of the projected months.
+export function projectLedger(months, accounts, bills, { count = 6, expenseLookback = 3 } = {}) {
+  const real = months || [];
+  if (real.length === 0 || count <= 0) {
+    return { months: real, ledger: computeLedger(real, accounts), projectedIds: [] };
+  }
+
+  const last = real[real.length - 1];
+  const primaryAccount = accounts[0]?.id ?? null;
+
+  // Average total expenses across the last few real months.
+  const lookback = real.slice(-Math.max(1, expenseLookback));
+  const avgExpense =
+    lookback.reduce((s, m) => {
+      const e = [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])];
+      return s + e.reduce((t, x) => t + (Number(x.amount) || 0), 0);
+    }, 0) / lookback.length;
+
+  // Recurring bills: one synthetic payment per slot the template feeds.
+  const recurringBills = [];
+  (bills || []).filter((b) => b.autoAdd).forEach((b) => {
+    const slots = [b.addToSlot1 && 1, b.addToSlot2 && 2].filter(Boolean);
+    // Fall back to the bill's old single default_slot if neither flag is set.
+    const effective = slots.length ? slots : [b.defaultSlot || 1];
+    effective.forEach((slot) => {
+      recurringBills.push({ id: `f-bill-${b.id}-${slot}`, billId: b.id, amountPaid: Number(b.defaultAmount) || 0, paid: false, accountId: primaryAccount, slot });
+    });
+  });
+
+  const projected = [];
+  let label = last.monthLabel;
+  for (let i = 1; i <= count; i++) {
+    const next = nextMonthLabel(label);
+    const parseable = next !== label; // unchanged means the label didn't parse
+    label = next;
+    projected.push({
+      id: `forecast-${i}`,
+      monthLabel: parseable ? next : `Forecast +${i}`,
+      sequence: (last.sequence || real.length) + i,
+      pay1: { income: Number(last.pay1.income) || 0, incomeAccountId: last.pay1.incomeAccountId, additions: (last.pay1.additions || []).map((a) => ({ ...a })) },
+      pay2: { income: Number(last.pay2.income) || 0, incomeAccountId: last.pay2.incomeAccountId, additions: (last.pay2.additions || []).map((a) => ({ ...a })) },
+      billPayments: recurringBills.map((bp) => ({ ...bp, id: `${bp.id}-m${i}` })),
+      expensesPay1: avgExpense > 0 ? [{ id: `f-exp-${i}`, category: "Projected spending", amount: avgExpense, tag: null, accountId: primaryAccount }] : [],
+      expensesPay2: [],
+      goalContributions: [],
+      debtPayments: [],
+      transfers: [],
+    });
+  }
+
+  const all = [...real, ...projected];
+  return { months: all, ledger: computeLedger(all, accounts), projectedIds: projected.map((m) => m.id) };
 }
 
 export function computeGoalBalances(goals, months) {
@@ -198,6 +265,14 @@ export function buildLedgerCsv(state, ledger) {
     (m.debtPayments || []).forEach((d) => {
       const debt = state.debts.find((x) => x.id === d.debtId);
       rows.push([m.monthLabel, "Debt payment", debt?.name || "Debt", accountName(d.accountId), "", -(Number(d.amount) || 0)]);
+    });
+    // Transfers export as a balanced pair so the CSV still sums to zero across
+    // the move: a debit on the source and a credit on the destination.
+    (m.transfers || []).forEach((t) => {
+      const amt = Number(t.amount) || 0;
+      const label = t.note || "Transfer";
+      rows.push([m.monthLabel, "Transfer out", label, accountName(t.fromAccountId), "", -amt]);
+      rows.push([m.monthLabel, "Transfer in", label, accountName(t.toAccountId), "", amt]);
     });
     if (ledger[m.id]) rows.push([m.monthLabel, "Ending balance", "Consolidated", "", "", ledger[m.id].consolidatedCarryOut]);
   });

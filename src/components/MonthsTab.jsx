@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload } from "lucide-react";
+import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, ArrowLeftRight, ArrowRight } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, computeDueDate, parseExpensesCsv } from "../lib/calc.js";
 import { importTextFile } from "../lib/backup.js";
@@ -443,6 +443,26 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     onChanged();
   };
 
+  const addTransfer = async () => {
+    // Default to the first two distinct accounts so the row is usable immediately.
+    await db.addTransfer(month.id, {
+      fromAccountId: accounts[0]?.id,
+      toAccountId: accounts[1]?.id || accounts[0]?.id,
+      amount: 0,
+      note: "",
+    });
+    onChanged();
+  };
+  const updateTransfer = async (t, patch) => {
+    onPatch((s) => patchMonthRow(s, month.id, t.id, patch, ["transfers"]));
+    await db.updateTransfer(t.id, { fromAccountId: t.fromAccountId, toAccountId: t.toAccountId, amount: t.amount, note: t.note, ...patch });
+    onChanged();
+  };
+  const removeTransfer = async (id) => {
+    await db.deleteTransfer(id);
+    onChanged();
+  };
+
   return (
     <div className={`stub ${isOpen ? "open" : ""}`}>
       <div className="stub-head" onClick={onToggle}>
@@ -615,6 +635,35 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               </button>
             ))}
           </div>
+
+          <h4 className="block-title"><ArrowLeftRight size={13} /> Transfers <span className="block-hint">— move money between accounts; nets to zero overall</span></h4>
+          <div className="scroll-panel">
+            {(month.transfers || []).map((t) => {
+              const sameAccount = t.fromAccountId && t.fromAccountId === t.toAccountId;
+              return (
+                <div className="ledger-row transfer-row" key={t.id}>
+                  <AccountSelect accounts={accounts} value={t.fromAccountId} onChange={(v) => updateTransfer(t, { fromAccountId: v })} />
+                  <ArrowRight size={13} className={sameAccount ? "transfer-arrow warn" : "transfer-arrow"} />
+                  <AccountSelect accounts={accounts} value={t.toAccountId} onChange={(v) => updateTransfer(t, { toAccountId: v })} />
+                  <input className="text-input tag-input" placeholder="Note" defaultValue={t.note || ""} onBlur={(ev) => updateTransfer(t, { note: ev.target.value })} />
+                  <input className="amount-input" type="number" defaultValue={t.amount} onBlur={(ev) => updateTransfer(t, { amount: parseNumberInput(ev, t.amount) })} />
+                  <button className="icon-btn" onClick={() => removeTransfer(t.id)}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              );
+            })}
+            {(month.transfers || []).length === 0 && <p className="empty small scroll-panel-empty">No transfers logged yet.</p>}
+          </div>
+          {accounts.length >= 2 ? (
+            <div className="quick-add">
+              <button className="chip" onClick={addTransfer}>
+                <ArrowLeftRight size={11} /> Add transfer
+              </button>
+            </div>
+          ) : (
+            <p className="empty small">Add a second account to move money between accounts.</p>
+          )}
 
           <div className="sticky-totals">
             <div className="ledger-row totals-row">

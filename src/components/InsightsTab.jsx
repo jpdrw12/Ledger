@@ -1,30 +1,40 @@
 import React, { useState } from "react";
 import { Download, TrendingUp, Receipt, Target, Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
-import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, money } from "../lib/calc.js";
+import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
 import { useToast } from "./Toast.jsx";
 
 // Inline SVG line chart of consolidated ending balance over time. No deps.
-function Sparkline({ series }) {
+// `projectedIds` (optional) marks forecast points: their line is drawn dashed
+// from the last real point onward, and a divider marks where the future starts.
+function Sparkline({ series, projectedIds }) {
   const W = 640, H = 120, pad = 8;
   if (series.length < 2) return <p className="empty small">Need at least two months to chart a trend.</p>;
 
+  const proj = projectedIds || new Set();
   const values = series.map((s) => s.value);
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const span = max - min || 1;
   const x = (i) => pad + (i * (W - 2 * pad)) / (series.length - 1);
   const y = (v) => H - pad - ((v - min) / span) * (H - 2 * pad);
-  const points = series.map((s, i) => `${x(i)},${y(s.value)}`).join(" ");
   const zeroY = y(0);
+
+  const firstProj = series.findIndex((s) => proj.has(s.id));
+  const pt = (s, i) => `${x(i)},${y(s.value)}`;
+  const realLine = (firstProj === -1 ? series : series.slice(0, firstProj)).map((s, i) => pt(s, i)).join(" ");
+  // Projected line starts at the last real point so the dashed segment connects.
+  const projLine = firstProj <= 0 ? "" : series.slice(firstProj - 1).map((s, k) => pt(s, firstProj - 1 + k)).join(" ");
 
   return (
     <svg className="sparkline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Ending balance trend">
       <line x1={pad} y1={zeroY} x2={W - pad} y2={zeroY} className="spark-zero" />
-      <polyline className="spark-line" points={points} fill="none" />
+      {firstProj > 0 && <line x1={x(firstProj - 1)} y1={pad} x2={x(firstProj - 1)} y2={H - pad} className="spark-divider" />}
+      <polyline className="spark-line" points={realLine} fill="none" />
+      {projLine && <polyline className="spark-line spark-line-projected" points={projLine} fill="none" />}
       {series.map((s, i) => (
-        <circle key={s.id} cx={x(i)} cy={y(s.value)} r="3" className={s.value < 0 ? "spark-dot deficit-dot" : "spark-dot"}>
+        <circle key={s.id} cx={x(i)} cy={y(s.value)} r="3" className={`${s.value < 0 ? "spark-dot deficit-dot" : "spark-dot"}${proj.has(s.id) ? " spark-dot-projected" : ""}`}>
           <title>{`${s.label}: ${money(s.value)}`}</title>
         </circle>
       ))}
@@ -36,8 +46,18 @@ function InsightsTab({ state, ledger, onChanged }) {
   const { toast } = useToast();
   const [newCat, setNewCat] = useState("");
   const [newAmt, setNewAmt] = useState("");
+  const [horizon, setHorizon] = useState(6);
   const categories = spendingByCategory(state.months);
   const series = monthlyEndingBalances(state.months, ledger);
+
+  // Forecast: projected months appended after the real ones (never persisted).
+  const forecast = projectLedger(state.months, state.accounts, state.bills, { count: horizon });
+  const forecastSeries = monthlyEndingBalances(forecast.months, forecast.ledger);
+  const projectedSet = new Set(forecast.projectedIds);
+  const projectedRows = forecast.months
+    .filter((m) => projectedSet.has(m.id))
+    .map((m) => ({ id: m.id, label: m.monthLabel, value: forecast.ledger[m.id].consolidatedCarryOut }));
+  const firstNegative = projectedRows.find((r) => r.value < 0);
   const totalSpend = categories.reduce((s, c) => s + c.total, 0);
   const maxCat = categories.length ? Math.max(...categories.map((c) => c.total)) : 0;
 
@@ -110,6 +130,43 @@ function InsightsTab({ state, ledger, onChanged }) {
             <span>{series[0].label}: <span className="mono">{money(series[0].value)}</span></span>
             <span>{series[series.length - 1].label}: <span className="mono">{money(series[series.length - 1].value)}</span></span>
           </div>
+        )}
+      </div>
+
+      <h4 className="block-title">
+        <TrendingUp size={13} /> Forecast
+        <span className="block-hint">— projected from repeating income, auto-add bills, and recent average spending</span>
+      </h4>
+      <div className="insight-card">
+        {state.months.length === 0 ? (
+          <p className="empty small">Add a month to project a forecast.</p>
+        ) : (
+          <>
+            <div className="backup-folder" style={{ marginTop: 0 }}>
+              <span className="small-label" style={{ flex: 1 }}>Project ahead</span>
+              <select value={horizon} onChange={(e) => setHorizon(Number(e.target.value))}>
+                {[3, 6, 12].map((n) => (
+                  <option key={n} value={n}>{n} months</option>
+                ))}
+              </select>
+            </div>
+            <Sparkline series={forecastSeries} projectedIds={projectedSet} />
+            <div className="forecast-table">
+              {projectedRows.map((r) => (
+                <div className="ledger-row" key={r.id}>
+                  <span className="row-name">{r.label}</span>
+                  <span className={`mono ${r.value < 0 ? "deficit" : "surplus"}`}>{money(r.value)}</span>
+                </div>
+              ))}
+            </div>
+            {firstNegative ? (
+              <p className="empty small" style={{ color: "var(--deficit)" }}>
+                Projected to go negative in {firstNegative.label} ({money(firstNegative.value)}).
+              </p>
+            ) : (
+              <p className="empty small">Projected to stay positive through the next {horizon} months.</p>
+            )}
+          </>
         )}
       </div>
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeLedger,
+  projectLedger,
   computeGoalBalances,
   latestAccountBalances,
   money,
@@ -110,6 +111,27 @@ describe("computeLedger", () => {
     expect(ledger.m1.byAccount.a.carryOut).toBe(100);
   });
 
+  // Transfers move money between accounts without changing the consolidated total.
+  it("shifts balance between accounts on a transfer, net-zero to the total", () => {
+    const month = makeMonth("m1", {
+      transfers: [{ id: "t1", fromAccountId: "a", toAccountId: "b", amount: 40 }],
+    });
+    const ledger = computeLedger([month], [ACCT_A, ACCT_B]);
+    expect(ledger.m1.byAccount.a.carryOut).toBe(60); // 100 - 40
+    expect(ledger.m1.byAccount.b.carryOut).toBe(90); // 50 + 40
+    expect(ledger.m1.consolidatedCarryOut).toBe(150); // unchanged
+  });
+
+  it("ignores a transfer referencing an unknown account", () => {
+    const month = makeMonth("m1", {
+      transfers: [{ id: "t1", fromAccountId: "a", toAccountId: "ghost", amount: 40 }],
+    });
+    const ledger = computeLedger([month], [ACCT_A, ACCT_B]);
+    // Source still debited; credit to a non-existent account is dropped.
+    expect(ledger.m1.byAccount.a.carryOut).toBe(60);
+    expect(ledger.m1.consolidatedCarryOut).toBe(110);
+  });
+
   // A dual-slot bill produces an independent bill_payment in each pay slot.
   // The ledger sums every bill payment regardless of slot, so both must hit
   // the account — slot is a presentation concern only.
@@ -124,6 +146,36 @@ describe("computeLedger", () => {
     expect(ledger.m1.totalBills).toBe(600);
     // 100 starting - 300 - 300 = -500
     expect(ledger.m1.byAccount.a.carryOut).toBe(-500);
+  });
+});
+
+describe("projectLedger", () => {
+  const acct = [{ id: "a", startingBalance: 1000 }];
+  const realMonth = makeMonth("m1", {
+    monthLabel: "June 2026",
+    sequence: 1,
+    pay1: { income: 4000, incomeAccountId: "a", additions: [] },
+    pay2: { income: 0, incomeAccountId: "a", additions: [] },
+    billPayments: [{ billId: "b1", accountId: "a", amountPaid: 1000, slot: 1 }],
+    expensesPay1: [{ category: "Food", amount: 500, accountId: "a" }],
+  });
+  const bills = [{ id: "b1", name: "Rent", autoAdd: true, addToSlot1: true, addToSlot2: false, defaultAmount: 1000 }];
+
+  it("appends synthetic months that repeat income, bills, and average spend", () => {
+    const { months, ledger, projectedIds } = projectLedger([realMonth], acct, bills, { count: 3 });
+    expect(projectedIds).toHaveLength(3);
+    expect(months).toHaveLength(4);
+    // Each projected month: +4000 income - 1000 bill - 500 avg expense = +2500.
+    // Real month m1 ends at 1000 + 4000 - 1000 - 500 = 3500.
+    expect(ledger.m1.consolidatedCarryOut).toBe(3500);
+    expect(ledger["forecast-1"].consolidatedCarryOut).toBe(6000);
+    expect(ledger["forecast-3"].consolidatedCarryOut).toBe(11000);
+  });
+
+  it("returns an empty projection when there are no real months", () => {
+    const res = projectLedger([], acct, bills, { count: 3 });
+    expect(res.projectedIds).toEqual([]);
+    expect(res.months).toEqual([]);
   });
 });
 
