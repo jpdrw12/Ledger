@@ -16,6 +16,20 @@ npm run dev           # Vite only, no Tauri window — useful for fast UI iterat
                       # but db.js calls will fail outside the Tauri runtime
 ```
 
+**Releasing.** After committing a version bump:
+
+```bash
+./bump-version.sh [patch|minor|major]   # sync version across all files
+# commit the bump
+./tag-release.sh      # tag v<version> + push → triggers the Release CI (.deb/.rpm/.AppImage)
+./install-latest.sh   # waits for CI to publish the .deb, then installs it locally (sudo)
+```
+
+`install-latest.sh` polls the GitHub Release for the matching tag's `.deb`,
+so it's safe to run right after tagging while CI is still building; it
+no-ops if that version is already installed. Pass a tag to override, e.g.
+`./install-latest.sh v0.3.1`.
+
 There's no test suite yet. Validate JS/JSX changes with esbuild before
 assuming they're correct, since there's no Rust toolchain feedback loop
 in a quick edit-save cycle:
