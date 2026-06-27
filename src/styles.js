@@ -2,6 +2,7 @@ export const css = `
   * { box-sizing: border-box; }
   body { margin: 0; }
   :root {
+    color-scheme: light;
     --paper: #E9EEE3;
     --paper-line: #C3D0B7;
     --ink: #1E2B22;
@@ -10,8 +11,18 @@ export const css = `
     --surplus: #2E6B4D;
     --deficit: #A93E2C;
     --card: #F3F6EE;
+    --warn-bg: #FBF3E0;
+    --warn-line: #E8D6A8;
+    /* Fixed brand accent — identical in both themes so primary buttons and
+       accent cards keep their contrast instead of inverting with --ink. */
+    --accent: #2E6B4D;
+    --accent-hover: #21503A;
+    --accent-ink: #FFFFFF;
   }
   :root[data-theme="dark"] {
+    /* color-scheme tells the engine to render native controls (select
+       popups, checkboxes, range slider, date pickers, scrollbars) dark. */
+    color-scheme: dark;
     --paper: #181D19;
     --paper-line: #36423A;
     --ink: #E4EAE0;
@@ -20,6 +31,8 @@ export const css = `
     --surplus: #6FCF97;
     --deficit: #E07A68;
     --card: #222923;
+    --warn-bg: #2E2716;
+    --warn-line: #4A3D1E;
   }
   :root[data-theme="dark"] body { background: #181D19; }
   :root[data-theme="dark"] input,
@@ -32,14 +45,10 @@ export const css = `
   :root[data-theme="dark"] .pay-block,
   :root[data-theme="dark"] .progress-track,
   :root[data-theme="dark"] .cat-bar-track,
-  :root[data-theme="dark"] .balance-chip,
+  :root[data-theme="dark"] .balance-chip:not(.consolidated),
+  :root[data-theme="dark"] .check,
   :root[data-theme="dark"] .chip { background: #11150F; }
   :root[data-theme="dark"] .month-title-input:focus { background: #11150F; }
-  /* Consolidated/accent cards use var(--ink) as a dark background in light
-     mode; in dark mode --ink is light, so pin them to a fixed dark accent. */
-  :root[data-theme="dark"] .balance-chip.consolidated,
-  :root[data-theme="dark"] .consolidated-card,
-  :root[data-theme="dark"] .networth-card.networth-total { background: #2C3A30; border-color: #3A4D40; }
   .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; padding: 24px 20px 60px; }
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
 
@@ -55,7 +64,7 @@ export const css = `
 
   .balance-strip { display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
   .balance-chip { display:flex; flex-direction:column; gap:2px; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:8px 14px; min-width:140px; }
-  .balance-chip.consolidated { background:var(--ink); border-color:var(--ink); }
+  .balance-chip.consolidated { background:var(--accent); border-color:var(--accent); }
   .balance-chip.consolidated .balance-chip-label { color:#C3D0B7; }
   .balance-chip.consolidated .surplus { color:#9FE3BC; }
   .balance-chip.consolidated .deficit { color:#F2A38F; }
@@ -68,8 +77,8 @@ export const css = `
   .section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
   .section-head h2 { font-family: Georgia, serif; font-size:19px; margin:0; }
 
-  .btn-primary { display:flex; align-items:center; gap:6px; background:var(--ink); color:var(--paper); border:none; padding:8px 13px; border-radius:3px; cursor:pointer; font-size:13px; }
-  .btn-primary:hover { background: var(--ink-soft); }
+  .btn-primary { display:flex; align-items:center; gap:6px; background:var(--accent); color:var(--accent-ink); border:none; padding:8px 13px; border-radius:3px; cursor:pointer; font-size:13px; }
+  .btn-primary:hover { background: var(--accent-hover); }
   .btn-secondary { display:flex; align-items:center; gap:6px; background:none; border:1px dashed var(--ink-soft); color:var(--ink-soft); padding:6px 12px; border-radius:3px; cursor:pointer; font-size:12.5px; margin-top:6px; }
   .btn-secondary:hover { border-color: var(--ink); color: var(--ink); }
   .icon-btn { background:none; border:none; cursor:pointer; color:var(--ink-soft); padding:4px; display:flex; }
@@ -87,8 +96,8 @@ export const css = `
   .stub-summary { display:flex; gap:6px; margin-right:12px; }
   .stub-summary-chip { font-size:11px; color:var(--ink-soft); background:var(--paper); border:1px solid var(--paper-line); border-radius:10px; padding:2px 8px; font-family:ui-monospace, monospace; }
 
-  .btn-apply-debt { font-size:11px; padding:3px 8px; background:var(--ink); color:var(--paper); border:none; border-radius:3px; cursor:pointer; white-space:nowrap; }
-  .btn-apply-debt:hover { background:var(--ink-soft); }
+  .btn-apply-debt { font-size:11px; padding:3px 8px; background:var(--accent); color:var(--accent-ink); border:none; border-radius:3px; cursor:pointer; white-space:nowrap; }
+  .btn-apply-debt:hover { background:var(--accent-hover); }
   .debt-applied-badge { display:flex; align-items:center; gap:3px; font-size:11px; color:var(--surplus); white-space:nowrap; }
 
   .sticky-totals { background:var(--card); border-top:1px solid var(--paper-line); padding-top:4px; margin-top:16px; }
@@ -169,12 +178,20 @@ export const css = `
   .chip:hover { border-color: var(--stamp); }
 
   .card-list { display:flex; flex-direction:column; gap:10px; }
-  .bill-card { display:grid; grid-template-columns:1fr 1fr 60px 90px 80px 100px 36px 28px; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }
+  .bill-card { display:grid; grid-template-columns:1fr 1fr 60px 90px 120px 100px 36px 28px; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }
   .bill-card-header { background:none; border:none; font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:0 10px; }
   .bill-card select { padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:12.5px; width:100%; }
+  .slot-checks { display:flex; flex-direction:column; gap:2px; font-size:11.5px; color:var(--ink-soft); }
+  .slot-checks label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+  .slot-checks input { cursor:pointer; }
+  .bill-group { margin-bottom:6px; }
+  .bill-group-head { display:flex; align-items:center; gap:8px; padding:8px 10px; cursor:pointer; user-select:none; font-weight:600; font-size:13px; }
+  .bill-group-head:hover { background:var(--card); border-radius:3px; }
+  .bill-group-name { flex:1; }
+  .bill-group-count { font-size:11px; color:var(--ink-soft); background:var(--card); border:1px solid var(--paper-line); border-radius:10px; padding:1px 8px; }
 
   .goal-card, .debt-card { background:var(--card); border:1px solid var(--paper-line); border-radius:2px; padding:14px; }
-  .consolidated-card { background:var(--ink); border-color:var(--ink); color:#fff; }
+  .consolidated-card { background:var(--accent); border-color:var(--accent); color:#fff; }
   .consolidated-card .amount.surplus { color:#9FE3BC; }
   .consolidated-card .amount.deficit { color:#F2A38F; }
   .debt-top { display:flex; gap:8px; align-items:center; margin-bottom:4px; }
@@ -191,7 +208,7 @@ export const css = `
   .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:14px; margin-bottom:18px; }
   .networth-row { display:flex; align-items:stretch; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
   .networth-card { display:flex; flex-direction:column; gap:4px; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:10px 16px; min-width:120px; }
-  .networth-card.networth-total { background:var(--ink); border-color:var(--ink); }
+  .networth-card.networth-total { background:var(--accent); border-color:var(--accent); }
   .networth-total .networth-label { color:#C3D0B7; }
   .networth-total .surplus { color:#9FE3BC; }
   .networth-total .deficit { color:#F2A38F; }
@@ -228,7 +245,7 @@ export const css = `
   .backup-group-count { font-family: ui-monospace, monospace; font-size:11px; color:var(--ink-soft); background:var(--card); border:1px solid var(--paper-line); border-radius:10px; padding:1px 8px; }
   .backup-archive-icon { color:var(--ink-soft); }
   .retention-toggle { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft); cursor:pointer; }
-  .due-date-hint { font-size:12px; color:var(--stamp); background:#FBF3E0; border:1px solid #E8D6A8; border-radius:3px; padding:6px 10px; margin:10px 0 0; }
+  .due-date-hint { font-size:12px; color:var(--stamp); background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:3px; padding:6px 10px; margin:10px 0 0; }
   .month-toolbar { display:flex; gap:8px; margin:10px 0 0; }
   .month-toolbar .btn-secondary { margin-top:0; }
   .saving-pill { position:fixed; top:12px; right:14px; z-index:50; background:var(--ink); color:var(--paper); font-size:12px; padding:5px 12px; border-radius:12px; opacity:0.9; box-shadow:0 1px 4px rgba(0,0,0,0.2); }

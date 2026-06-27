@@ -133,12 +133,19 @@ export default function App() {
   const [retention, setRetentionState] = useState(getRetention());
   const [busy, setBusy] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
+  const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("ledger.theme", theme);
   }, [theme]);
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+  // Scale the whole UI via CSS zoom (reflows layout, unlike transform:scale).
+  useEffect(() => {
+    document.documentElement.style.zoom = uiScale / 100;
+    localStorage.setItem("ledger.uiScale", String(uiScale));
+  }, [uiScale]);
 
   const reload = useCallback(async () => {
     setBusy(true);
@@ -223,6 +230,7 @@ export default function App() {
         amountPaid: bp.amountPaid,
         accountId: bp.accountId,
         dueDate: bill ? computeDueDate(targetMonthLabel, bill.dueDay) : bp.dueDate,
+        slot: bp.slot,
       });
     }
   };
@@ -236,12 +244,17 @@ export default function App() {
     // is the way to duplicate a specific month's exact bill setup.
     const autoAddBills = state.bills.filter((b) => b.autoAdd);
     for (const bill of autoAddBills) {
-      await db.addBillPayment(monthId, {
-        billId: bill.id,
-        amountPaid: bill.defaultAmount,
-        accountId: state.accounts[0]?.id,
-        dueDate: computeDueDate(label, bill.dueDay),
-      });
+      // A bill can target both pay slots — add an independent payment per slot.
+      const slots = [bill.addToSlot1 && 1, bill.addToSlot2 && 2].filter(Boolean);
+      for (const slot of slots) {
+        await db.addBillPayment(monthId, {
+          billId: bill.id,
+          amountPaid: bill.defaultAmount,
+          accountId: state.accounts[0]?.id,
+          dueDate: computeDueDate(label, bill.dueDay),
+          slot,
+        });
+      }
     }
     await reload();
     setOpenMonth(monthId);
@@ -524,6 +537,9 @@ export default function App() {
         <SettingsTab
           theme={theme}
           onToggleTheme={toggleTheme}
+          uiScale={uiScale}
+          onScaleChange={setUiScale}
+          onResetScale={() => setUiScale(75)}
           mirrorFolder={mirrorFolder}
           onChooseFolder={handleChooseFolder}
           onClearFolder={handleClearFolder}

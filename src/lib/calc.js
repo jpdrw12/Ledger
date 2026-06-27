@@ -182,7 +182,7 @@ export function buildLedgerCsv(state, ledger) {
     const billName = (bp) => (state.bills.find((b) => b.id === bp.billId) || {}).name || "Bill";
     m.billPayments.forEach((bp) => {
       const bill = state.bills.find((b) => b.id === bp.billId);
-      rows.push([m.monthLabel, "Bill", billName(bp), accountName(bp.accountId), bill?.defaultSlot ?? "", -(Number(bp.amountPaid) || 0)]);
+      rows.push([m.monthLabel, "Bill", billName(bp), accountName(bp.accountId), bp.slot ?? bill?.defaultSlot ?? "", -(Number(bp.amountPaid) || 0)]);
     });
     [["1", m.expensesPay1], ["2", m.expensesPay2]].forEach(([slot, list]) => {
       (list || []).forEach((e) => rows.push([m.monthLabel, "Expense", e.category || "Uncategorized", accountName(e.accountId), slot, -(Number(e.amount) || 0)]));

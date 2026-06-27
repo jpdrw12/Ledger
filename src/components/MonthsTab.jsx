@@ -131,10 +131,10 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
   const slotBills = (type) =>
     billPayments.filter((bp) => {
       const bill = bills.find((b) => b.id === bp.billId);
-      return bill && bill.defaultSlot === slot && (bill.paymentType || "manual") === type;
+      return bill && (bp.slot || 1) === slot && (bill.paymentType || "manual") === type;
     });
 
-  const slotQuickAddBills = bills.filter((b) => b.defaultSlot === slot);
+  const slotQuickAddBills = bills.filter((b) => (slot === 1 ? b.addToSlot1 : b.addToSlot2));
 
   const renderBillRow = (bp) => {
     const bill = bills.find((b) => b.id === bp.billId);
@@ -221,7 +221,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
           {slotQuickAddBills.length > 0 && (
             <div className="quick-add">
               {slotQuickAddBills.map((b) => (
-                <button key={b.id} className="chip" onClick={() => onAddBillPayment(b)}>
+                <button key={b.id} className="chip" onClick={() => onAddBillPayment(b, slot)}>
                   {b.paymentType === "auto" ? <Zap size={11} /> : <Hand size={11} />} {b.name}
                 </button>
               ))}
@@ -330,12 +330,13 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
   // A custom label (e.g. "House Move") silently leaves them blank.
   const dueDatesWontFill = computeDueDate(month.monthLabel, 1) === "";
 
-  const addBillPayment = async (bill) => {
+  const addBillPayment = async (bill, slot) => {
     await db.addBillPayment(month.id, {
       billId: bill.id,
       amountPaid: bill.defaultAmount,
       accountId: accounts[0]?.id,
       dueDate: computeDueDate(month.monthLabel, bill.dueDay),
+      slot,
     });
     onChanged();
   };

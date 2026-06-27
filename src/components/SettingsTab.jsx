@@ -1,10 +1,14 @@
 import React from "react";
 import { FolderSync, Trash2, Archive, Sun, Moon } from "lucide-react";
 
+const SCALE_OPTIONS = [50, 60, 70, 75, 80, 90, 100, 110, 125, 150];
+const DEFAULT_SCALE = 75;
+
 // Consolidated preferences: theme, offsite backup folder, and the
 // auto-archive retention policy. All state lives in App; this is presentation.
 function SettingsTab({
   theme, onToggleTheme,
+  uiScale, onScaleChange, onResetScale,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
 }) {
@@ -23,6 +27,17 @@ function SettingsTab({
           </span>
           <button className="btn-secondary" onClick={onToggleTheme}>
             Switch to {theme === "dark" ? "light" : "dark"}
+          </button>
+        </div>
+        <div className="backup-folder" style={{ marginTop: 10 }}>
+          <span className="small-label" style={{ flex: 1 }}>UI scale</span>
+          <select value={uiScale} onChange={(e) => onScaleChange(Number(e.target.value))}>
+            {SCALE_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}%{s === DEFAULT_SCALE ? " (default)" : ""}</option>
+            ))}
+          </select>
+          <button className="btn-secondary" onClick={onResetScale} disabled={uiScale === DEFAULT_SCALE}>
+            Reset to default
           </button>
         </div>
       </div>

@@ -34,6 +34,12 @@ fn main() {
             sql: include_str!("../migrations/0005_category_budgets.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "bill_dual_slot",
+            sql: include_str!("../migrations/0006_bill_dual_slot.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

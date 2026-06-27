@@ -90,6 +90,8 @@ export async function getBills() {
     category: r.category,
     defaultAmount: r.default_amount,
     defaultSlot: r.default_slot,
+    addToSlot1: r.add_to_slot1 === 1,
+    addToSlot2: r.add_to_slot2 === 1,
     dueDay: r.due_day,
     paymentType: r.payment_type,
     autoAdd: r.auto_add === 1,
@@ -100,11 +102,11 @@ export async function upsertBill(bill) {
   const db = await getDb();
   const id = bill.id || uid();
   await db.execute(
-    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, payment_type, auto_add)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, payment_type, auto_add, add_to_slot1, add_to_slot2)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT(id) DO UPDATE SET
-       name = $2, category = $3, default_amount = $4, default_slot = $5, due_day = $6, payment_type = $7, auto_add = $8`,
-    [id, bill.name, bill.category, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0]
+       name = $2, category = $3, default_amount = $4, default_slot = $5, due_day = $6, payment_type = $7, auto_add = $8, add_to_slot1 = $9, add_to_slot2 = $10`,
+    [id, bill.name, bill.category, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0, bill.addToSlot1 ? 1 : 0, bill.addToSlot2 ? 1 : 0]
   );
   return id;
 }
@@ -244,13 +246,13 @@ export async function deleteAddition(id) {
   await db.execute("DELETE FROM additions WHERE id = $1", [id]);
 }
 
-export async function addBillPayment(monthId, { billId, amountPaid, accountId, dueDate }) {
+export async function addBillPayment(monthId, { billId, amountPaid, accountId, dueDate, slot }) {
   const db = await getDb();
   const id = uid();
   await db.execute(
-    `INSERT INTO bill_payments (id, month_id, bill_id, amount_paid, paid, account_id, due_date)
-     VALUES ($1, $2, $3, $4, 0, $5, $6)`,
-    [id, monthId, billId, amountPaid || 0, accountId || null, dueDate || null]
+    `INSERT INTO bill_payments (id, month_id, bill_id, amount_paid, paid, account_id, due_date, slot)
+     VALUES ($1, $2, $3, $4, 0, $5, $6, $7)`,
+    [id, monthId, billId, amountPaid || 0, accountId || null, dueDate || null, slot || 1]
   );
   return id;
 }
@@ -459,6 +461,7 @@ export async function loadFullState() {
           paid: !!bp.paid,
           accountId: bp.account_id,
           dueDate: bp.due_date,
+          slot: bp.slot,
         })),
       expensesPay1: expenseRows
         .filter((e) => e.month_id === m.id && e.slot === 1)
