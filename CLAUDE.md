@@ -30,6 +30,16 @@ so it's safe to run right after tagging while CI is still building; it
 no-ops if that version is already installed. Pass a tag to override, e.g.
 `./install-latest.sh v0.3.1`.
 
+**Unattended install.** The script always downloads to a fixed path
+(`.deb-cache/latest.deb`, gitignored) and installs with a fixed `apt-get`
+command. Run `./setup-autoupdate-sudoers.sh` **once** to add a narrow
+`NOPASSWD` sudoers rule (`/etc/sudoers.d/ledger-update`) scoped to *only*
+that one install command — no password is stored anywhere. After that,
+`install-latest.sh` installs with no prompt (e.g. it can run unattended in
+CI or a background task). Without the rule it falls back to an interactive
+`sudo` prompt, which needs a real terminal. Undo with
+`sudo rm /etc/sudoers.d/ledger-update`.
+
 There's no test suite yet. Validate JS/JSX changes with esbuild before
 assuming they're correct, since there's no Rust toolchain feedback loop
 in a quick edit-save cycle:
