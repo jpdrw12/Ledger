@@ -136,11 +136,20 @@ export default function App() {
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
   const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
 
+  // theme is "light" | "dark" | "system". For "system" we resolve against the
+  // OS preference and keep following it live via the matchMedia listener.
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("ledger.theme", theme);
+    if (theme !== "system") {
+      document.documentElement.setAttribute("data-theme", theme);
+      return;
+    }
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => document.documentElement.setAttribute("data-theme", mq.matches ? "dark" : "light");
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
   }, [theme]);
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
   // Scale the whole UI via CSS zoom (reflows layout, unlike transform:scale).
   useEffect(() => {
@@ -543,7 +552,7 @@ export default function App() {
       {tab === "settings" && (
         <SettingsTab
           theme={theme}
-          onToggleTheme={toggleTheme}
+          onThemeChange={setTheme}
           uiScale={uiScale}
           onScaleChange={setUiScale}
           onResetScale={() => setUiScale(75)}

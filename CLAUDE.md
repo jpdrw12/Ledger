@@ -40,9 +40,14 @@ CI or a background task). Without the rule it falls back to an interactive
 `sudo` prompt, which needs a real terminal. Undo with
 `sudo rm /etc/sudoers.d/ledger-update`.
 
-There's no test suite yet. Validate JS/JSX changes with esbuild before
-assuming they're correct, since there's no Rust toolchain feedback loop
-in a quick edit-save cycle:
+There's a Vitest suite (`src/lib/calc.test.js`, `src/lib/db.test.js`) —
+run it with `npm test`. It covers the pure money math in `calc.js`
+(carry-over, consolidation, dual-slot bills, CSV export) and `db.js`
+mapping. Add cases here when changing that logic.
+
+Separately, validate JS/JSX changes with esbuild before assuming they're
+correct, since there's no Rust toolchain feedback loop in a quick
+edit-save cycle:
 
 ```bash
 npx esbuild src/App.jsx --bundle --loader:.js=jsx --format=esm \
@@ -147,11 +152,14 @@ migrations are append-only.
   project, which can't be scaffolded generically. The plan, including
   the specific 7-day-token-expiry gotcha to avoid, is written out
   there.
-- **Real app icon.**
-- **Tests.** None exist. If adding any, the natural seam is `calc.js` —
-  it's pure functions with no I/O, easiest to unit test, and the part
-  most worth protecting against regressions since it's the actual
-  money math.
+- **Real app icon.** Current icons are placeholder Pillow PNGs; swap with
+  `npm run tauri icon path/to/real-logo.png` when a real one exists.
+- **More test coverage.** A Vitest suite exists (`npm test`) covering
+  `calc.js` money math and `db.js` mapping. `calc.js` is still the natural
+  seam to extend — pure functions, no I/O, and the actual money math.
+- **Cross-platform release builds.** The Release CI (`.github/workflows/
+  release.yml`) only builds Linux artifacts; macOS/Windows runners aren't
+  in the matrix yet.
 
 ## Conventions to keep following
 

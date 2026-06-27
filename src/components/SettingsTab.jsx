@@ -1,5 +1,11 @@
 import React from "react";
-import { FolderSync, Trash2, Archive, Sun, Moon } from "lucide-react";
+import { FolderSync, Trash2, Archive, Sun, Moon, Monitor } from "lucide-react";
+
+const THEMES = [
+  { id: "light", label: "Light", Icon: Sun },
+  { id: "dark", label: "Dark", Icon: Moon },
+  { id: "system", label: "System", Icon: Monitor },
+];
 
 const SCALE_OPTIONS = [50, 60, 70, 75, 80, 90, 100, 110, 125, 150];
 const DEFAULT_SCALE = 75;
@@ -17,7 +23,7 @@ const ACCENTS = [
 // Consolidated preferences: theme, offsite backup folder, and the
 // auto-archive retention policy. All state lives in App; this is presentation.
 function SettingsTab({
-  theme, onToggleTheme,
+  theme, onThemeChange,
   uiScale, onScaleChange, onResetScale,
   accent, onAccentChange,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
@@ -32,13 +38,18 @@ function SettingsTab({
       <h4 className="block-title">Appearance</h4>
       <div className="insight-card">
         <div className="backup-folder">
-          {theme === "dark" ? <Moon size={15} /> : <Sun size={15} />}
-          <span className="small-label" style={{ flex: 1 }}>
-            Theme: {theme === "dark" ? "Dark" : "Light"}
-          </span>
-          <button className="btn-secondary" onClick={onToggleTheme}>
-            Switch to {theme === "dark" ? "light" : "dark"}
-          </button>
+          <span className="small-label" style={{ flex: 1 }}>Theme</span>
+          <div className="seg-group">
+            {THEMES.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                className={"seg-btn" + (theme === id ? " selected" : "")}
+                onClick={() => onThemeChange(id)}
+              >
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="backup-folder" style={{ marginTop: 10 }}>
           <span className="small-label" style={{ flex: 1 }}>UI scale</span>

@@ -109,6 +109,22 @@ describe("computeLedger", () => {
     expect(ledger.m1.totalDebtPayments).toBe(0);
     expect(ledger.m1.byAccount.a.carryOut).toBe(100);
   });
+
+  // A dual-slot bill produces an independent bill_payment in each pay slot.
+  // The ledger sums every bill payment regardless of slot, so both must hit
+  // the account — slot is a presentation concern only.
+  it("counts both payments of a bill assigned to Pay 1 and Pay 2", () => {
+    const month = makeMonth("m1", {
+      billPayments: [
+        { billId: "b1", accountId: "a", amountPaid: 300, slot: 1 },
+        { billId: "b1", accountId: "a", amountPaid: 300, slot: 2 },
+      ],
+    });
+    const ledger = computeLedger([month], [ACCT_A]);
+    expect(ledger.m1.totalBills).toBe(600);
+    // 100 starting - 300 - 300 = -500
+    expect(ledger.m1.byAccount.a.carryOut).toBe(-500);
+  });
 });
 
 describe("computeGoalBalances", () => {
@@ -299,6 +315,22 @@ describe("buildLedgerCsv", () => {
     expect(lines).toContain("June 2026,Income,Pay,EQ Bank,1,2000");
     // ending balance row: 100 + 2000 - 800 - 120 = 1180
     expect(lines).toContain("June 2026,Ending balance,Consolidated,,,1180");
+  });
+
+  it("uses each payment's own slot, not just the template default", () => {
+    const s = {
+      ...state,
+      months: [
+        makeMonth("m1", {
+          monthLabel: "June 2026",
+          // Same Pay-1-default template, but this payment lives in slot 2.
+          billPayments: [{ billId: "b1", accountId: "a", amountPaid: 800, slot: 2 }],
+        }),
+      ],
+    };
+    const ledger = computeLedger(s.months, s.accounts);
+    const lines = buildLedgerCsv(s, ledger).split("\n");
+    expect(lines).toContain("June 2026,Bill,Rent,EQ Bank,2,-800");
   });
 
   it("escapes commas and quotes in category names", () => {

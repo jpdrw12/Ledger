@@ -252,6 +252,11 @@ export const css = `
   .backup-row { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
   .backup-folder { display:flex; align-items:center; gap:10px; margin:10px 0 4px; color:var(--ink-soft); flex-wrap:wrap; }
   .backup-folder .btn-secondary { margin-top:0; }
+  .seg-group { display:flex; gap:0; border:1px solid var(--paper-line); border-radius:4px; overflow:hidden; }
+  .seg-btn { display:flex; align-items:center; gap:5px; padding:6px 11px; background:var(--card); border:none; border-right:1px solid var(--paper-line); cursor:pointer; font-size:12.5px; color:var(--ink-soft); font-family:ui-sans-serif, system-ui; }
+  .seg-btn:last-child { border-right:none; }
+  .seg-btn:hover { color:var(--ink); }
+  .seg-btn.selected { background:var(--accent); color:var(--accent-ink); }
   .swatch-row { display:flex; gap:8px; }
   .swatch { width:26px; height:26px; border-radius:6px; border:2px solid var(--paper-line); cursor:pointer; padding:0; transition:transform 0.08s; }
   .swatch:hover { transform:scale(1.1); }
