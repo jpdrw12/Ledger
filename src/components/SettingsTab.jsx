@@ -3,7 +3,7 @@ import { FolderSync, Trash2, Archive, Sun, Moon } from "lucide-react";
 
 // Consolidated preferences: theme, offsite backup folder, and the
 // auto-archive retention policy. All state lives in App; this is presentation.
-export default function SettingsTab({
+function SettingsTab({
   theme, onToggleTheme,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
@@ -78,3 +78,5 @@ export default function SettingsTab({
     </div>
   );
 }
+
+export default React.memo(SettingsTab);

@@ -5,7 +5,7 @@ import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
-export default function AccountsTab({ accounts, balances, consolidated, onChanged }) {
+function AccountsTab({ accounts, balances, consolidated, onChanged }) {
   const { toast, confirm } = useToast();
   const addAccount = async () => {
     await db.upsertAccount({ name: "New account", startingBalance: 0 });
@@ -86,3 +86,5 @@ export default function AccountsTab({ accounts, balances, consolidated, onChange
     </div>
   );
 }
+
+export default React.memo(AccountsTab);

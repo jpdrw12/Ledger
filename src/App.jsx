@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
@@ -227,7 +227,7 @@ export default function App() {
     }
   };
 
-  const handleAddMonth = async () => {
+  const handleAddMonth = useCallback(async () => {
     const last = state.months[state.months.length - 1];
     const label = last ? nextMonthLabel(last.monthLabel) : "Month 1";
     const sequence = last ? last.sequence + 1 : 1;
@@ -245,9 +245,9 @@ export default function App() {
     }
     await reload();
     setOpenMonth(monthId);
-  };
+  }, [state, reload]);
 
-  const handleCopyForward = async (month) => {
+  const handleCopyForward = useCallback(async (month) => {
     const idx = state.months.findIndex((m) => m.id === month.id);
     const next = state.months[idx + 1];
     if (next) {
@@ -262,16 +262,16 @@ export default function App() {
       await reload();
       setOpenMonth(monthId);
     }
-  };
+  }, [state, reload]);
 
-  const handleReorderMonth = async (month, direction) => {
+  const handleReorderMonth = useCallback(async (month, direction) => {
     const idx = state.months.findIndex((m) => m.id === month.id);
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
     if (swapIdx < 0 || swapIdx >= state.months.length) return;
     const other = state.months[swapIdx];
     await db.swapMonthSequence(month.id, month.sequence, other.id, other.sequence);
     await reload();
-  };
+  }, [state, reload]);
 
   const handleBackup = async () => {
     try {
@@ -402,6 +402,47 @@ export default function App() {
     );
   }
 
+  // Derived values are memoized so they only recompute when their slice of
+  // `state` actually changes — not on every render (tab switch, theme toggle,
+  // the "Saving…" pill). Memoizing also keeps their references stable, which
+  // is what lets React.memo on the tab components skip repaints. These run
+  // before the early `!state` return so hook order stays unconditional; the
+  // guards make them no-ops until the first load completes.
+  const ledger = useMemo(
+    () => (state ? computeLedger(state.months, state.accounts) : null),
+    [state]
+  );
+  const goalBalances = useMemo(
+    () => (state ? computeGoalBalances(state.goals, state.months) : null),
+    [state]
+  );
+  const balances = useMemo(
+    () => (state ? latestAccountBalances(state.accounts, state.months, ledger) : null),
+    [state, ledger]
+  );
+  const consolidated = useMemo(
+    () => (state ? state.accounts.reduce((s, a) => s + (balances[a.id] || 0), 0) : 0),
+    [state, balances]
+  );
+  const { overdue, dueSoon } = useMemo(() => {
+    if (!state) return { overdue: [], dueSoon: [] };
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    return billStatus(state.months, today);
+  }, [state]);
+  const existingTags = useMemo(
+    () =>
+      state
+        ? Array.from(
+            new Set(
+              state.months
+                .flatMap((m) => [...m.expensesPay1, ...m.expensesPay2].map((e) => e.tag).filter(Boolean))
+            )
+          )
+        : [],
+    [state]
+  );
+
   if (!state) {
     return (
       <div className="app">
@@ -410,16 +451,6 @@ export default function App() {
       </div>
     );
   }
-
-  const ledger = computeLedger(state.months, state.accounts);
-  const goalBalances = computeGoalBalances(state.goals, state.months);
-  const balances = latestAccountBalances(state.accounts, state.months, ledger);
-  const consolidated = state.accounts.reduce((s, a) => s + (balances[a.id] || 0), 0);
-  const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
-  const { overdue, dueSoon } = billStatus(state.months, today);
-  const existingTags = Array.from(
-    new Set(state.months.flatMap((m) => [...m.expensesPay1, ...m.expensesPay2].map((e) => e.tag).filter(Boolean)))
-  );
 
   return (
     <div className="app">

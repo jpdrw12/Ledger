@@ -12,7 +12,7 @@ const localToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export default function MonthsTab({
+function MonthsTab({
   months,
   ledger,
   accounts,
@@ -621,3 +621,5 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onRemo
     </div>
   );
 }
+
+export default React.memo(MonthsTab);

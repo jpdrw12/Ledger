@@ -5,7 +5,7 @@ import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
-export default function DebtsTab({ debts, debtHistory, onChanged }) {
+function DebtsTab({ debts, debtHistory, onChanged }) {
   const { confirm } = useToast();
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [monthDraft, setMonthDraft] = useState("This month");
@@ -139,3 +139,5 @@ export default function DebtsTab({ debts, debtHistory, onChanged }) {
     </div>
   );
 }
+
+export default React.memo(DebtsTab);

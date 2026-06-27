@@ -4,7 +4,7 @@ import * as db from "../lib/db.js";
 import { parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
-export default function BillsTab({ bills, onChanged }) {
+function BillsTab({ bills, onChanged }) {
   const { confirm } = useToast();
   const addBill = async () => {
     await db.upsertBill({ name: "New bill", category: "", defaultAmount: 0, defaultSlot: 1, dueDay: 1, paymentType: "manual" });
@@ -87,3 +87,5 @@ export default function BillsTab({ bills, onChanged }) {
     </div>
   );
 }
+
+export default React.memo(BillsTab);

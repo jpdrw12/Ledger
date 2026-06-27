@@ -32,7 +32,7 @@ function Sparkline({ series }) {
   );
 }
 
-export default function InsightsTab({ state, ledger, onChanged }) {
+function InsightsTab({ state, ledger, onChanged }) {
   const { toast } = useToast();
   const [newCat, setNewCat] = useState("");
   const [newAmt, setNewAmt] = useState("");
@@ -188,3 +188,5 @@ export default function InsightsTab({ state, ledger, onChanged }) {
     </div>
   );
 }
+
+export default React.memo(InsightsTab);

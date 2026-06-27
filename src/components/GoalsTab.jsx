@@ -5,7 +5,7 @@ import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
-export default function GoalsTab({ goals, goalBalances, onChanged }) {
+function GoalsTab({ goals, goalBalances, onChanged }) {
   const { confirm } = useToast();
   const addGoal = async () => {
     await db.upsertGoal({ name: "New goal", targetAmount: 0, startingBalance: 0 });
@@ -78,3 +78,5 @@ export default function GoalsTab({ goals, goalBalances, onChanged }) {
     </div>
   );
 }
+
+export default React.memo(GoalsTab);
