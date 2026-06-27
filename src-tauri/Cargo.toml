@@ -1,6 +1,6 @@
 [package]
 name = "ledger-desktop"
-version = "0.3.0"
+version = "0.4.0"
 description = "Household Ledger — local-first desktop budgeting app"
 edition = "2021"
 

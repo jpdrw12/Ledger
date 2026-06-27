@@ -1,20 +1,25 @@
 export const css = `
   * { box-sizing: border-box; }
   body { margin: 0; }
+  /* Theming has two independent axes: Light/Dark (data-theme) sets the
+     lightness ramp, and the color (data-accent) sets --hue, which all the
+     neutral surfaces below derive from via hsl(). Money colors (surplus/
+     deficit) and the warning amber are kept fixed/semantic, not hue-derived. */
   :root {
     color-scheme: light;
-    --paper: #E9EEE3;
-    --paper-line: #C3D0B7;
-    --ink: #1E2B22;
-    --ink-soft: #4B5C49;
+    --hue: 142;                    /* default green; overridden per data-accent */
+    --paper:      hsl(var(--hue) 30% 90%);
+    --card:       hsl(var(--hue) 35% 94%);
+    --paper-line: hsl(var(--hue) 28% 76%);
+    --ink:        hsl(var(--hue) 40% 14%);
+    --ink-soft:   hsl(var(--hue) 22% 36%);
+    --control-bg: #fff;            /* light inputs stay near-white */
     --stamp: #B8862E;
     --surplus: #2E6B4D;
     --deficit: #A93E2C;
-    --card: #F3F6EE;
     --warn-bg: #FBF3E0;
     --warn-line: #E8D6A8;
-    /* Fixed brand accent — identical in both themes so primary buttons and
-       accent cards keep their contrast instead of inverting with --ink. */
+    /* Accent is hand-tuned per color theme below (green by default here). */
     --accent: #2E6B4D;
     --accent-hover: #21503A;
     --accent-ink: #FFFFFF;
@@ -23,21 +28,33 @@ export const css = `
     /* color-scheme tells the engine to render native controls (select
        popups, checkboxes, range slider, date pickers, scrollbars) dark. */
     color-scheme: dark;
-    --paper: #181D19;
-    --paper-line: #36423A;
-    --ink: #E4EAE0;
-    --ink-soft: #9DB0A0;
+    --paper:      hsl(var(--hue) 22% 9%);
+    --card:       hsl(var(--hue) 20% 14%);
+    --paper-line: hsl(var(--hue) 18% 26%);
+    --ink:        hsl(var(--hue) 18% 90%);
+    --ink-soft:   hsl(var(--hue) 14% 62%);
+    --control-bg: hsl(var(--hue) 25% 6%);
     --stamp: #D9A847;
     --surplus: #6FCF97;
     --deficit: #E07A68;
-    --card: #222923;
     --warn-bg: #2E2716;
     --warn-line: #4A3D1E;
   }
-  :root[data-theme="dark"] body { background: #181D19; }
+
+  /* Color themes: each sets the surface hue + a hand-tuned accent (so
+     contrast is guaranteed regardless of the hsl-generated neutrals). Works
+     in both Light and Dark. Yellow needs dark accent ink. */
+  :root[data-accent="red"]    { --hue:6;   --accent:#C0392B; --accent-hover:#9E2E22; --accent-ink:#fff; }
+  :root[data-accent="orange"] { --hue:28;  --accent:#C96A1E; --accent-hover:#A85617; --accent-ink:#fff; }
+  :root[data-accent="yellow"] { --hue:46;  --accent:#C99A12; --accent-hover:#A87F0C; --accent-ink:#241E08; }
+  :root[data-accent="green"]  { --hue:142; --accent:#2E6B4D; --accent-hover:#21503A; --accent-ink:#fff; }
+  :root[data-accent="blue"]   { --hue:208; --accent:#2C6EA5; --accent-hover:#235984; --accent-ink:#fff; }
+  :root[data-accent="purple"] { --hue:280; --accent:#6B4D9E; --accent-hover:#573E82; --accent-ink:#fff; }
+
+  :root[data-theme="dark"] body { background: var(--paper); }
   :root[data-theme="dark"] input,
   :root[data-theme="dark"] select,
-  :root[data-theme="dark"] textarea { background: #11150F; color: var(--ink); }
+  :root[data-theme="dark"] textarea { background: var(--control-bg); color: var(--ink); }
   :root[data-theme="dark"] .progress-fill,
   :root[data-theme="dark"] .cat-bar-fill { opacity: 0.4; }
   :root[data-theme="dark"] .scroll-panel,
@@ -47,8 +64,8 @@ export const css = `
   :root[data-theme="dark"] .cat-bar-track,
   :root[data-theme="dark"] .balance-chip:not(.consolidated),
   :root[data-theme="dark"] .check,
-  :root[data-theme="dark"] .chip { background: #11150F; }
-  :root[data-theme="dark"] .month-title-input:focus { background: #11150F; }
+  :root[data-theme="dark"] .chip { background: var(--control-bg); }
+  :root[data-theme="dark"] .month-title-input:focus { background: var(--control-bg); }
   .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; padding: 24px 20px 60px; }
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
 
@@ -112,7 +129,7 @@ export const css = `
     background:none; border:1px solid transparent; border-radius:3px; padding:2px 4px; margin:-2px -4px; width:220px;
   }
   .month-title-input:hover { border-color: var(--paper-line); }
-  .month-title-input:focus { border-color: var(--stamp); background:#fff; outline:none; }
+  .month-title-input:focus { border-color: var(--stamp); background:var(--control-bg); outline:none; }
   .stub-balance { display:flex; flex-direction:column; align-items:flex-end; margin-right:8px; }
   .stub-label { font-size:10.5px; color:var(--ink-soft); }
   .amount { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-weight:600; font-size:15px; }
@@ -124,11 +141,11 @@ export const css = `
   .sub-title { display:flex; align-items:center; gap:5px; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); margin:10px 0 6px; }
 
   .per-account-row { display:flex; gap:10px; margin:6px 0 14px; flex-wrap:wrap; }
-  .per-account-chip { display:flex; flex-direction:column; background:#fff; border:1px solid var(--paper-line); border-radius:3px; padding:7px 12px; font-size:13px; gap:2px; }
+  .per-account-chip { display:flex; flex-direction:column; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:3px; padding:7px 12px; font-size:13px; gap:2px; }
 
   .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:14px 0; }
   .pay-stack { display:flex; flex-direction:column; gap:8px; margin:14px 0; }
-  .pay-block { background:#fff; border:1px solid var(--paper-line); border-radius:3px; }
+  .pay-block { background:var(--control-bg); border:1px solid var(--paper-line); border-radius:3px; }
   .pay-block-head { display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; user-select:none; }
   .pay-block-head:hover { background: var(--card); border-radius:3px; }
   .pay-block-label { flex:1; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
@@ -138,7 +155,7 @@ export const css = `
   .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0; }
   .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin:10px 0; }
   .field { display:flex; flex-direction:column; font-size:12px; color:var(--ink-soft); gap:4px; }
-  .field input, .field select { font-family: ui-monospace, monospace; padding:7px 8px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:13px; }
+  .field input, .field select { font-family: ui-monospace, monospace; padding:7px 8px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); font-size:13px; }
 
   .ledger-row { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--paper-line); }
   .ledger-row.totals-row { font-size:13px; justify-content:space-between; border-bottom:none; border-top:1px dashed var(--paper-line); padding-top:9px; }
@@ -150,7 +167,7 @@ export const css = `
   .slot-pill { font-size:10px; background:var(--paper); border:1px solid var(--paper-line); border-radius:8px; padding:1px 6px; color:var(--ink-soft); }
   .chip-slot { font-size:9.5px; opacity:0.6; }
 
-  .check { width:20px; height:20px; border:1px solid var(--ink-soft); border-radius:3px; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--surplus); flex-shrink:0; }
+  .check { width:20px; height:20px; border:1px solid var(--ink-soft); border-radius:3px; background:var(--control-bg); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--surplus); flex-shrink:0; }
 
   .scroll-panel {
     max-height: 260px;
@@ -158,7 +175,7 @@ export const css = `
     border: 1px solid var(--paper-line);
     border-radius: 3px;
     padding: 2px 8px;
-    background: #fff;
+    background: var(--control-bg);
     scrollbar-width: thin;
   }
   .scroll-panel .ledger-row:last-child { border-bottom: none; }
@@ -166,21 +183,21 @@ export const css = `
   .scroll-panel::-webkit-scrollbar-thumb { background: var(--paper-line); border-radius: 4px; }
   .scroll-panel-empty { padding: 6px 0; }
   .scroll-panel-label { display:flex; align-items:center; gap:4px; font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:4px 0 2px; }
-  .amount-input { width:90px; font-family:ui-monospace, monospace; text-align:right; padding:6px 7px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; }
-  .date-input { width:126px; font-family:ui-monospace, monospace; font-size:12px; padding:6px 6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; }
-  .day-input { width:60px; font-family:ui-monospace, monospace; text-align:center; padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; }
-  .text-input { flex:1; width:100%; padding:6px 8px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:13px; box-sizing:border-box; }
+  .amount-input { width:90px; font-family:ui-monospace, monospace; text-align:right; padding:6px 7px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); }
+  .date-input { width:126px; font-family:ui-monospace, monospace; font-size:12px; padding:6px 6px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); }
+  .day-input { width:60px; font-family:ui-monospace, monospace; text-align:center; padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); }
+  .text-input { flex:1; width:100%; padding:6px 8px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); font-size:13px; box-sizing:border-box; }
   .tag-input { flex:0 0 110px; }
-  .account-select { font-size:12px; padding:6px 7px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; max-width:150px; }
+  .account-select { font-size:12px; padding:6px 7px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); max-width:150px; }
 
   .quick-add { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; font-size:12px; color:var(--ink-soft); }
-  .chip { display:flex; align-items:center; gap:4px; background:#fff; border:1px solid var(--paper-line); border-radius:12px; padding:4px 10px; font-size:12px; cursor:pointer; color:var(--ink); }
+  .chip { display:flex; align-items:center; gap:4px; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:12px; padding:4px 10px; font-size:12px; cursor:pointer; color:var(--ink); }
   .chip:hover { border-color: var(--stamp); }
 
   .card-list { display:flex; flex-direction:column; gap:10px; }
   .bill-card { display:grid; grid-template-columns:1fr 1fr 60px 90px 120px 100px 36px 28px; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }
   .bill-card-header { background:none; border:none; font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:0 10px; }
-  .bill-card select { padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:#fff; font-size:12.5px; width:100%; }
+  .bill-card select { padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); font-size:12.5px; width:100%; }
   .slot-checks { display:flex; flex-direction:column; gap:2px; font-size:11.5px; color:var(--ink-soft); }
   .slot-checks label { display:flex; align-items:center; gap:5px; cursor:pointer; }
   .slot-checks input { cursor:pointer; }
@@ -196,7 +213,7 @@ export const css = `
   .consolidated-card .amount.deficit { color:#F2A38F; }
   .debt-top { display:flex; gap:8px; align-items:center; margin-bottom:4px; }
 
-  .progress-track { position:relative; height:26px; background:#fff; border:1px solid var(--paper-line); border-radius:13px; overflow:hidden; margin-top:6px; }
+  .progress-track { position:relative; height:26px; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:13px; overflow:hidden; margin-top:6px; }
   .progress-fill { position:absolute; left:0; top:0; bottom:0; background:var(--stamp); opacity:0.55; }
   .progress-label { position:relative; z-index:1; font-size:12px; line-height:26px; padding-left:10px; color:var(--ink); }
 
@@ -222,7 +239,7 @@ export const css = `
   .spark-legend { display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-top:8px; }
   .cat-row { display:flex; align-items:center; gap:12px; padding:5px 0; }
   .cat-name { flex:0 0 140px; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .cat-bar-track { flex:1; height:14px; background:#fff; border:1px solid var(--paper-line); border-radius:7px; overflow:hidden; }
+  .cat-bar-track { flex:1; height:14px; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:7px; overflow:hidden; }
   .cat-bar-fill { height:100%; background:var(--stamp); opacity:0.55; }
   .cat-bar-fill.under { background:var(--surplus); }
   .cat-bar-fill.over { background:var(--deficit); opacity:0.7; }
@@ -235,6 +252,10 @@ export const css = `
   .backup-row { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
   .backup-folder { display:flex; align-items:center; gap:10px; margin:10px 0 4px; color:var(--ink-soft); flex-wrap:wrap; }
   .backup-folder .btn-secondary { margin-top:0; }
+  .swatch-row { display:flex; gap:8px; }
+  .swatch { width:26px; height:26px; border-radius:6px; border:2px solid var(--paper-line); cursor:pointer; padding:0; transition:transform 0.08s; }
+  .swatch:hover { transform:scale(1.1); }
+  .swatch.selected { border-color:var(--ink); box-shadow:0 0 0 2px var(--paper), 0 0 0 4px var(--ink); }
   .backup-folder-path { font-size:12px; max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:4px 8px; }
   .backup-msg { font-size:12px; color:var(--ink-soft); }
   .backup-group { margin-top:12px; }

@@ -134,6 +134,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
+  const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -146,6 +147,12 @@ export default function App() {
     document.documentElement.style.zoom = uiScale / 100;
     localStorage.setItem("ledger.uiScale", String(uiScale));
   }, [uiScale]);
+
+  // Color theme — sets --hue/accent across the whole palette (see styles.js).
+  useEffect(() => {
+    document.documentElement.setAttribute("data-accent", accent);
+    localStorage.setItem("ledger.accent", accent);
+  }, [accent]);
 
   const reload = useCallback(async () => {
     setBusy(true);
@@ -540,6 +547,8 @@ export default function App() {
           uiScale={uiScale}
           onScaleChange={setUiScale}
           onResetScale={() => setUiScale(75)}
+          accent={accent}
+          onAccentChange={setAccent}
           mirrorFolder={mirrorFolder}
           onChooseFolder={handleChooseFolder}
           onClearFolder={handleClearFolder}

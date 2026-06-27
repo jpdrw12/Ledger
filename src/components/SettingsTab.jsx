@@ -4,11 +4,22 @@ import { FolderSync, Trash2, Archive, Sun, Moon } from "lucide-react";
 const SCALE_OPTIONS = [50, 60, 70, 75, 80, 90, 100, 110, 125, 150];
 const DEFAULT_SCALE = 75;
 
+// Swatch colors mirror the per-theme accents in styles.js (data-accent).
+const ACCENTS = [
+  { id: "red", color: "#C0392B" },
+  { id: "blue", color: "#2C6EA5" },
+  { id: "yellow", color: "#C99A12" },
+  { id: "orange", color: "#C96A1E" },
+  { id: "green", color: "#2E6B4D" },
+  { id: "purple", color: "#6B4D9E" },
+];
+
 // Consolidated preferences: theme, offsite backup folder, and the
 // auto-archive retention policy. All state lives in App; this is presentation.
 function SettingsTab({
   theme, onToggleTheme,
   uiScale, onScaleChange, onResetScale,
+  accent, onAccentChange,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
 }) {
@@ -39,6 +50,21 @@ function SettingsTab({
           <button className="btn-secondary" onClick={onResetScale} disabled={uiScale === DEFAULT_SCALE}>
             Reset to default
           </button>
+        </div>
+        <div className="backup-folder" style={{ marginTop: 10 }}>
+          <span className="small-label" style={{ flex: 1 }}>Color theme</span>
+          <div className="swatch-row">
+            {ACCENTS.map((a) => (
+              <button
+                key={a.id}
+                className={"swatch" + (accent === a.id ? " selected" : "")}
+                style={{ background: a.color }}
+                onClick={() => onAccentChange(a.id)}
+                title={a.id.charAt(0).toUpperCase() + a.id.slice(1)}
+                aria-label={a.id}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
