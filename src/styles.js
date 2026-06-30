@@ -145,6 +145,7 @@ export const css = `
 
   .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:14px 0; }
   .pay-stack { display:flex; flex-direction:column; gap:8px; margin:14px 0; }
+  .month-section { background:var(--control-bg); border:1px solid var(--paper-line); border-radius:3px; margin-top:14px; }
   .pay-block { background:var(--control-bg); border:1px solid var(--paper-line); border-radius:3px; }
   .pay-block-head { display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; user-select:none; }
   .pay-block-head:hover { background: var(--card); border-radius:3px; }
@@ -167,7 +168,10 @@ export const css = `
   .slot-pill { font-size:10px; background:var(--paper); border:1px solid var(--paper-line); border-radius:8px; padding:1px 6px; color:var(--ink-soft); }
   .chip-slot { font-size:9.5px; opacity:0.6; }
 
-  .check { width:20px; height:20px; border:1px solid var(--ink-soft); border-radius:3px; background:var(--control-bg); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--surplus); flex-shrink:0; }
+  .check { width:22px; height:22px; border:2px solid var(--ink-soft); border-radius:4px; background:var(--control-bg); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--surplus); flex-shrink:0; }
+  .check:hover { border-color:var(--surplus); }
+  .check.checked { background:var(--surplus); border-color:var(--surplus); color:#fff; }
+  .check svg { flex-shrink:0; }
 
   .scroll-panel {
     max-height: 260px;

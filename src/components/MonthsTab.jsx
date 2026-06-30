@@ -143,8 +143,8 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
     const overdue = !bp.paid && bp.dueDate && bp.dueDate < localToday();
     return (
       <div className="ledger-row" key={bp.id}>
-        <button className="check" onClick={() => onUpdateBillPayment(bp, { paid: !bp.paid })}>
-          {bp.paid ? <Check size={13} /> : null}
+        <button className={`check ${bp.paid ? "checked" : ""}`} title={bp.paid ? "Paid" : "Mark paid"} onClick={() => onUpdateBillPayment(bp, { paid: !bp.paid })}>
+          {bp.paid ? <Check size={18} strokeWidth={3.5} /> : null}
         </button>
         <span className="row-name">
           {bill ? bill.name : "Unknown bill"}
@@ -280,6 +280,27 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
         </div>
       )}
       </div>}
+    </div>
+  );
+}
+
+// Collapsible month section (Savings / Debt / Transfers) with a header total,
+// mirroring the Pay 1 / Pay 2 pay-block headers.
+function MonthSection({ icon, title, hint, total, totalClass, children }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="month-section">
+      <div className="pay-block-head" onClick={() => setOpen((o) => !o)}>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span className="pay-block-label">{icon} {title}</span>
+        {total != null && <span className={`mono pay-block-total ${totalClass || ""}`}>{money(total)}</span>}
+      </div>
+      {open && (
+        <div className="pay-block-body" style={{ paddingTop: 10 }}>
+          {hint && <p className="empty small" style={{ marginTop: 0 }}>{hint}</p>}
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -527,6 +548,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     );
   };
   const canAddTransfer = accounts.length >= 2 || goals.length >= 2;
+  const totalTransfers = (month.transfers || []).reduce((s, t) => s + (Number(t.amount) || 0), 0);
 
   // Group this month's contributions by goal so each goal's balance shows once.
   const contributionGroups = (() => {
@@ -560,6 +582,10 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
         <div className="stub-summary">
           <span className="stub-summary-chip">Bills {money(totalBills)}</span>
           <span className="stub-summary-chip">Exp {money(totalExpenses)}</span>
+        </div>
+        <div className="stub-balance">
+          <span className="stub-label">excl. unpaid bills</span>
+          <span className={`amount ${consolidatedCarryOut + outstandingBills < 0 ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut + outstandingBills)}</span>
         </div>
         <div className="stub-balance">
           <span className="stub-label">consolidated, carries to next month</span>
@@ -656,7 +682,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             <span className="mono">{money(totalAdditions)}</span>
           </div>
 
-          <h4 className="block-title"><PiggyBank size={13} /> Savings contributions <span className="block-hint">— use a negative amount to record a withdrawal</span></h4>
+          <MonthSection icon={<PiggyBank size={13} />} title="Savings contributions" hint="Use a negative amount to record a withdrawal.">
           <div className="scroll-panel">
             {contributionGroups.map(([goalId, list]) => {
               const goal = goals.find((g) => g.id === goalId);
@@ -692,8 +718,9 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               </button>
             ))}
           </div>
+          </MonthSection>
 
-          <h4 className="block-title"><Landmark size={13} /> Debt payments</h4>
+          <MonthSection icon={<Landmark size={13} />} title="Debt payments">
           <div className="scroll-panel">
             {(month.debtPayments || []).map((dp) => {
               const debt = debts.find((d) => d.id === dp.debtId);
@@ -719,8 +746,9 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               </button>
             ))}
           </div>
+          </MonthSection>
 
-          <h4 className="block-title"><ArrowLeftRight size={13} /> Transfers <span className="block-hint">— between accounts, or between savings goals (account↔goal is a Savings contribution)</span></h4>
+          <MonthSection icon={<ArrowLeftRight size={13} />} title="Transfers" hint="Between accounts, or between savings goals (account↔goal is a Savings contribution)." total={totalTransfers}>
           <div className="scroll-panel">
             {transferRows.map(renderTransferRow)}
             {transferRows.length === 0 && <p className="empty small scroll-panel-empty">No transfers logged yet.</p>}
@@ -734,6 +762,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           ) : (
             <p className="empty small">Add a second account or a second savings goal to move money between them.</p>
           )}
+          </MonthSection>
 
           <div className="sticky-totals">
             <div className="ledger-row totals-row">
@@ -759,6 +788,10 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             <div className="ledger-row totals-row final">
               <span>Consolidated ending balance, carried to next month</span>
               <span className={`mono ${deficit ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut)}</span>
+            </div>
+            <div className="ledger-row totals-row">
+              <span>Ending balance if unpaid bills excluded</span>
+              <span className={`mono ${consolidatedCarryOut + outstandingBills < 0 ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut + outstandingBills)}</span>
             </div>
           </div>
         </div>
