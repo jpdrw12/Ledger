@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, ArrowLeftRight, ArrowRight } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, computeDueDate, parseExpensesCsv } from "../lib/calc.js";
+import { money, computeDueDate, parseExpensesCsv, planTransfer } from "../lib/calc.js";
 import { importTextFile } from "../lib/backup.js";
-import { Field, AccountSelect, DateInput, parseNumberInput } from "./Shared.jsx";
+import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
 // Local YYYY-MM-DD (matches how due dates are stored/compared).
@@ -443,25 +443,100 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     onChanged();
   };
 
+  // Transfers move money between two like endpoints: account<->account or
+  // goal<->goal. Account<->goal moves are Savings contributions, handled in the
+  // Savings section, not here. A transfer stores either account or goal columns.
+  const transferCols = (plan) =>
+    plan.type === "goal-transfer"
+      ? { fromAccountId: null, toAccountId: null, fromGoalId: plan.fromGoalId, toGoalId: plan.toGoalId }
+      : { fromAccountId: plan.fromAccountId, toAccountId: plan.toAccountId, fromGoalId: null, toGoalId: null };
+
+  // First same-kind endpoint other than `excludeId` — used to keep both sides
+  // the same kind when one side's kind changes.
+  const defaultEndpoint = (kind, excludeId) => {
+    const list = kind === "goal" ? goals : accounts;
+    const pick = list.find((x) => x.id !== excludeId) || list[0];
+    return pick ? { kind, id: pick.id } : null;
+  };
+
   const addTransfer = async () => {
-    // Default to the first two distinct accounts so the row is usable immediately.
-    await db.addTransfer(month.id, {
-      fromAccountId: accounts[0]?.id,
-      toAccountId: accounts[1]?.id || accounts[0]?.id,
-      amount: 0,
-      note: "",
+    let plan = null;
+    if (accounts.length >= 2) {
+      plan = planTransfer({ kind: "account", id: accounts[0].id }, { kind: "account", id: accounts[1].id }, 0);
+    } else if (goals.length >= 2) {
+      plan = planTransfer({ kind: "goal", id: goals[0].id }, { kind: "goal", id: goals[1].id }, 0);
+    }
+    if (!plan || plan.type === "invalid") return;
+    await db.addTransfer(month.id, { ...transferCols(plan), amount: plan.amount, note: "" });
+    onChanged();
+  };
+
+  const saveTransferRow = async (row, patch) => {
+    const from = patch.from ?? row.from;
+    const to = patch.to ?? row.to;
+    const amount = patch.amount ?? row.amount;
+    const note = patch.note ?? row.note;
+    const plan = planTransfer(from, to, amount);
+    if (plan.type === "invalid") {
+      if (plan.reason === "same") toast("Pick two different accounts or goals.", "error");
+      else if (plan.reason === "mixed") toast("To move between an account and a savings goal, use Savings contributions.", "error");
+      onChanged(); // revert the dropdown to the stored value
+      return;
+    }
+    await db.updateTransfer(row.id, { ...transferCols(plan), amount: plan.amount, note });
+    onChanged();
+  };
+  const removeTransferRow = async (row) => {
+    await db.deleteTransfer(row.id);
+    onChanged();
+  };
+
+  // Account<->account and goal<->goal transfers (account<->goal lives in Savings).
+  const transferRows = (month.transfers || []).map((t) => ({
+    id: t.id,
+    from: t.fromGoalId ? { kind: "goal", id: t.fromGoalId } : { kind: "account", id: t.fromAccountId },
+    to: t.toGoalId ? { kind: "goal", id: t.toGoalId } : { kind: "account", id: t.toAccountId },
+    amount: t.amount, note: t.note,
+  }));
+
+  const renderTransferRow = (row) => {
+    // Both sides must be the same kind; the "to" list is filtered to match the
+    // "from" kind, and changing "from"'s kind resets "to" to a matching one.
+    const toAccounts = row.from.kind === "account" ? accounts : [];
+    const toGoals = row.from.kind === "goal" ? goals : [];
+    return (
+      <div className="ledger-row transfer-row" key={`${row.id}-${row.amount}-${row.from.kind}:${row.from.id}-${row.to.kind}:${row.to.id}`}>
+        <EndpointSelect
+          accounts={accounts} goals={goals}
+          value={endpointValue(row.from.kind, row.from.id)}
+          onChange={(v) => {
+            const nf = parseEndpoint(v);
+            const patch = { from: nf };
+            if (nf.kind !== row.to.kind) patch.to = defaultEndpoint(nf.kind, nf.id);
+            saveTransferRow(row, patch);
+          }}
+        />
+        <ArrowRight size={13} className="transfer-arrow" />
+        <EndpointSelect accounts={toAccounts} goals={toGoals} value={endpointValue(row.to.kind, row.to.id)} onChange={(v) => saveTransferRow(row, { to: parseEndpoint(v) })} />
+        <input className="text-input tag-input" placeholder="Note" defaultValue={row.note || ""} onBlur={(ev) => saveTransferRow(row, { note: ev.target.value })} />
+        <input className="amount-input" type="number" defaultValue={row.amount} onBlur={(ev) => saveTransferRow(row, { amount: parseNumberInput(ev, row.amount) })} />
+        <button className="icon-btn" onClick={() => removeTransferRow(row)}>
+          <Trash2 size={13} />
+        </button>
+      </div>
+    );
+  };
+  const canAddTransfer = accounts.length >= 2 || goals.length >= 2;
+
+  // Group this month's contributions by goal so each goal's balance shows once.
+  const contributionGroups = (() => {
+    const map = new Map();
+    (month.goalContributions || []).forEach((gc) => {
+      if (!map.has(gc.goalId)) map.set(gc.goalId, []);
+      map.get(gc.goalId).push(gc);
     });
-    onChanged();
-  };
-  const updateTransfer = async (t, patch) => {
-    onPatch((s) => patchMonthRow(s, month.id, t.id, patch, ["transfers"]));
-    await db.updateTransfer(t.id, { fromAccountId: t.fromAccountId, toAccountId: t.toAccountId, amount: t.amount, note: t.note, ...patch });
-    onChanged();
-  };
-  const removeTransfer = async (id) => {
-    await db.deleteTransfer(id);
-    onChanged();
-  };
+    return [...map.entries()];
+  })();
 
   return (
     <div className={`stub ${isOpen ? "open" : ""}`}>
@@ -583,22 +658,31 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
 
           <h4 className="block-title"><PiggyBank size={13} /> Savings contributions <span className="block-hint">— use a negative amount to record a withdrawal</span></h4>
           <div className="scroll-panel">
-            {(month.goalContributions || []).map((gc) => {
-              const goal = goals.find((g) => g.id === gc.goalId);
-              const isWithdrawal = Number(gc.amount) < 0;
+            {contributionGroups.map(([goalId, list]) => {
+              const goal = goals.find((g) => g.id === goalId);
               return (
-                <div className="ledger-row" key={gc.id}>
-                  <span className="row-name">{goal ? goal.name : "Unknown goal"}{isWithdrawal && <span className="withdrawal-pill">withdrawal</span>}</span>
-                  <span className="mono small-label">balance: {money(goalBalances[gc.goalId])}</span>
-                  <AccountSelect accounts={accounts} value={gc.accountId} onChange={(v) => updateGoalContribution(gc, { accountId: v })} />
-                  <input className="amount-input" type="number" defaultValue={gc.amount} onBlur={(ev) => updateGoalContribution(gc, { amount: parseNumberInput(ev, gc.amount) })} />
-                  <button className="icon-btn" onClick={() => removeGoalContribution(gc.id)}>
-                    <Trash2 size={13} />
-                  </button>
+                <div className="goal-group" key={goalId}>
+                  <div className="goal-group-head">
+                    <span className="row-name">{goal ? goal.name : "Unknown goal"}</span>
+                    <span className="mono small-label">balance: {money(goalBalances[goalId])}</span>
+                  </div>
+                  {list.map((gc) => {
+                    const isWithdrawal = Number(gc.amount) < 0;
+                    return (
+                      <div className="ledger-row contribution-row" key={`${gc.id}-${gc.amount}-${gc.accountId}`}>
+                        <span className="row-name">{isWithdrawal && <span className="withdrawal-pill">withdrawal</span>}</span>
+                        <AccountSelect accounts={accounts} value={gc.accountId} onChange={(v) => updateGoalContribution(gc, { accountId: v })} />
+                        <input className="amount-input" type="number" defaultValue={gc.amount} onBlur={(ev) => updateGoalContribution(gc, { amount: parseNumberInput(ev, gc.amount) })} />
+                        <button className="icon-btn" onClick={() => removeGoalContribution(gc.id)}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
-            {(month.goalContributions || []).length === 0 && <p className="empty small scroll-panel-empty">No contributions logged yet.</p>}
+            {contributionGroups.length === 0 && <p className="empty small scroll-panel-empty">No contributions logged yet.</p>}
           </div>
           <div className="quick-add">
             <span>Quick add:</span>
@@ -636,33 +720,19 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             ))}
           </div>
 
-          <h4 className="block-title"><ArrowLeftRight size={13} /> Transfers <span className="block-hint">— move money between accounts; nets to zero overall</span></h4>
+          <h4 className="block-title"><ArrowLeftRight size={13} /> Transfers <span className="block-hint">— between accounts, or between savings goals (account↔goal is a Savings contribution)</span></h4>
           <div className="scroll-panel">
-            {(month.transfers || []).map((t) => {
-              const sameAccount = t.fromAccountId && t.fromAccountId === t.toAccountId;
-              return (
-                <div className="ledger-row transfer-row" key={t.id}>
-                  <AccountSelect accounts={accounts} value={t.fromAccountId} onChange={(v) => updateTransfer(t, { fromAccountId: v })} />
-                  <ArrowRight size={13} className={sameAccount ? "transfer-arrow warn" : "transfer-arrow"} />
-                  <AccountSelect accounts={accounts} value={t.toAccountId} onChange={(v) => updateTransfer(t, { toAccountId: v })} />
-                  <input className="text-input tag-input" placeholder="Note" defaultValue={t.note || ""} onBlur={(ev) => updateTransfer(t, { note: ev.target.value })} />
-                  <input className="amount-input" type="number" defaultValue={t.amount} onBlur={(ev) => updateTransfer(t, { amount: parseNumberInput(ev, t.amount) })} />
-                  <button className="icon-btn" onClick={() => removeTransfer(t.id)}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              );
-            })}
-            {(month.transfers || []).length === 0 && <p className="empty small scroll-panel-empty">No transfers logged yet.</p>}
+            {transferRows.map(renderTransferRow)}
+            {transferRows.length === 0 && <p className="empty small scroll-panel-empty">No transfers logged yet.</p>}
           </div>
-          {accounts.length >= 2 ? (
+          {canAddTransfer ? (
             <div className="quick-add">
               <button className="chip" onClick={addTransfer}>
                 <ArrowLeftRight size={11} /> Add transfer
               </button>
             </div>
           ) : (
-            <p className="empty small">Add a second account to move money between accounts.</p>
+            <p className="empty small">Add a second account or a second savings goal to move money between them.</p>
           )}
 
           <div className="sticky-totals">

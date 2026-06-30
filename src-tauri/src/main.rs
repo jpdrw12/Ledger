@@ -46,6 +46,12 @@ fn main() {
             sql: include_str!("../migrations/0007_transfers.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 8,
+            description: "transfer_goal_endpoints",
+            sql: include_str!("../migrations/0008_transfer_goal_endpoints.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

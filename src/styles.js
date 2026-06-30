@@ -265,6 +265,10 @@ export const css = `
   .transfer-row { display:flex; align-items:center; gap:8px; }
   .transfer-arrow { color:var(--ink-soft); flex-shrink:0; }
   .transfer-arrow.warn { color:var(--deficit); }
+  .transfer-savings-tag { display:flex; align-items:center; justify-content:center; flex:0 0 110px; color:var(--accent); }
+  .goal-group { margin-bottom:6px; }
+  .goal-group-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:4px 2px; font-weight:600; font-size:13px; border-bottom:1px solid var(--paper-line); margin-bottom:2px; }
+  .contribution-row { padding-left:14px; }
   .swatch-row { display:flex; gap:8px; }
   .swatch { width:26px; height:26px; border-radius:6px; border:2px solid var(--paper-line); cursor:pointer; padding:0; transition:transform 0.08s; }
   .swatch:hover { transform:scale(1.1); }

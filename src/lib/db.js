@@ -280,22 +280,24 @@ export async function clearBillPaymentsForMonth(monthId) {
 // ---------------------------------------------------------------------
 // Transfers (account -> account, within a month)
 // ---------------------------------------------------------------------
-export async function addTransfer(monthId, { fromAccountId, toAccountId, amount, note }) {
+export async function addTransfer(monthId, { fromAccountId, toAccountId, fromGoalId, toGoalId, amount, note }) {
   const db = await getDb();
   const id = uid();
   await db.execute(
-    `INSERT INTO transfers (id, month_id, from_account_id, to_account_id, amount, note)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [id, monthId, fromAccountId || null, toAccountId || null, amount || 0, note || null]
+    `INSERT INTO transfers (id, month_id, from_account_id, to_account_id, from_goal_id, to_goal_id, amount, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, monthId, fromAccountId || null, toAccountId || null, fromGoalId || null, toGoalId || null, amount || 0, note || null]
   );
   return id;
 }
 
-export async function updateTransfer(id, { fromAccountId, toAccountId, amount, note }) {
+export async function updateTransfer(id, { fromAccountId, toAccountId, fromGoalId, toGoalId, amount, note }) {
   const db = await getDb();
+  // Writes all four endpoint columns so switching an account<->account transfer
+  // to a goal<->goal one (or back) clears the columns it no longer uses.
   await db.execute(
-    "UPDATE transfers SET from_account_id = $1, to_account_id = $2, amount = $3, note = $4 WHERE id = $5",
-    [fromAccountId || null, toAccountId || null, amount || 0, note || null, id]
+    "UPDATE transfers SET from_account_id = $1, to_account_id = $2, from_goal_id = $3, to_goal_id = $4, amount = $5, note = $6 WHERE id = $7",
+    [fromAccountId || null, toAccountId || null, fromGoalId || null, toGoalId || null, amount || 0, note || null, id]
   );
 }
 
@@ -340,9 +342,15 @@ export async function addGoalContribution(monthId, { goalId, amount, accountId }
   return id;
 }
 
-export async function updateGoalContribution(id, { amount, accountId }) {
+export async function updateGoalContribution(id, { amount, accountId, goalId }) {
   const db = await getDb();
-  await db.execute("UPDATE goal_contributions SET amount = $1, account_id = $2 WHERE id = $3", [amount, accountId, id]);
+  // goalId is optional — when omitted (the Savings section never changes it),
+  // COALESCE preserves the existing goal. The Transfers section passes it when
+  // a goal-transfer's goal endpoint changes.
+  await db.execute(
+    "UPDATE goal_contributions SET amount = $1, account_id = $2, goal_id = COALESCE($3, goal_id) WHERE id = $4",
+    [amount, accountId, goalId ?? null, id]
+  );
 }
 
 export async function deleteGoalContribution(id) {
@@ -507,7 +515,7 @@ export async function loadFullState() {
         .map((d) => ({ id: d.id, debtId: d.debt_id, amount: d.amount, accountId: d.account_id, applied: !!d.applied })),
       transfers: transferRows
         .filter((t) => t.month_id === m.id)
-        .map((t) => ({ id: t.id, fromAccountId: t.from_account_id, toAccountId: t.to_account_id, amount: t.amount, note: t.note })),
+        .map((t) => ({ id: t.id, fromAccountId: t.from_account_id, toAccountId: t.to_account_id, fromGoalId: t.from_goal_id, toGoalId: t.to_goal_id, amount: t.amount, note: t.note })),
     };
   });
 

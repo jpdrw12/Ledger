@@ -3,6 +3,7 @@ import {
   computeLedger,
   projectLedger,
   averageNetChange,
+  planTransfer,
   computeGoalBalances,
   latestAccountBalances,
   money,
@@ -147,6 +148,65 @@ describe("computeLedger", () => {
     expect(ledger.m1.totalBills).toBe(600);
     // 100 starting - 300 - 300 = -500
     expect(ledger.m1.byAccount.a.carryOut).toBe(-500);
+  });
+});
+
+describe("planTransfer", () => {
+  const A = { kind: "account", id: "a" };
+  const B = { kind: "account", id: "b" };
+  const G = { kind: "goal", id: "g" };
+  const G2 = { kind: "goal", id: "g2" };
+
+  it("account -> account becomes a transfer record", () => {
+    expect(planTransfer(A, B, 100)).toEqual({ type: "transfer", fromAccountId: "a", toAccountId: "b", amount: 100 });
+  });
+
+  it("account <-> goal is invalid here (handled by Savings contributions)", () => {
+    expect(planTransfer(A, G, 100).type).toBe("invalid");
+    expect(planTransfer(G, A, 100).type).toBe("invalid");
+  });
+
+  it("goal -> goal becomes a goal-transfer record", () => {
+    expect(planTransfer(G, G2, 100)).toEqual({ type: "goal-transfer", fromGoalId: "g", toGoalId: "g2", amount: 100 });
+  });
+
+  it("identical endpoints and incomplete endpoints are invalid", () => {
+    expect(planTransfer(A, A, 100).type).toBe("invalid");
+    expect(planTransfer(A, null, 100).type).toBe("invalid");
+  });
+});
+
+describe("goal -> goal transfer effect on goal balances", () => {
+  it("moves balance between goals and leaves the account ledger untouched", () => {
+    const month = makeMonth("m1", {
+      transfers: [{ id: "t1", fromGoalId: "g1", toGoalId: "g2", amount: 75 }],
+    });
+    const ledger = computeLedger([month], [ACCT_A, ACCT_B]);
+    // No account side -> the consolidated total is unchanged.
+    expect(ledger.m1.consolidatedCarryOut).toBe(150);
+    const goals = computeGoalBalances([{ id: "g1", startingBalance: 300 }, { id: "g2", startingBalance: 100 }], [month]);
+    expect(goals.g1).toBe(225); // 300 - 75
+    expect(goals.g2).toBe(175); // 100 + 75
+  });
+});
+
+describe("account<->goal transfer effect on ledger and goal balance", () => {
+  it("account -> goal lowers the consolidated total and raises the goal", () => {
+    // Modeled as a positive goal contribution, exactly what planTransfer routes to.
+    const month = makeMonth("m1", { goalContributions: [{ id: "c1", goalId: "g", accountId: "a", amount: 200 }] });
+    const ledger = computeLedger([month], [ACCT_A, ACCT_B]);
+    expect(ledger.m1.byAccount.a.carryOut).toBe(-100); // 100 - 200
+    expect(ledger.m1.consolidatedCarryOut).toBe(-50); // 150 - 200
+    const goals = computeGoalBalances([{ id: "g", startingBalance: 0 }], [month]);
+    expect(goals.g).toBe(200);
+  });
+
+  it("goal -> account (negative contribution) raises the total and lowers the goal", () => {
+    const month = makeMonth("m1", { goalContributions: [{ id: "c1", goalId: "g", accountId: "a", amount: -200 }] });
+    const ledger = computeLedger([month], [ACCT_A, ACCT_B]);
+    expect(ledger.m1.consolidatedCarryOut).toBe(350); // 150 + 200
+    const goals = computeGoalBalances([{ id: "g", startingBalance: 500 }], [month]);
+    expect(goals.g).toBe(300); // 500 - 200
   });
 });
 

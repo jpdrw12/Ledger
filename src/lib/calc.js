@@ -136,14 +136,39 @@ export function projectLedger(months, accounts, bills, { count = 6, expenseLookb
   return { months: all, ledger: computeLedger(all, accounts), projectedIds: projected.map((m) => m.id) };
 }
 
+// Decides which transfer record a same-kind move becomes, given typed
+// endpoints { kind: 'account'|'goal', id } and an amount. Transfers are
+// account<->account or goal<->goal; account<->goal moves are out of scope here
+// (they're handled as Savings contributions). Pure — no I/O.
+export function planTransfer(from, to, amount) {
+  const amt = Number(amount) || 0;
+  if (!from || !to || !from.id || !to.id) return { type: "invalid", reason: "incomplete" };
+  if (from.kind === to.kind && from.id === to.id) return { type: "invalid", reason: "same" };
+  if (from.kind === "account" && to.kind === "account") {
+    return { type: "transfer", fromAccountId: from.id, toAccountId: to.id, amount: amt };
+  }
+  if (from.kind === "goal" && to.kind === "goal") {
+    return { type: "goal-transfer", fromGoalId: from.id, toGoalId: to.id, amount: amt };
+  }
+  // Mixed account<->goal: belongs in Savings contributions, not transfers.
+  return { type: "invalid", reason: "mixed" };
+}
+
 export function computeGoalBalances(goals, months) {
   const totals = {};
   goals.forEach((g) => (totals[g.id] = Number(g.startingBalance) || 0));
-  months.forEach((m) =>
+  months.forEach((m) => {
     (m.goalContributions || []).forEach((gc) => {
       if (totals[gc.goalId] !== undefined) totals[gc.goalId] += Number(gc.amount) || 0;
-    })
-  );
+    });
+    // Goal-to-goal transfers (transfers with goal endpoints) reallocate balance
+    // between goals without touching any account.
+    (m.transfers || []).forEach((t) => {
+      const amt = Number(t.amount) || 0;
+      if (t.fromGoalId && totals[t.fromGoalId] !== undefined) totals[t.fromGoalId] -= amt;
+      if (t.toGoalId && totals[t.toGoalId] !== undefined) totals[t.toGoalId] += amt;
+    });
+  });
   return totals;
 }
 

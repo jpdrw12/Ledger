@@ -78,3 +78,35 @@ export function AccountSelect({ accounts, value, onChange }) {
     </select>
   );
 }
+
+// A transfer endpoint can be a bank account or a savings goal. We encode the
+// choice as a typed string ("acct:<id>" / "goal:<id>") so a single <select>
+// can offer both, grouped.
+export const endpointValue = (kind, id) => `${kind === "goal" ? "goal" : "acct"}:${id}`;
+export function parseEndpoint(str) {
+  if (!str) return null;
+  const [tag, ...rest] = str.split(":");
+  const id = rest.join(":");
+  return { kind: tag === "goal" ? "goal" : "account", id };
+}
+
+export function EndpointSelect({ accounts, goals, value, onChange }) {
+  return (
+    <select className="account-select" value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      {accounts.length > 0 && (
+        <optgroup label="Accounts">
+          {accounts.map((a) => (
+            <option key={a.id} value={endpointValue("account", a.id)}>{a.name}</option>
+          ))}
+        </optgroup>
+      )}
+      {goals.length > 0 && (
+        <optgroup label="Savings goals">
+          {goals.map((g) => (
+            <option key={g.id} value={endpointValue("goal", g.id)}>{g.name}</option>
+          ))}
+        </optgroup>
+      )}
+    </select>
+  );
+}
