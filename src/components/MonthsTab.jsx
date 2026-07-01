@@ -612,13 +612,23 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
       {isOpen && (
         <div className="stub-body">
           <div className="per-account-row">
-            {accounts.map((a) => (
-              <div className="per-account-chip" key={a.id}>
-                <span>{a.name}</span>
-                <span className={byAccount[a.id].carryOut < 0 ? "deficit mono" : "surplus mono"}>{money(byAccount[a.id].carryOut)}</span>
-                <span className="small-label">in {money(byAccount[a.id].carryIn)} → in/out {money(byAccount[a.id].inflow)} / {money(byAccount[a.id].outflow)}</span>
-              </div>
-            ))}
+            {accounts.map((a) => {
+              const unpaid = (month.billPayments || []).reduce(
+                (s, bp) => s + (!bp.paid && bp.accountId === a.id ? Number(bp.amountPaid) || 0 : 0),
+                0
+              );
+              const exclUnpaid = byAccount[a.id].carryOut + unpaid;
+              return (
+                <div className="per-account-chip" key={a.id}>
+                  <span>{a.name}</span>
+                  <span className={byAccount[a.id].carryOut < 0 ? "deficit mono" : "surplus mono"}>{money(byAccount[a.id].carryOut)}</span>
+                  {unpaid > 0 && (
+                    <span className={`small-label mono ${exclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(exclUnpaid)} excl. unpaid bills</span>
+                  )}
+                  <span className="small-label">in {money(byAccount[a.id].carryIn)} → in/out {money(byAccount[a.id].inflow)} / {money(byAccount[a.id].outflow)}</span>
+                </div>
+              );
+            })}
           </div>
 
           {dueDatesWontFill && (
