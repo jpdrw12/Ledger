@@ -43,16 +43,16 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 export async function getAccounts() {
   const db = await getDb();
   const rows = await db.select("SELECT * FROM accounts ORDER BY name");
-  return rows.map((r) => ({ id: r.id, name: r.name, startingBalance: r.starting_balance }));
+  return rows.map((r) => ({ id: r.id, name: r.name, startingBalance: r.starting_balance, excludeFromTotal: r.exclude_from_total === 1 }));
 }
 
 export async function upsertAccount(acc) {
   const db = await getDb();
   const id = acc.id || uid();
   await db.execute(
-    `INSERT INTO accounts (id, name, starting_balance) VALUES ($1, $2, $3)
-     ON CONFLICT(id) DO UPDATE SET name = $2, starting_balance = $3`,
-    [id, acc.name, acc.startingBalance || 0]
+    `INSERT INTO accounts (id, name, starting_balance, exclude_from_total) VALUES ($1, $2, $3, $4)
+     ON CONFLICT(id) DO UPDATE SET name = $2, starting_balance = $3, exclude_from_total = $4`,
+    [id, acc.name, acc.startingBalance || 0, acc.excludeFromTotal ? 1 : 0]
   );
   return id;
 }

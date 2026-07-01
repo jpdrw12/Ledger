@@ -620,7 +620,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               const exclUnpaid = byAccount[a.id].carryOut + unpaid;
               return (
                 <div className="per-account-chip" key={a.id}>
-                  <span>{a.name}</span>
+                  <span>{a.name}{a.excludeFromTotal && <span className="excluded-tag">not in total</span>}</span>
                   <span className={byAccount[a.id].carryOut < 0 ? "deficit mono" : "surplus mono"}>{money(byAccount[a.id].carryOut)}</span>
                   {unpaid > 0 && (
                     <span className={`small-label mono ${exclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(exclUnpaid)} excl. unpaid bills</span>

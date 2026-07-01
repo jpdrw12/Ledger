@@ -113,6 +113,23 @@ describe("computeLedger", () => {
     expect(ledger.m1.byAccount.a.carryOut).toBe(100);
   });
 
+  // An account flagged excludeFromTotal (e.g. a prepaid spending card) keeps its
+  // own tracked balance but is left out of the consolidated total.
+  it("excludes flagged accounts from the consolidated total but still tracks them", () => {
+    const card = { id: "card", startingBalance: 0, excludeFromTotal: true };
+    // Load the card from A (transfer), then spend on the card (expense).
+    const month = makeMonth("m1", {
+      transfers: [{ id: "t1", fromAccountId: "a", toAccountId: "card", amount: 40 }],
+      expensesPay1: [{ accountId: "card", amount: 15 }],
+    });
+    const ledger = computeLedger([month], [ACCT_A, card]);
+    expect(ledger.m1.byAccount.a.carryOut).toBe(60); // 100 - 40 load
+    expect(ledger.m1.byAccount.card.carryOut).toBe(25); // 40 load - 15 spend
+    // Consolidated excludes the card: only A counts. Loading dropped it to 60;
+    // card spending does not touch it again (no double count).
+    expect(ledger.m1.consolidatedCarryOut).toBe(60);
+  });
+
   // Transfers move money between accounts without changing the consolidated total.
   it("shifts balance between accounts on a transfer, net-zero to the total", () => {
     const month = makeMonth("m1", {

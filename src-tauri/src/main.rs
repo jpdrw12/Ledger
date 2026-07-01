@@ -52,6 +52,12 @@ fn main() {
             sql: include_str!("../migrations/0008_transfer_goal_endpoints.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 9,
+            description: "account_exclude_from_total",
+            sql: include_str!("../migrations/0009_account_exclude_from_total.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

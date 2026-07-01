@@ -472,7 +472,7 @@ export default function App() {
     [state, ledger]
   );
   const consolidated = useMemo(
-    () => (state ? state.accounts.reduce((s, a) => s + (balances[a.id] || 0), 0) : 0),
+    () => (state ? state.accounts.filter((a) => !a.excludeFromTotal).reduce((s, a) => s + (balances[a.id] || 0), 0) : 0),
     [state, balances]
   );
   const { overdue, dueSoon } = useMemo(() => {
@@ -525,7 +525,7 @@ export default function App() {
       <div className="balance-strip">
         {state.accounts.map((a) => (
           <div className="balance-chip" key={a.id}>
-            <span className="balance-chip-label">{a.name}</span>
+            <span className="balance-chip-label">{a.name}{a.excludeFromTotal && <span className="excluded-tag">not in total</span>}</span>
             <span className={`amount ${balances[a.id] < 0 ? "deficit" : "surplus"}`}>{money(balances[a.id])}</span>
           </div>
         ))}

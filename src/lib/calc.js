@@ -56,8 +56,12 @@ export function computeLedger(months, accounts) {
     const totalExpensesPay2 = m.expensesPay2.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const totalGoals = (m.goalContributions || []).reduce((s, g) => s + (Number(g.amount) || 0), 0);
     const totalDebtPayments = (m.debtPayments || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
-    const consolidatedCarryIn = accounts.reduce((s, a) => s + byAccount[a.id].carryIn, 0);
-    const consolidatedCarryOut = accounts.reduce((s, a) => s + byAccount[a.id].carryOut, 0);
+    // Accounts flagged excludeFromTotal (e.g. a prepaid spending card) keep
+    // their own tracked balance in byAccount but sit outside the consolidated
+    // total — like savings goals, money "set aside" isn't in the running total.
+    const included = accounts.filter((a) => !a.excludeFromTotal);
+    const consolidatedCarryIn = included.reduce((s, a) => s + byAccount[a.id].carryIn, 0);
+    const consolidatedCarryOut = included.reduce((s, a) => s + byAccount[a.id].carryOut, 0);
 
     result[m.id] = {
       byAccount,

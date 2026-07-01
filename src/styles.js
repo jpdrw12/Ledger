@@ -273,6 +273,8 @@ export const css = `
   .goal-group { margin-bottom:6px; }
   .goal-group-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:4px 2px; font-weight:600; font-size:13px; border-bottom:1px solid var(--paper-line); margin-bottom:2px; }
   .contribution-row { padding-left:14px; }
+  .excluded-tag { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); border:1px solid var(--stamp); border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:middle; }
+  .exclude-toggle { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); cursor:pointer; padding:7px 0; }
   .swatch-row { display:flex; gap:8px; }
   .swatch { width:26px; height:26px; border-radius:6px; border:2px solid var(--paper-line); cursor:pointer; padding:0; transition:transform 0.08s; }
   .swatch:hover { transform:scale(1.1); }

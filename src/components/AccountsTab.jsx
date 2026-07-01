@@ -47,7 +47,7 @@ function AccountsTab({ accounts, balances, consolidated, onChanged }) {
         </button>
       </div>
       <p className="empty" style={{ marginBottom: 16 }}>
-        Tangerine and EQ Bank are tied together here — every bill, expense, and addition is assigned to one of them, and their balances always sum into the consolidated figure at the top of the app.
+        Every bill, expense, addition, and transfer is assigned to an account. Accounts counted in the consolidated total sum into the figure at the top of the app. Uncheck "Count this account in the total" for a prepaid spending card you load from your other accounts — its balance and spending are still tracked, just kept out of the total.
       </p>
       <div className="card-list">
         {accounts.map((acc) => (
@@ -69,7 +69,19 @@ function AccountsTab({ accounts, balances, consolidated, onChanged }) {
                 <span>Current balance</span>
                 <div className={`amount ${balances[acc.id] < 0 ? "deficit" : "surplus"}`} style={{ fontSize: 17, padding: "7px 0" }}>
                   {money(balances[acc.id])}
+                  {acc.excludeFromTotal && <span className="excluded-tag">not in total</span>}
                 </div>
+              </div>
+              <div className="field">
+                <span>In consolidated total</span>
+                <label className="exclude-toggle">
+                  <input
+                    type="checkbox"
+                    checked={!acc.excludeFromTotal}
+                    onChange={(e) => updateAccount(acc, { excludeFromTotal: !e.target.checked })}
+                  />
+                  Count this account in the total
+                </label>
               </div>
             </div>
           </div>
