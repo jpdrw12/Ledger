@@ -24,7 +24,7 @@ export function ScrollPanel({ className = "scroll-panel", children, ...rest }) {
 
 // Collapsible section with a header + optional total (used by Months & Card tabs).
 export function MonthSection({ icon, title, hint, total, totalClass, children }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   return (
     <div className="month-section">
       <div className="pay-block-head" onClick={() => setOpen((o) => !o)}>

@@ -10,7 +10,7 @@ const categoryOf = (b) => (b.category && b.category.trim()) || UNCATEGORIZED;
 function BillsTab({ bills, onChanged }) {
   const { confirm } = useToast();
   const [filter, setFilter] = useState("all");
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [expanded, setExpanded] = useState(() => new Set()); // groups start collapsed
 
   const addBill = async () => {
     await db.upsertBill({ name: "New bill", category: "", defaultAmount: 0, addToSlot1: true, addToSlot2: false, dueDay: 1, paymentType: "manual" });
@@ -36,7 +36,7 @@ function BillsTab({ bills, onChanged }) {
   });
 
   const toggleGroup = (cat) =>
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
       next.has(cat) ? next.delete(cat) : next.add(cat);
       return next;
@@ -127,7 +127,7 @@ function BillsTab({ bills, onChanged }) {
         <div className="card-list">
           {categories.map((cat) => {
             const group = bills.filter((b) => categoryOf(b) === cat);
-            const isCollapsed = collapsed.has(cat);
+            const isCollapsed = !expanded.has(cat);
             return (
               <div key={cat} className="bill-group">
                 <div className="bill-group-head" onClick={() => toggleGroup(cat)}>
