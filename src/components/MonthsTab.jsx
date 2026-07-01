@@ -3,7 +3,7 @@ import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Arrow
 import * as db from "../lib/db.js";
 import { money, computeDueDate, parseExpensesCsv, planTransfer } from "../lib/calc.js";
 import { importTextFile } from "../lib/backup.js";
-import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput } from "./Shared.jsx";
+import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
 // Local YYYY-MM-DD (matches how due dates are stored/compared).
@@ -140,6 +140,12 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
 
   const slotQuickAddBills = bills.filter((b) => (slot === 1 ? b.addToSlot1 : b.addToSlot2));
 
+  // Card (excluded-account) spending lives in the Card tab, so keep it out of
+  // this pay block: hide card expenses and don't offer card accounts for new ones.
+  const cardIds = new Set(accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+  const nonCardAccounts = accounts.filter((a) => !a.excludeFromTotal);
+  const mainExpenses = expenseList.filter((e) => !cardIds.has(e.accountId));
+
   const renderBillRow = (bp) => {
     const bill = bills.find((b) => b.id === bp.billId);
     const overdue = !bp.paid && bp.dueDate && bp.dueDate < localToday();
@@ -206,21 +212,21 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
         <>
           <h5 className="sub-title"><Receipt size={12} /> Bills</h5>
           {autoBills.length > 0 && (
-            <div className="scroll-panel">
+            <ScrollPanel>
               <div className="scroll-panel-label"><Zap size={11} /> Autopay</div>
               {autoBills.map(renderBillRow)}
-            </div>
+            </ScrollPanel>
           )}
           {manualBills.length > 0 && (
-            <div className="scroll-panel" style={{ marginTop: autoBills.length > 0 ? 6 : 0 }}>
+            <ScrollPanel style={{ marginTop: autoBills.length > 0 ? 6 : 0 }}>
               <div className="scroll-panel-label"><Hand size={11} /> Manual</div>
               {manualBills.map(renderBillRow)}
-            </div>
+            </ScrollPanel>
           )}
           {autoBills.length === 0 && manualBills.length === 0 && (
-            <div className="scroll-panel">
+            <ScrollPanel>
               <p className="empty small scroll-panel-empty">No bills assigned.</p>
-            </div>
+            </ScrollPanel>
           )}
           {slotQuickAddBills.length > 0 && (
             <div className="quick-add">
@@ -235,26 +241,26 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
       )}
 
       <h5 className="sub-title"><Receipt size={12} /> Expenses</h5>
-      <div className="scroll-panel">
-        {expenseList.map((e) => (
+      <ScrollPanel>
+        {mainExpenses.map((e) => (
           <div className="ledger-row" key={e.id}>
             <input className="text-input" placeholder="Category (Groceries, Gas…)" list="category-suggestions" defaultValue={e.category} onBlur={(ev) => onUpdateExpense(e, { category: ev.target.value })} />
             <input className="text-input tag-input" placeholder="Tag" list="tag-suggestions" defaultValue={e.tag || ""} onBlur={(ev) => onUpdateExpense(e, { tag: ev.target.value })} />
-            <AccountSelect accounts={accounts} value={e.accountId} onChange={(v) => onUpdateExpense(e, { accountId: v })} />
+            <AccountSelect accounts={nonCardAccounts} value={e.accountId} onChange={(v) => onUpdateExpense(e, { accountId: v })} />
             <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => onUpdateExpense(e, { amount: parseNumberInput(ev, e.amount) })} />
             <button className="icon-btn" onClick={() => onRemoveExpense(e.id)}>
               <Trash2 size={13} />
             </button>
           </div>
         ))}
-        {expenseList.length === 0 && <p className="empty small scroll-panel-empty">No expenses logged yet.</p>}
-      </div>
+        {mainExpenses.length === 0 && <p className="empty small scroll-panel-empty">No expenses logged yet.</p>}
+      </ScrollPanel>
       <button className="btn-secondary" onClick={() => onAddExpense(slot)}>
         <Plus size={13} /> Add expense
       </button>
 
       <h5 className="sub-title"><TrendingUp size={12} /> Additions (extra pay, credit, bonus…)</h5>
-      <div className="scroll-panel">
+      <ScrollPanel>
         {pay.additions.map((a) => (
           <div className="ledger-row" key={a.id}>
             <input className="text-input" defaultValue={a.name} onBlur={(e) => updateAddition(a, { name: e.target.value })} />
@@ -271,7 +277,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
           </div>
         ))}
         {pay.additions.length === 0 && <p className="empty small scroll-panel-empty">No additions yet.</p>}
-      </div>
+      </ScrollPanel>
       <button className="btn-secondary" onClick={addAddition}>
         <Plus size={13} /> Add addition
       </button>
@@ -282,27 +288,6 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
         </div>
       )}
       </div>}
-    </div>
-  );
-}
-
-// Collapsible month section (Savings / Debt / Transfers) with a header total,
-// mirroring the Pay 1 / Pay 2 pay-block headers.
-function MonthSection({ icon, title, hint, total, totalClass, children }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div className="month-section">
-      <div className="pay-block-head" onClick={() => setOpen((o) => !o)}>
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="pay-block-label">{icon} {title}</span>
-        {total != null && <span className={`mono pay-block-total ${totalClass || ""}`}>{money(total)}</span>}
-      </div>
-      {open && (
-        <div className="pay-block-body" style={{ paddingTop: 10 }}>
-          {hint && <p className="empty small" style={{ marginTop: 0 }}>{hint}</p>}
-          {children}
-        </div>
-      )}
     </div>
   );
 }
@@ -395,7 +380,9 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
   };
 
   const addExpense = async (slot) => {
-    await db.addExpense(month.id, slot, { category: "", amount: 0, tag: "", accountId: accounts[0]?.id });
+    // Default to a main (non-card) account — card spending is added in the Card tab.
+    const defaultAccount = accounts.find((a) => !a.excludeFromTotal) || accounts[0];
+    await db.addExpense(month.id, slot, { category: "", amount: 0, tag: "", accountId: defaultAccount?.id });
     onChanged();
   };
   const importExpenses = async () => {
@@ -702,7 +689,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           </div>
 
           <MonthSection icon={<PiggyBank size={13} />} title="Savings contributions" hint="Use a negative amount to record a withdrawal.">
-          <div className="scroll-panel">
+          <ScrollPanel>
             {contributionGroups.map(([goalId, list]) => {
               const goal = goals.find((g) => g.id === goalId);
               return (
@@ -728,7 +715,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               );
             })}
             {contributionGroups.length === 0 && <p className="empty small scroll-panel-empty">No contributions logged yet.</p>}
-          </div>
+          </ScrollPanel>
           <div className="quick-add">
             <span>Quick add:</span>
             {goals.map((g) => (
@@ -740,7 +727,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           </MonthSection>
 
           <MonthSection icon={<Landmark size={13} />} title="Debt payments">
-          <div className="scroll-panel">
+          <ScrollPanel>
             {(month.debtPayments || []).map((dp) => {
               const debt = debts.find((d) => d.id === dp.debtId);
               return (
@@ -756,7 +743,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               );
             })}
             {(month.debtPayments || []).length === 0 && <p className="empty small scroll-panel-empty">No debt payments logged yet.</p>}
-          </div>
+          </ScrollPanel>
           <div className="quick-add">
             <span>Quick add:</span>
             {debts.map((d) => (
@@ -768,10 +755,10 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           </MonthSection>
 
           <MonthSection icon={<ArrowLeftRight size={13} />} title="Transfers" hint="Between accounts, or between savings goals (account↔goal is a Savings contribution)." total={totalTransfers}>
-          <div className="scroll-panel">
+          <ScrollPanel>
             {transferRows.map(renderTransferRow)}
             {transferRows.length === 0 && <p className="empty small scroll-panel-empty">No transfers logged yet.</p>}
-          </div>
+          </ScrollPanel>
           {canAddTransfer ? (
             <div className="quick-add">
               <button className="chip" onClick={addTransfer}>

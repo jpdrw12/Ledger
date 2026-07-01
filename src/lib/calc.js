@@ -52,8 +52,12 @@ export function computeLedger(months, accounts) {
     const totalIncome = (Number(m.pay1.income) || 0) + (Number(m.pay2.income) || 0);
     const totalAdditions = [...m.pay1.additions, ...m.pay2.additions].reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const totalBills = m.billPayments.reduce((s, bp) => s + (Number(bp.amountPaid) || 0), 0);
-    const totalExpensesPay1 = m.expensesPay1.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const totalExpensesPay2 = m.expensesPay2.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    // Expenses on excluded (card) accounts are tracked separately (Card tab),
+    // so they don't count in the month's expense totals shown in the Months tab.
+    const excludedIds = new Set(accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+    const notCard = (e) => !excludedIds.has(e.accountId);
+    const totalExpensesPay1 = m.expensesPay1.filter(notCard).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const totalExpensesPay2 = m.expensesPay2.filter(notCard).reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const totalGoals = (m.goalContributions || []).reduce((s, g) => s + (Number(g.amount) || 0), 0);
     const totalDebtPayments = (m.debtPayments || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
     // Accounts flagged excludeFromTotal (e.g. a prepaid spending card) keep
@@ -190,16 +194,52 @@ export function latestAccountBalances(accounts, months, ledger) {
 
 // Total expenses across all months grouped by category, biggest first.
 // Blank categories roll up under "Uncategorized".
-export function spendingByCategory(months) {
+// Expense predicate for an optional account filter. `include`/`exclude` are
+// Sets of account ids; an expense counts only if it's in `include` (when given)
+// and not in `exclude`. No filter = all expenses (back-compat).
+function expenseMatches(accountId, { include, exclude } = {}) {
+  if (include && !include.has(accountId)) return false;
+  if (exclude && exclude.has(accountId)) return false;
+  return true;
+}
+
+const allExpenses = (m) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])];
+
+export function spendingByCategory(months, filter) {
   const totals = {};
   months.forEach((m) => {
-    [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])].forEach((e) => {
+    allExpenses(m).forEach((e) => {
+      if (!expenseMatches(e.accountId, filter)) return;
       const key = (e.category || "").trim() || "Uncategorized";
       totals[key] = (totals[key] || 0) + (Number(e.amount) || 0);
     });
   });
   return Object.entries(totals)
     .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// Total expense per month (optionally filtered to certain accounts), in
+// chronological order — the series behind the card spend trend.
+export function monthlyExpenseTotals(months, filter) {
+  return months.map((m) => ({
+    id: m.id,
+    label: m.monthLabel,
+    value: allExpenses(m).reduce((s, e) => s + (expenseMatches(e.accountId, filter) ? Number(e.amount) || 0 : 0), 0),
+  }));
+}
+
+// Total expense per account (over the given account ids), sorted high to low.
+export function spendByAccount(months, accountIds) {
+  const totals = {};
+  (accountIds || []).forEach((id) => (totals[id] = 0));
+  months.forEach((m) =>
+    allExpenses(m).forEach((e) => {
+      if (totals[e.accountId] !== undefined) totals[e.accountId] += Number(e.amount) || 0;
+    })
+  );
+  return Object.entries(totals)
+    .map(([accountId, total]) => ({ accountId, total }))
     .sort((a, b) => b.total - a.total);
 }
 

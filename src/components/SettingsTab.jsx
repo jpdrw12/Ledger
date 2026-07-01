@@ -26,6 +26,7 @@ function SettingsTab({
   theme, onThemeChange,
   uiScale, onScaleChange, onResetScale,
   accent, onAccentChange,
+  containScroll, onContainScrollChange,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
 }) {
@@ -76,6 +77,17 @@ function SettingsTab({
               />
             ))}
           </div>
+        </div>
+        <div className="backup-folder" style={{ marginTop: 10 }}>
+          <span className="small-label" style={{ flex: 1 }}>Scrolling</span>
+          <label className="exclude-toggle">
+            <input
+              type="checkbox"
+              checked={containScroll}
+              onChange={(e) => onContainScrollChange(e.target.checked)}
+            />
+            Keep scrolling inside a section (don't scroll the page at its end)
+          </label>
         </div>
       </div>
 

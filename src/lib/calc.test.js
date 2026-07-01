@@ -10,6 +10,8 @@ import {
   nextMonthLabel,
   computeDueDate,
   spendingByCategory,
+  monthlyExpenseTotals,
+  spendByAccount,
   monthlyEndingBalances,
   buildLedgerCsv,
   budgetReport,
@@ -190,6 +192,61 @@ describe("planTransfer", () => {
   it("identical endpoints and incomplete endpoints are invalid", () => {
     expect(planTransfer(A, A, 100).type).toBe("invalid");
     expect(planTransfer(A, null, 100).type).toBe("invalid");
+  });
+});
+
+describe("card-scoped spending aggregation", () => {
+  // Two accounts: main "a" and card "card" (excluded from total).
+  const months = [
+    makeMonth("m1", {
+      monthLabel: "June 2026",
+      expensesPay1: [
+        { id: "e1", category: "Groceries", amount: 100, accountId: "a" },
+        { id: "e2", category: "Groceries", amount: 40, accountId: "card" },
+      ],
+      expensesPay2: [{ id: "e3", category: "Gas", amount: 25, accountId: "card" }],
+    }),
+    makeMonth("m2", {
+      monthLabel: "July 2026",
+      expensesPay1: [{ id: "e4", category: "Dining", amount: 60, accountId: "card" }],
+    }),
+  ];
+
+  it("spendingByCategory can include or exclude accounts", () => {
+    const cardOnly = spendingByCategory(months, { include: new Set(["card"]) });
+    expect(cardOnly).toEqual([
+      { category: "Dining", total: 60 },
+      { category: "Groceries", total: 40 },
+      { category: "Gas", total: 25 },
+    ]);
+    const mainOnly = spendingByCategory(months, { exclude: new Set(["card"]) });
+    expect(mainOnly).toEqual([{ category: "Groceries", total: 100 }]);
+    // No filter = everything (back-compat).
+    expect(spendingByCategory(months).reduce((s, c) => s + c.total, 0)).toBe(225);
+  });
+
+  it("monthlyExpenseTotals sums per month for the included accounts", () => {
+    const series = monthlyExpenseTotals(months, { include: new Set(["card"]) });
+    expect(series).toEqual([
+      { id: "m1", label: "June 2026", value: 65 }, // 40 + 25
+      { id: "m2", label: "July 2026", value: 60 },
+    ]);
+  });
+
+  it("spendByAccount totals per account", () => {
+    const rows = spendByAccount(months, ["a", "card"]);
+    expect(rows).toEqual([
+      { accountId: "card", total: 125 }, // 40 + 25 + 60
+      { accountId: "a", total: 100 },
+    ]);
+  });
+
+  it("computeLedger excludes card expenses from the expense totals but still draws down the card", () => {
+    const card = { id: "card", startingBalance: 200, excludeFromTotal: true };
+    const ledger = computeLedger([months[0]], [ACCT_A, card]);
+    expect(ledger.m1.totalExpensesPay1).toBe(100); // only main "a" (the 40 card expense excluded)
+    expect(ledger.m1.totalExpensesPay2).toBe(0); // the 25 was a card expense
+    expect(ledger.m1.byAccount.card.carryOut).toBe(135); // 200 - 40 - 25 still drawn down
   });
 });
 

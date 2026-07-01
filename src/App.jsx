@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -7,6 +7,7 @@ import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
 import { useToast } from "./components/Toast.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
+import CardTab from "./components/CardTab.jsx";
 import BillsTab from "./components/BillsTab.jsx";
 import GoalsTab from "./components/GoalsTab.jsx";
 import AccountsTab from "./components/AccountsTab.jsx";
@@ -135,6 +136,10 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
   const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
+  const [containScroll, setContainScroll] = useState(() => {
+    const stored = localStorage.getItem("ledger.containScroll");
+    return stored === null ? true : stored === "true"; // default on
+  });
 
   // theme is "light" | "dark" | "system". For "system" we resolve against the
   // OS preference and keep following it live via the matchMedia listener.
@@ -163,6 +168,12 @@ export default function App() {
     localStorage.setItem("ledger.accent", accent);
   }, [accent]);
 
+  // Keep scrolling contained within sections (no page scroll at a section's end).
+  useEffect(() => {
+    document.documentElement.setAttribute("data-contain-scroll", containScroll ? "true" : "false");
+    localStorage.setItem("ledger.containScroll", String(containScroll));
+  }, [containScroll]);
+
   // Enter commits an input. The app's inputs commit on blur (defaultValue +
   // onBlur), so blurring the focused field on Enter reuses that exact path —
   // no per-input wiring. Skips checkbox/radio/button/range (Enter is a click
@@ -177,6 +188,32 @@ export default function App() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Focusing a number field selects its whole value, so typing replaces it.
+  // The mouseup from the same click would otherwise clear the selection and
+  // drop a caret, so we preventDefault on that one mouseup.
+  useEffect(() => {
+    let justFocused = null;
+    const onFocusIn = (e) => {
+      const el = e.target;
+      if (el instanceof HTMLInputElement && el.type === "number") {
+        el.select();
+        justFocused = el;
+      }
+    };
+    const onMouseUp = (e) => {
+      if (justFocused && e.target === justFocused) {
+        e.preventDefault(); // keep the selection instead of placing a caret
+        justFocused = null;
+      }
+    };
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
   }, []);
 
   // Optimistic local patch: apply a change to in-memory state immediately so
@@ -552,6 +589,7 @@ export default function App() {
 
       <nav className="tabs">
         <TabButton active={tab === "months"} onClick={() => setTab("months")} icon={<ListChecks size={16} />} label="Months" />
+        <TabButton active={tab === "card"} onClick={() => setTab("card")} icon={<CreditCard size={16} />} label="Card Spending" />
         <TabButton active={tab === "bills"} onClick={() => setTab("bills")} icon={<Receipt size={16} />} label="Bill Templates" />
         <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" />
         <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" />
@@ -586,6 +624,7 @@ export default function App() {
       {tab === "accounts" && (
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} />
       )}
+      {tab === "card" && <CardTab state={state} onChanged={reload} />}
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} />}
       {tab === "insights" && <InsightsTab state={state} ledger={ledger} onChanged={reload} />}
       {tab === "settings" && (
@@ -597,6 +636,8 @@ export default function App() {
           onResetScale={() => setUiScale(75)}
           accent={accent}
           onAccentChange={setAccent}
+          containScroll={containScroll}
+          onContainScrollChange={setContainScroll}
           mirrorFolder={mirrorFolder}
           onChooseFolder={handleChooseFolder}
           onClearFolder={handleClearFolder}

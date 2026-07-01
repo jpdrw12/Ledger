@@ -275,6 +275,13 @@ export const css = `
   .contribution-row { padding-left:14px; }
   .excluded-tag { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); border:1px solid var(--stamp); border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:middle; }
   .exclude-toggle { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); cursor:pointer; padding:7px 0; }
+  .cat-row.selectable { cursor:pointer; border-radius:3px; }
+  .cat-row.selectable:hover { background:var(--card); }
+  .cat-row.selected { background:var(--card); }
+  .cat-row.selected .cat-name { font-weight:600; color:var(--ink); }
+  .cat-row.selected .cat-amount { font-weight:700; color:var(--accent); font-size:15px; }
+  /* When enabled, scrolling stays inside a section instead of chaining to the page. */
+  :root[data-contain-scroll="true"] .scroll-panel { overscroll-behavior: contain; }
   .swatch-row { display:flex; gap:8px; }
   .swatch { width:26px; height:26px; border-radius:6px; border:2px solid var(--paper-line); cursor:pointer; padding:0; transition:transform 0.08s; }
   .swatch:hover { transform:scale(1.1); }
