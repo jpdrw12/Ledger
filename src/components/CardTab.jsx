@@ -9,6 +9,7 @@ import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput }
 // account; this tab is where they're entered/shown (they're hidden from Months).
 function CardTab({ state, onChanged }) {
   const [selectedCat, setSelectedCat] = useState(null);
+  const [chartMonth, setChartMonth] = useState("all"); // scope the category/per-card charts
   const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
   const cardIds = new Set(cardAccounts.map((a) => a.id));
 
@@ -41,8 +42,11 @@ function CardTab({ state, onChanged }) {
   };
 
   const trend = monthlyExpenseTotals(state.months, { include: cardIds });
-  const categories = spendingByCategory(state.months, { include: cardIds });
-  const perCard = spendByAccount(state.months, [...cardIds]);
+  // Category/per-card charts are scoped to the chosen month (or all months).
+  const scopedMonths = chartMonth === "all" ? state.months : state.months.filter((m) => m.id === chartMonth);
+  const scopeLabel = chartMonth === "all" ? "all months" : (state.months.find((m) => m.id === chartMonth)?.monthLabel || "");
+  const categories = spendingByCategory(scopedMonths, { include: cardIds });
+  const perCard = spendByAccount(scopedMonths, [...cardIds]);
   const maxCat = categories.length ? Math.max(...categories.map((c) => c.total)) : 0;
   const totalSpend = categories.reduce((s, c) => s + c.total, 0);
   const knownCategories = Array.from(new Set(state.months.flatMap((m) => cardExpensesFor(m).map((e) => e.category).filter(Boolean)))).sort();
@@ -90,11 +94,29 @@ function CardTab({ state, onChanged }) {
       <h4 className="block-title" style={{ marginTop: 20 }}><TrendingUp size={13} /> Monthly card spend</h4>
       <div className="insight-card">
         <Sparkline series={trend} />
+        <div className="forecast-table" style={{ marginTop: 10 }}>
+          {trend.map((r) => (
+            <div className="ledger-row" key={r.id}>
+              <span className="row-name">{r.label}</span>
+              <span className="mono">{money(r.value)}</span>
+            </div>
+          ))}
+          {trend.length === 0 && <p className="empty small">No months yet.</p>}
+        </div>
       </div>
 
-      <h4 className="block-title"><Receipt size={13} /> Card spending by category (all months)</h4>
+      <h4 className="block-title"><Receipt size={13} /> Card spending by category</h4>
       <div className="insight-card">
-        {categories.length === 0 && <p className="empty small">No card spending logged yet.</p>}
+        <div className="backup-folder" style={{ marginTop: 0 }}>
+          <span className="small-label" style={{ flex: 1 }}>Month</span>
+          <select value={chartMonth} onChange={(e) => setChartMonth(e.target.value)}>
+            <option value="all">All months</option>
+            {state.months.map((m) => (
+              <option key={m.id} value={m.id}>{m.monthLabel}</option>
+            ))}
+          </select>
+        </div>
+        {categories.length === 0 && <p className="empty small">No card spending for {scopeLabel}.</p>}
         {categories.map((c) => (
           <div
             className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
