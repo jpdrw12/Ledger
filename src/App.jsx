@@ -493,6 +493,21 @@ export default function App() {
         : [],
     [state]
   );
+  // Known expense categories (from logged expenses + bill templates + budgets)
+  // so the category field can suggest already-used values.
+  const existingCategories = useMemo(
+    () =>
+      state
+        ? Array.from(
+            new Set([
+              ...state.months.flatMap((m) => [...m.expensesPay1, ...m.expensesPay2].map((e) => e.category)),
+              ...state.bills.map((b) => b.category),
+              ...(state.categoryBudgets || []).map((c) => c.category),
+            ].filter((c) => c && c.trim()))
+          ).sort((a, b) => a.localeCompare(b))
+        : [],
+    [state]
+  );
 
   if (!state) {
     return (
@@ -556,6 +571,7 @@ export default function App() {
           goalBalances={goalBalances}
           debts={state.debts}
           existingTags={existingTags}
+          existingCategories={existingCategories}
           openMonth={openMonth}
           setOpenMonth={setOpenMonth}
           onChanged={reload}

@@ -21,6 +21,7 @@ function MonthsTab({
   goalBalances,
   debts,
   existingTags,
+  existingCategories,
   openMonth,
   setOpenMonth,
   onChanged,
@@ -102,6 +103,7 @@ function MonthsTab({
             goalBalances={goalBalances}
             debts={debts}
             existingTags={existingTags}
+            existingCategories={existingCategories}
           />
         ))}
       </div>
@@ -110,7 +112,7 @@ function MonthsTab({
 }
 
 // Self-contained pay block: income + bills for this slot + expenses for this slot + additions.
-function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existingTags, accounts, onChanged,
+function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existingTags, existingCategories, accounts, onChanged,
   onAddBillPayment, onUpdateBillPayment, onRemoveBillPayment, onAddExpense, onUpdateExpense, onRemoveExpense }) {
 
   const [open, setOpen] = useState(false);
@@ -236,7 +238,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
       <div className="scroll-panel">
         {expenseList.map((e) => (
           <div className="ledger-row" key={e.id}>
-            <input className="text-input" placeholder="Category (Groceries, Gas…)" defaultValue={e.category} onBlur={(ev) => onUpdateExpense(e, { category: ev.target.value })} />
+            <input className="text-input" placeholder="Category (Groceries, Gas…)" list="category-suggestions" defaultValue={e.category} onBlur={(ev) => onUpdateExpense(e, { category: ev.target.value })} />
             <input className="text-input tag-input" placeholder="Tag" list="tag-suggestions" defaultValue={e.tag || ""} onBlur={(ev) => onUpdateExpense(e, { tag: ev.target.value })} />
             <AccountSelect accounts={accounts} value={e.accountId} onChange={(v) => onUpdateExpense(e, { accountId: v })} />
             <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => onUpdateExpense(e, { amount: parseNumberInput(ev, e.amount) })} />
@@ -361,7 +363,7 @@ function patchMonthRow(state, monthId, rowId, patch, keys) {
   };
 }
 
-function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags }) {
+function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags, existingCategories }) {
   const { toast } = useToast();
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
@@ -651,6 +653,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               bills={bills}
               expenseList={month.expensesPay1}
               existingTags={existingTags}
+              existingCategories={existingCategories}
               accounts={accounts}
               onChanged={onChanged}
               onAddBillPayment={addBillPayment}
@@ -667,6 +670,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               bills={bills}
               expenseList={month.expensesPay2}
               existingTags={existingTags}
+              existingCategories={existingCategories}
               accounts={accounts}
               onChanged={onChanged}
               onAddBillPayment={addBillPayment}
@@ -680,6 +684,11 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           <datalist id="tag-suggestions">
             {existingTags.map((t) => (
               <option key={t} value={t} />
+            ))}
+          </datalist>
+          <datalist id="category-suggestions">
+            {(existingCategories || []).map((c) => (
+              <option key={c} value={c} />
             ))}
           </datalist>
 
