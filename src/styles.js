@@ -282,6 +282,9 @@ export const css = `
   .cat-row.selected .cat-amount { font-weight:700; color:var(--accent); font-size:15px; }
   /* When enabled, scrolling stays inside a section instead of chaining to the page. */
   :root[data-contain-scroll="true"] .scroll-panel { overscroll-behavior: contain; }
+  .profile-pick-row { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:6px; }
+  .profile-pick { min-width:140px; padding:18px 22px; font-size:15px; font-weight:600; font-family:Georgia, serif; background:var(--card); color:var(--ink); border:1px solid var(--paper-line); border-radius:6px; cursor:pointer; }
+  .profile-pick:hover { border-color:var(--accent); color:var(--accent); }
   .swatch-row { display:flex; gap:8px; }
   .swatch { width:26px; height:26px; border-radius:6px; border:2px solid var(--paper-line); cursor:pointer; padding:0; transition:transform 0.08s; }
   .swatch:hover { transform:scale(1.1); }
@@ -305,6 +308,8 @@ export const css = `
   .toast { display:flex; align-items:center; gap:8px; background:var(--ink); color:var(--paper); font-size:13px; padding:10px 12px; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.25); cursor:pointer; }
   .toast span { flex:1; }
   .toast-close { opacity:0.6; }
+  .toast-action { background:rgba(255,255,255,0.18); color:inherit; border:1px solid rgba(255,255,255,0.45); border-radius:3px; padding:3px 10px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+  .toast-action:hover { background:rgba(255,255,255,0.3); }
   .toast-success { background:var(--surplus); }
   .toast-error { background:var(--deficit); }
 

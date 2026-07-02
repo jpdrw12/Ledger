@@ -1,10 +1,12 @@
 import Database from "@tauri-apps/plugin-sql";
+import { activeProfileDb } from "./profiles.js";
 
 let dbInstance = null;
 
 export async function getDb() {
   if (!dbInstance) {
-    dbInstance = await Database.load("sqlite:ledger.db");
+    // Each user profile is its own database file (see profiles.js).
+    dbInstance = await Database.load(`sqlite:${activeProfileDb()}`);
   }
   return dbInstance;
 }
@@ -68,8 +70,23 @@ export async function deleteAccount(id) {
 // silently, if nothing catches the rejected promise, which is exactly
 // what made this look like a frozen, undeletable account rather than a
 // real (and fixable) error.
+// Reassigns every reference from one account to another, returning the ids of
+// the rows that were touched (per table/column) so restoreAccount() can move
+// them back for undo.
 export async function reassignAccountReferences(fromId, toId) {
   const db = await getDb();
+  const grab = async (table, col) =>
+    (await db.select(`SELECT id FROM ${table} WHERE ${col} = $1`, [fromId])).map((r) => r.id);
+  const affected = {
+    payBlocks: await grab("pay_blocks", "income_account_id"),
+    additions: await grab("additions", "account_id"),
+    billPayments: await grab("bill_payments", "account_id"),
+    expenses: await grab("expenses", "account_id"),
+    goalContributions: await grab("goal_contributions", "account_id"),
+    debtPayments: await grab("month_debt_payments", "account_id"),
+    transfersFrom: await grab("transfers", "from_account_id"),
+    transfersTo: await grab("transfers", "to_account_id"),
+  };
   await db.execute("UPDATE pay_blocks SET income_account_id = $1 WHERE income_account_id = $2", [toId, fromId]);
   await db.execute("UPDATE additions SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
   await db.execute("UPDATE bill_payments SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
@@ -78,6 +95,7 @@ export async function reassignAccountReferences(fromId, toId) {
   await db.execute("UPDATE month_debt_payments SET account_id = $1 WHERE account_id = $2", [toId, fromId]);
   await db.execute("UPDATE transfers SET from_account_id = $1 WHERE from_account_id = $2", [toId, fromId]);
   await db.execute("UPDATE transfers SET to_account_id = $1 WHERE to_account_id = $2", [toId, fromId]);
+  return affected;
 }
 
 // ---------------------------------------------------------------------
@@ -380,6 +398,26 @@ export async function deleteCategoryBudget(category) {
   await db.execute("DELETE FROM category_budgets WHERE category = $1", [category]);
 }
 
+// Card budgets: '' category = the total monthly allowance; others per-category.
+export async function getCardBudgets() {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM card_budgets ORDER BY category");
+  return rows.map((r) => ({ category: r.category, amount: r.amount }));
+}
+
+export async function upsertCardBudget(category, amount) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO card_budgets (category, amount) VALUES ($1, $2) ON CONFLICT(category) DO UPDATE SET amount = $2",
+    [category, amount || 0]
+  );
+}
+
+export async function deleteCardBudget(category) {
+  const db = await getDb();
+  await db.execute("DELETE FROM card_budgets WHERE category = $1", [category]);
+}
+
 // ---------------------------------------------------------------------
 // Month debt payments — tracks debt payments made within a month so they
 // count as account outflows. Interest calc / balance updates stay in DebtsTab.
@@ -441,6 +479,130 @@ export async function deleteMonthDebtPayment(id) {
 }
 
 // ---------------------------------------------------------------------
+// Undo restores — re-insert deleted records with their ORIGINAL ids, from the
+// camelCase snapshots the UI already holds (loadFullState shapes). Composite
+// restores (month, debt) also re-create cascaded children.
+// ---------------------------------------------------------------------
+export async function restoreExpense(monthId, slot, e) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO expenses (id, month_id, slot, category, amount, tag, account_id) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    [e.id, monthId, slot, e.category || null, e.amount || 0, e.tag || null, e.accountId || null]
+  );
+}
+
+export async function restoreBillPayment(monthId, bp) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO bill_payments (id, month_id, bill_id, amount_paid, paid, account_id, due_date, slot) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    [bp.id, monthId, bp.billId, bp.amountPaid || 0, bp.paid ? 1 : 0, bp.accountId || null, bp.dueDate || null, bp.slot || 1]
+  );
+}
+
+export async function restoreTransfer(monthId, t) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO transfers (id, month_id, from_account_id, to_account_id, from_goal_id, to_goal_id, amount, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    [t.id, monthId, t.fromAccountId || null, t.toAccountId || null, t.fromGoalId || null, t.toGoalId || null, t.amount || 0, t.note || null]
+  );
+}
+
+export async function restoreGoalContribution(monthId, gc) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO goal_contributions (id, month_id, goal_id, amount, account_id) VALUES ($1, $2, $3, $4, $5)",
+    [gc.id, monthId, gc.goalId, gc.amount || 0, gc.accountId || null]
+  );
+}
+
+export async function restoreDebtPayment(monthId, dp) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO month_debt_payments (id, month_id, debt_id, amount, account_id, applied) VALUES ($1, $2, $3, $4, $5, $6)",
+    [dp.id, monthId, dp.debtId, dp.amount || 0, dp.accountId || null, dp.applied ? 1 : 0]
+  );
+}
+
+export async function restoreAddition(payBlockId, a) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO additions (id, pay_block_id, name, amount, account_id) VALUES ($1, $2, $3, $4, $5)",
+    [a.id, payBlockId, a.name || "", a.amount || 0, a.accountId || null]
+  );
+}
+
+// Re-creates a whole month from its loadFullState() snapshot: the month row,
+// both pay blocks, and every child record, all with their original ids.
+export async function restoreMonth(month) {
+  const db = await getDb();
+  await db.execute("INSERT INTO months (id, month_label, sequence) VALUES ($1, $2, $3)", [month.id, month.monthLabel, month.sequence]);
+  for (const [slot, pay] of [[1, month.pay1], [2, month.pay2]]) {
+    await db.execute(
+      "INSERT INTO pay_blocks (id, month_id, slot, income, income_account_id) VALUES ($1, $2, $3, $4, $5)",
+      [pay.payBlockId, month.id, slot, pay.income || 0, pay.incomeAccountId || null]
+    );
+    for (const a of pay.additions || []) await restoreAddition(pay.payBlockId, a);
+  }
+  for (const bp of month.billPayments || []) await restoreBillPayment(month.id, bp);
+  for (const e of month.expensesPay1 || []) await restoreExpense(month.id, 1, e);
+  for (const e of month.expensesPay2 || []) await restoreExpense(month.id, 2, e);
+  for (const gc of month.goalContributions || []) await restoreGoalContribution(month.id, gc);
+  for (const dp of month.debtPayments || []) await restoreDebtPayment(month.id, dp);
+  for (const t of month.transfers || []) await restoreTransfer(month.id, t);
+}
+
+export async function restoreBill(bill) {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, payment_type, auto_add, add_to_slot1, add_to_slot2)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [bill.id, bill.name, bill.category || null, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0, bill.addToSlot1 ? 1 : 0, bill.addToSlot2 ? 1 : 0]
+  );
+}
+
+export async function restoreGoal(goal) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO goals (id, name, target_amount, starting_balance) VALUES ($1, $2, $3, $4)",
+    [goal.id, goal.name, goal.targetAmount || 0, goal.startingBalance || 0]
+  );
+}
+
+// historyRows are raw snake_case rows (getDebtHistory returns SELECT *).
+export async function restoreDebt(debt, historyRows = []) {
+  const db = await getDb();
+  await db.execute("INSERT INTO debts (id, name, apr, balance) VALUES ($1, $2, $3, $4)", [debt.id, debt.name, debt.apr || 0, debt.balance || 0]);
+  for (const h of historyRows) {
+    await db.execute(
+      `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance, created_at, month_debt_payment_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [h.id, h.debt_id, h.month_label, h.previous_balance, h.amount_paid, h.interest, h.new_balance, h.created_at, h.month_debt_payment_id || null]
+    );
+  }
+}
+
+// Re-inserts a deleted account and points the rows reassignAccountReferences()
+// moved (its returned map) back at it.
+export async function restoreAccount(account, affected) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO accounts (id, name, starting_balance, exclude_from_total) VALUES ($1, $2, $3, $4)",
+    [account.id, account.name, account.startingBalance || 0, account.excludeFromTotal ? 1 : 0]
+  );
+  const put = async (table, col, ids) => {
+    for (const id of ids || []) await db.execute(`UPDATE ${table} SET ${col} = $1 WHERE id = $2`, [account.id, id]);
+  };
+  await put("pay_blocks", "income_account_id", affected?.payBlocks);
+  await put("additions", "account_id", affected?.additions);
+  await put("bill_payments", "account_id", affected?.billPayments);
+  await put("expenses", "account_id", affected?.expenses);
+  await put("goal_contributions", "account_id", affected?.goalContributions);
+  await put("month_debt_payments", "account_id", affected?.debtPayments);
+  await put("transfers", "from_account_id", affected?.transfersFrom);
+  await put("transfers", "to_account_id", affected?.transfersTo);
+}
+
+// ---------------------------------------------------------------------
 // loadFullState() — reassembles every relational table back into the
 // same nested shape (accounts, bills, goals, months[], debts,
 // debtHistory) that computeLedger()/computeGoalBalances() in calc.js
@@ -451,7 +613,7 @@ export async function deleteMonthDebtPayment(id) {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -459,6 +621,7 @@ export async function loadFullState() {
       getDebts(),
       getDebtHistory(),
       getCategoryBudgets(),
+      getCardBudgets(),
       db.select("SELECT * FROM months ORDER BY sequence"),
       db.select("SELECT * FROM pay_blocks"),
       db.select("SELECT * FROM additions"),
@@ -519,5 +682,5 @@ export async function loadFullState() {
     };
   });
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets };
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets };
 }

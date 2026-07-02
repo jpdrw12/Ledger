@@ -12,6 +12,7 @@ import {
   spendingByCategory,
   monthlyExpenseTotals,
   spendByAccount,
+  cardBudgetReport,
   monthlyEndingBalances,
   buildLedgerCsv,
   budgetReport,
@@ -247,6 +248,36 @@ describe("card-scoped spending aggregation", () => {
     expect(ledger.m1.totalExpensesPay1).toBe(100); // only main "a" (the 40 card expense excluded)
     expect(ledger.m1.totalExpensesPay2).toBe(0); // the 25 was a card expense
     expect(ledger.m1.byAccount.card.carryOut).toBe(135); // 200 - 40 - 25 still drawn down
+  });
+});
+
+describe("cardBudgetReport", () => {
+  const cardIds = new Set(["card"]);
+  const month = makeMonth("m1", {
+    expensesPay1: [
+      { id: "e1", category: "Groceries", amount: 210, accountId: "card" },
+      { id: "e2", category: "Gas", amount: 95, accountId: "card" },
+      { id: "e3", category: "Groceries", amount: 999, accountId: "a" }, // main account — ignored
+    ],
+  });
+  const budgets = [
+    { category: "", amount: 500 }, // '' = total monthly allowance
+    { category: "Groceries", amount: 300 },
+    { category: "Gas", amount: 80 },
+  ];
+
+  it("reports total allowance and per-category spent vs budget for one month", () => {
+    const r = cardBudgetReport(month, budgets, cardIds);
+    expect(r.total).toEqual({ budget: 500, spent: 305 }); // 210 + 95
+    expect(r.categories).toEqual([
+      { category: "Gas", budget: 80, spent: 95 }, // over
+      { category: "Groceries", budget: 300, spent: 210 },
+    ]);
+  });
+
+  it("handles no budgets and no month gracefully", () => {
+    expect(cardBudgetReport(month, [], cardIds)).toEqual({ total: null, categories: [] });
+    expect(cardBudgetReport(null, budgets, cardIds).total).toEqual({ budget: 500, spent: 0 });
   });
 });
 

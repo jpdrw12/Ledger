@@ -4,6 +4,7 @@ import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
+import { undoableDelete } from "../lib/undo.js";
 
 function AccountsTab({ accounts, balances, consolidated, onChanged }) {
   const { toast, confirm } = useToast();
@@ -30,9 +31,14 @@ function AccountsTab({ accounts, balances, consolidated, onChanged }) {
     );
     if (!ok) return;
     try {
-      await db.reassignAccountReferences(acc.id, fallback.id);
-      await db.deleteAccount(acc.id);
-      onChanged();
+      // Capture which rows get reassigned so undo can point them back.
+      const affected = await db.reassignAccountReferences(acc.id, fallback.id);
+      await undoableDelete({
+        label: `Account "${acc.name}"`,
+        doDelete: () => db.deleteAccount(acc.id),
+        doRestore: () => db.restoreAccount(acc, affected),
+        onChanged, toast,
+      });
     } catch (e) {
       toast(`Couldn't delete account: ${e?.message || e}`, "error");
     }

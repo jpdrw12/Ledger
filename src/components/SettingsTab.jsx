@@ -1,5 +1,9 @@
-import React from "react";
-import { FolderSync, Trash2, Archive, Sun, Moon, Monitor } from "lucide-react";
+import React, { useState } from "react";
+import { FolderSync, Trash2, Archive, Sun, Moon, Monitor, Users, Plus } from "lucide-react";
+import { closeDb } from "../lib/db.js";
+import { invoke } from "@tauri-apps/api/core";
+import { PROFILE_SLOTS, activeProfileDb, getProfiles, saveProfiles, addProfile, setActiveProfile, removeProfile } from "../lib/profiles.js";
+import { useToast } from "./Toast.jsx";
 
 const THEMES = [
   { id: "light", label: "Light", Icon: Sun },
@@ -30,6 +34,50 @@ function SettingsTab({
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
 }) {
+  const { confirm, toast } = useToast();
+  const [profiles, setProfiles] = useState(getProfiles);
+  const [newProfileName, setNewProfileName] = useState("");
+  const active = activeProfileDb();
+
+  const renameProfile = (slot, name) => {
+    const next = { ...profiles, [slot]: name.trim() || profiles[slot] };
+    setProfiles(next);
+    saveProfiles(next);
+  };
+  const createProfile = () => {
+    const name = newProfileName.trim();
+    if (!name) return;
+    const slot = addProfile(name);
+    if (!slot) return; // all slots taken (button is hidden then anyway)
+    setProfiles(getProfiles());
+    setNewProfileName("");
+  };
+  const switchProfile = async (slot) => {
+    if (slot === active) return;
+    if (!(await confirm(`Switch to "${profiles[slot]}"? The app will reload with that profile's ledger.`, { confirmLabel: "Switch" }))) return;
+    await closeDb();
+    setActiveProfile(slot);
+    sessionStorage.setItem("ledger.skipPicker", "1"); // explicit choice — skip the startup picker on this reload
+    window.location.reload();
+  };
+  const slotsFree = PROFILE_SLOTS.some((s) => !profiles[s]);
+
+  // Deleting a profile erases its whole database — double confirmation, and
+  // never the active profile or the primary slot.
+  const deleteProfile = async (slot) => {
+    const name = profiles[slot];
+    if (!(await confirm(`Delete the profile "${name}"? Its entire ledger — accounts, months, cards, everything — will be permanently erased. Backups of it are kept.`, { danger: true, confirmLabel: "Continue" }))) return;
+    if (!(await confirm(`Really delete "${name}"? This cannot be undone.`, { danger: true, confirmLabel: "Delete profile" }))) return;
+    try {
+      await invoke("delete_profile_db", { dbFile: slot });
+      removeProfile(slot);
+      setProfiles(getProfiles());
+      toast(`Profile "${name}" deleted.`, "success");
+    } catch (e) {
+      toast(`Couldn't delete profile: ${e}`, "error");
+    }
+  };
+
   return (
     <div className="section">
       <div className="section-head">
@@ -89,6 +137,50 @@ function SettingsTab({
             Keep scrolling inside a section (don't scroll the page at its end)
           </label>
         </div>
+      </div>
+
+      <h4 className="block-title"><Users size={13} /> Profiles</h4>
+      <div className="insight-card">
+        <p className="empty small" style={{ marginTop: 0 }}>
+          Each profile is a completely separate ledger — its own accounts, months, cards, and backups.
+          Switching reloads the app with that profile's data.
+        </p>
+        {PROFILE_SLOTS.filter((s) => profiles[s]).map((slot) => (
+          <div className="backup-folder" key={slot}>
+            <input
+              className="text-input"
+              style={{ maxWidth: 220 }}
+              defaultValue={profiles[slot]}
+              onBlur={(e) => renameProfile(slot, e.target.value)}
+            />
+            {slot === active ? (
+              <span className="excluded-tag">active</span>
+            ) : (
+              <>
+                <button className="btn-secondary" onClick={() => switchProfile(slot)}>Switch</button>
+                {slot !== PROFILE_SLOTS[0] && (
+                  <button className="icon-btn" title="Delete this profile and its entire ledger" onClick={() => deleteProfile(slot)}>
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        ))}
+        {slotsFree && (
+          <div className="backup-folder">
+            <input
+              className="text-input"
+              style={{ maxWidth: 220 }}
+              placeholder="New profile name"
+              value={newProfileName}
+              onChange={(e) => setNewProfileName(e.target.value)}
+            />
+            <button className="btn-secondary" onClick={createProfile} disabled={!newProfileName.trim()}>
+              <Plus size={13} /> Add profile
+            </button>
+          </div>
+        )}
       </div>
 
       <h4 className="block-title">Offsite backup folder</h4>

@@ -229,6 +229,27 @@ export function monthlyExpenseTotals(months, filter) {
   }));
 }
 
+// Card-budget report for a single month: total allowance (budget row with the
+// reserved '' category) and per-category targets vs what was actually spent on
+// the card accounts that month. Pure — no I/O.
+export function cardBudgetReport(month, cardBudgets, cardIds) {
+  const months = month ? [month] : [];
+  const spentByCat = {};
+  let spentTotal = 0;
+  spendingByCategory(months, { include: cardIds }).forEach((c) => {
+    spentByCat[c.category] = c.total;
+    spentTotal += c.total;
+  });
+
+  const totalRow = (cardBudgets || []).find((b) => b.category === "");
+  const total = totalRow ? { budget: Number(totalRow.amount) || 0, spent: spentTotal } : null;
+  const categories = (cardBudgets || [])
+    .filter((b) => b.category !== "")
+    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[b.category] || 0 }))
+    .sort((a, b) => a.category.localeCompare(b.category));
+  return { total, categories };
+}
+
 // Total expense per account (over the given account ids), sorted high to low.
 export function spendByAccount(months, accountIds) {
   const totals = {};

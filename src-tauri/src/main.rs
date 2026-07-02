@@ -2,8 +2,22 @@ mod backup;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
-fn main() {
-    let migrations = vec![
+/// The database files that can hold a user profile. tauri-plugin-sql only
+/// applies migrations to connection strings registered at compile time, so
+/// profiles are a fixed set of slots: `ledger.db` is Profile 1 (pre-profiles
+/// data lands there), and each extra profile claims the next file. A new file
+/// gets the full migration chain on first open — i.e. a fresh ledger.
+pub const PROFILE_DB_FILES: [&str; 6] = [
+    "ledger.db",
+    "profile2.db",
+    "profile3.db",
+    "profile4.db",
+    "profile5.db",
+    "profile6.db",
+];
+
+fn migrations() -> Vec<Migration> {
+    vec![
         Migration {
             version: 1,
             description: "create_initial_schema",
@@ -58,15 +72,30 @@ fn main() {
             sql: include_str!("../migrations/0009_account_exclude_from_total.sql"),
             kind: MigrationKind::Up,
         },
-    ];
+        Migration {
+            version: 10,
+            description: "card_budgets",
+            sql: include_str!("../migrations/0010_card_budgets.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "generic_seed_names",
+            sql: include_str!("../migrations/0011_generic_seed_names.sql"),
+            kind: MigrationKind::Up,
+        },
+    ]
+}
+
+fn main() {
+    let mut sql_builder = tauri_plugin_sql::Builder::default();
+    for file in PROFILE_DB_FILES {
+        sql_builder = sql_builder.add_migrations(&format!("sqlite:{file}"), migrations());
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:ledger.db", migrations)
-                .build(),
-        )
+        .plugin(sql_builder.build())
         .invoke_handler(tauri::generate_handler![
             backup::backup_now,
             backup::list_backups,
@@ -79,6 +108,7 @@ fn main() {
             backup::list_archive_contents,
             backup::restore_from_archive,
             backup::delete_archive,
+            backup::delete_profile_db,
             backup::write_text_file,
             backup::read_text_file
         ])

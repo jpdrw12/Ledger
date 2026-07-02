@@ -111,9 +111,19 @@ stay tied together with a consolidated total while still depleting the
 that consolidation actually happens.
 
 New migrations: add a new `Migration` entry with an incremented
-`version` in `src-tauri/src/main.rs`, don't edit `0001_init.sql` after
-it's shipped to a real database — SQLite migration tracking assumes
-migrations are append-only.
+`version` in `src-tauri/src/main.rs`, don't edit ANY shipped migration
+file after it has run against a real database — sqlx stores a SHA-384
+checksum per applied migration and refuses to migrate when a file's
+bytes change. This was violated once (v0.8.1 edited 0001's seed rows
+for "generic account names") and the failure mode is nasty: the plugin
+consumes its migration list on the first (failed) load attempt, so a
+retry connects WITHOUT migrating and the app dies later with
+"no such table" for whatever the newest migration should have created.
+Fixed by restoring 0001's exact original bytes (git checkout of the
+initial commit) and doing the rename in migration 0011, guarded by
+`NOT EXISTS (SELECT 1 FROM months)` so it only touches fresh installs.
+If a seed value ever needs changing again: new migration, never the old
+file.
 
 ## Known gotchas (already hit once, documented so they don't get re-debugged)
 

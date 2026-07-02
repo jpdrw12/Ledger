@@ -3,12 +3,13 @@ import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import * as db from "../lib/db.js";
 import { parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
+import { undoableDelete } from "../lib/undo.js";
 
 const UNCATEGORIZED = "Uncategorized";
 const categoryOf = (b) => (b.category && b.category.trim()) || UNCATEGORIZED;
 
 function BillsTab({ bills, onChanged }) {
-  const { confirm } = useToast();
+  const { confirm, toast } = useToast();
   const [filter, setFilter] = useState("all");
   const [expanded, setExpanded] = useState(() => new Set()); // groups start collapsed
 
@@ -24,8 +25,12 @@ function BillsTab({ bills, onChanged }) {
 
   const removeBill = async (bill) => {
     if (!(await confirm(`Delete the bill template "${bill.name}"? Bills already added to months stay; only the template is removed.`, { danger: true, confirmLabel: "Delete" }))) return;
-    await db.deleteBill(bill.id);
-    onChanged();
+    await undoableDelete({
+      label: `Bill template "${bill.name}"`,
+      doDelete: () => db.deleteBill(bill.id),
+      doRestore: () => db.restoreBill(bill),
+      onChanged, toast,
+    });
   };
 
   // Distinct categories, alphabetical, with Uncategorized last.

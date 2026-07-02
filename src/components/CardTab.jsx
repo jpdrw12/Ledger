@@ -1,15 +1,20 @@
 import React, { useState } from "react";
 import { CreditCard, Plus, Trash2, TrendingUp, Receipt } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount } from "../lib/calc.js";
+import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport } from "../lib/calc.js";
 import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
+import { undoableDelete } from "../lib/undo.js";
 
 // Dedicated view for spending on "exclude from total" (card) accounts, tracked
 // month by month. Card purchases are ordinary expenses whose account is a card
 // account; this tab is where they're entered/shown (they're hidden from Months).
 function CardTab({ state, onChanged }) {
+  const { toast } = useToast();
   const [selectedCat, setSelectedCat] = useState(null);
   const [chartMonth, setChartMonth] = useState("all"); // scope the category/per-card charts
+  const [newBudgetCat, setNewBudgetCat] = useState("");
+  const [newBudgetAmt, setNewBudgetAmt] = useState("");
   const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
   const cardIds = new Set(cardAccounts.map((a) => a.id));
 
@@ -26,7 +31,11 @@ function CardTab({ state, onChanged }) {
     );
   }
 
-  const cardExpensesFor = (m) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])].filter((e) => cardIds.has(e.accountId));
+  const cardExpensesFor = (m) =>
+    [
+      ...(m.expensesPay1 || []).map((e) => ({ ...e, slot: 1 })),
+      ...(m.expensesPay2 || []).map((e) => ({ ...e, slot: 2 })),
+    ].filter((e) => cardIds.has(e.accountId));
 
   const addCardExpense = async (monthId) => {
     await db.addExpense(monthId, 1, { category: "", amount: 0, tag: "", accountId: cardAccounts[0].id });
@@ -36,9 +45,13 @@ function CardTab({ state, onChanged }) {
     await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, ...patch });
     onChanged();
   };
-  const removeExpense = async (id) => {
-    await db.deleteExpense(id);
-    onChanged();
+  const removeExpense = async (e, monthId) => {
+    await undoableDelete({
+      label: `Card expense "${e.category || "row"}"`,
+      doDelete: () => db.deleteExpense(e.id),
+      doRestore: () => db.restoreExpense(monthId, e.slot || 1, e),
+      onChanged, toast,
+    });
   };
 
   const trend = monthlyExpenseTotals(state.months, { include: cardIds });
@@ -49,6 +62,29 @@ function CardTab({ state, onChanged }) {
   const perCard = spendByAccount(scopedMonths, [...cardIds]);
   const maxCat = categories.length ? Math.max(...categories.map((c) => c.total)) : 0;
   const totalSpend = categories.reduce((s, c) => s + c.total, 0);
+
+  // Budgets are per-month: use the selected chart month, else the latest month.
+  const budgetMonth = chartMonth === "all" ? state.months[state.months.length - 1] : scopedMonths[0];
+  const budgets = cardBudgetReport(budgetMonth, state.cardBudgets || [], cardIds);
+  const allowance = (state.cardBudgets || []).find((b) => b.category === "");
+  const saveCardBudget = async (category, amount) => {
+    await db.upsertCardBudget(category, amount);
+    onChanged();
+  };
+  const removeCardBudget = async (category) => {
+    await db.deleteCardBudget(category);
+    onChanged();
+  };
+  const addCardBudget = async () => {
+    const amt = parseFloat(newBudgetAmt) || 0;
+    if (!newBudgetCat.trim() || amt <= 0) {
+      toast("Enter a category and a positive amount.", "error");
+      return;
+    }
+    await saveCardBudget(newBudgetCat.trim(), amt);
+    setNewBudgetCat("");
+    setNewBudgetAmt("");
+  };
   const knownCategories = Array.from(new Set(state.months.flatMap((m) => cardExpensesFor(m).map((e) => e.category).filter(Boolean)))).sort();
 
   return (
@@ -76,7 +112,7 @@ function CardTab({ state, onChanged }) {
                       <AccountSelect accounts={cardAccounts} value={e.accountId} onChange={(v) => updateExpense(e, { accountId: v })} />
                     )}
                     <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => updateExpense(e, { amount: parseNumberInput(ev, e.amount) })} />
-                    <button className="icon-btn" onClick={() => removeExpense(e.id)}>
+                    <button className="icon-btn" onClick={() => removeExpense(e, m.id)}>
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -137,6 +173,79 @@ function CardTab({ state, onChanged }) {
             <span className="cat-amount mono">{money(totalSpend)}</span>
           </div>
         )}
+      </div>
+
+      <h4 className="block-title"><CreditCard size={13} /> Card budget {budgetMonth ? `— ${budgetMonth.monthLabel}` : ""}</h4>
+      <div className="insight-card">
+        <div className="backup-folder" style={{ marginTop: 0 }}>
+          <span className="small-label" style={{ flex: 1 }}>Monthly allowance (total card spend)</span>
+          <input
+            className="amount-input"
+            type="number"
+            placeholder="e.g. 500"
+            defaultValue={allowance?.amount ?? ""}
+            onBlur={(e) => {
+              const v = parseFloat(e.target.value) || 0;
+              if (v > 0) saveCardBudget("", v);
+              else if (allowance) removeCardBudget("");
+            }}
+          />
+        </div>
+        {budgets.total && budgetMonth && (
+          <div className="cat-row">
+            <span className="cat-name">Allowance</span>
+            <div className="cat-bar-track" title={`${money(budgets.total.spent)} of ${money(budgets.total.budget)}`}>
+              <div
+                className={`cat-bar-fill ${budgets.total.spent > budgets.total.budget ? "over" : "under"}`}
+                style={{ width: `${budgets.total.budget > 0 ? Math.min(100, (budgets.total.spent / budgets.total.budget) * 100) : 0}%` }}
+              />
+            </div>
+            <span className={`cat-amount mono ${budgets.total.spent > budgets.total.budget ? "deficit" : "surplus"}`}>
+              {money(budgets.total.spent)} / {money(budgets.total.budget)}
+            </span>
+          </div>
+        )}
+        {budgets.categories.map((b) => {
+          const over = b.spent > b.budget;
+          const pct = b.budget > 0 ? Math.min(100, (b.spent / b.budget) * 100) : 0;
+          return (
+            <div className="cat-row" key={b.category}>
+              <span className="cat-name">{b.category}</span>
+              <div className="cat-bar-track" title={`${money(b.spent)} of ${money(b.budget)}`}>
+                <div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
+              </div>
+              <span className={`cat-amount mono ${over ? "deficit" : "surplus"}`}>{money(b.spent)} / {money(b.budget)}</span>
+              <input
+                className="amount-input"
+                type="number"
+                defaultValue={b.budget}
+                onBlur={(e) => saveCardBudget(b.category, parseFloat(e.target.value) || 0)}
+              />
+              <button className="icon-btn" title="Remove budget" onClick={() => removeCardBudget(b.category)}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          );
+        })}
+        <div className="cat-row budget-add">
+          <input
+            className="text-input"
+            list="card-category-suggestions"
+            placeholder="Category"
+            value={newBudgetCat}
+            onChange={(e) => setNewBudgetCat(e.target.value)}
+          />
+          <input
+            className="amount-input"
+            type="number"
+            placeholder="Monthly $"
+            value={newBudgetAmt}
+            onChange={(e) => setNewBudgetAmt(e.target.value)}
+          />
+          <button className="btn-secondary" onClick={addCardBudget}>
+            <Plus size={13} /> Add category budget
+          </button>
+        </div>
       </div>
 
       {cardAccounts.length > 1 && (

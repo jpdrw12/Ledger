@@ -118,8 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_expenses_month ON expenses(month_id);
 CREATE INDEX IF NOT EXISTS idx_goal_contrib_month ON goal_contributions(month_id);
 CREATE INDEX IF NOT EXISTS idx_pay_blocks_month ON pay_blocks(month_id);
 
--- Seed: starter accounts so the app isn't empty on first launch. Generic
--- names — the user renames these to their real accounts.
+-- Seed: starter accounts so the app isn't empty on first launch.
 INSERT OR IGNORE INTO accounts (id, name, starting_balance) VALUES
-  ('acc-1', 'Chequing', 0),
-  ('acc-2', 'Savings', 0);
+  ('acc-tangerine', 'Tangerine (Chequing)', 0),
+  ('acc-eq', 'EQ Bank (Savings)', 0);

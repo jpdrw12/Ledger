@@ -6,17 +6,28 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-/// Where the live database lives: <app_config_dir>/ledger.db
-/// tauri-plugin-sql resolves "sqlite:ledger.db" relative to the app
-/// *config* dir (~/.config/<id> on Linux), not the data dir — these
-/// differ on Linux, so this must match the plugin or backups can't
-/// find the database.
-fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
+/// Where the live database lives: <app_config_dir>/<db_file>.
+/// tauri-plugin-sql resolves "sqlite:<name>" relative to the app *config*
+/// dir (~/.config/<id> on Linux), not the data dir — these differ on Linux,
+/// so this must match the plugin or backups can't find the database.
+/// `db_file` is the active profile's database (ledger.db, profile2.db, …);
+/// commands take it as Option<String> defaulting to ledger.db.
+fn db_path(app: &AppHandle, db_file: &str) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_config_dir()
         .map_err(|e| format!("could not resolve app config dir: {e}"))?;
-    Ok(dir.join("ledger.db"))
+    Ok(dir.join(db_file))
+}
+
+/// The profile's file stem ("ledger", "profile2") — used to prefix backup
+/// snapshots so profiles don't mix in the backups folder.
+fn db_stem(db_file: &str) -> String {
+    db_file.trim_end_matches(".db").to_string()
+}
+
+fn active_db(db_file: &Option<String>) -> String {
+    db_file.clone().unwrap_or_else(|| "ledger.db".to_string())
 }
 
 fn backups_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -34,14 +45,15 @@ fn backups_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// ever reads a snapshot of it, so a backup can never corrupt the
 /// working database.
 #[tauri::command]
-pub fn backup_now(app: AppHandle) -> Result<String, String> {
-    let source = db_path(&app)?;
+pub fn backup_now(app: AppHandle, db_file: Option<String>) -> Result<String, String> {
+    let db = active_db(&db_file);
+    let source = db_path(&app, &db)?;
     if !source.exists() {
         return Err("No database file found yet — open the app and add some data first.".into());
     }
 
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S");
-    let file_name = format!("ledger-backup-{timestamp}.db");
+    let file_name = format!("{}-backup-{timestamp}.db", db_stem(&db));
     let dest = backups_dir(&app)?.join(&file_name);
 
     fs::copy(&source, &dest).map_err(|e| format!("backup failed: {e}"))?;
@@ -87,19 +99,19 @@ pub fn list_folder_backups(dir: String) -> Result<Vec<String>, String> {
 /// db.closeDb() before invoking this, then reopens and reloads — so the
 /// file is not being copied out from under a live connection. Don't call
 /// this without closing the connection first.
-fn restore_from_path(app: &AppHandle, source: PathBuf) -> Result<(), String> {
+fn restore_from_path(app: &AppHandle, source: PathBuf, db: &str) -> Result<(), String> {
     if !source.exists() {
         return Err(format!("backup file not found: {}", source.display()));
     }
-    let dest = db_path(app)?;
+    let dest = db_path(app, db)?;
     fs::copy(&source, &dest).map_err(|e| format!("restore failed: {e}"))?;
 
     // The plugin runs in WAL mode. Any -wal/-shm left from the connection we
     // just closed belongs to the OLD database; if left in place, SQLite would
     // replay it on top of the restored file and clobber it. Remove them so the
-    // restored ledger.db opens clean.
+    // restored database opens clean.
     for ext in ["-wal", "-shm"] {
-        let sidecar = dest.with_file_name(format!("ledger.db{ext}"));
+        let sidecar = dest.with_file_name(format!("{db}{ext}"));
         if sidecar.exists() {
             let _ = fs::remove_file(&sidecar);
         }
@@ -109,16 +121,16 @@ fn restore_from_path(app: &AppHandle, source: PathBuf) -> Result<(), String> {
 
 /// Restores a named snapshot from the local backups dir.
 #[tauri::command]
-pub fn restore_backup(app: AppHandle, file_name: String) -> Result<(), String> {
+pub fn restore_backup(app: AppHandle, file_name: String, db_file: Option<String>) -> Result<(), String> {
     let source = backups_dir(&app)?.join(&file_name);
-    restore_from_path(&app, source)
+    restore_from_path(&app, source, &active_db(&db_file))
 }
 
 /// Restores a named snapshot from a chosen folder (e.g. a Drive sync folder).
 #[tauri::command]
-pub fn restore_from_folder(app: AppHandle, dir: String, file_name: String) -> Result<(), String> {
+pub fn restore_from_folder(app: AppHandle, dir: String, file_name: String, db_file: Option<String>) -> Result<(), String> {
     let source = PathBuf::from(&dir).join(&file_name);
-    restore_from_path(&app, source)
+    restore_from_path(&app, source, &active_db(&db_file))
 }
 
 /// Copies an existing local backup snapshot into an external folder
@@ -138,6 +150,29 @@ pub fn mirror_backup(app: AppHandle, file_name: String, dest_dir: String) -> Res
     let dest = dir.join(&file_name);
     fs::copy(&source, &dest).map_err(|e| format!("copy to backup folder failed: {e}"))?;
     Ok(dest.to_string_lossy().to_string())
+}
+
+/// Deletes a profile's database file (plus WAL/SHM sidecars). Only the extra
+/// profile slots are allowed — never ledger.db (the primary profile) and never
+/// an arbitrary path. The UI double-confirms and blocks deleting the active
+/// profile before calling this. Backups of the profile are left in place.
+#[tauri::command]
+pub fn delete_profile_db(app: AppHandle, db_file: String) -> Result<(), String> {
+    const DELETABLE: [&str; 5] = ["profile2.db", "profile3.db", "profile4.db", "profile5.db", "profile6.db"];
+    if !DELETABLE.contains(&db_file.as_str()) {
+        return Err(format!("not a deletable profile database: {db_file}"));
+    }
+    let path = db_path(&app, &db_file)?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("delete failed: {e}"))?;
+    }
+    for ext in ["-wal", "-shm"] {
+        let sidecar = path.with_file_name(format!("{db_file}{ext}"));
+        if sidecar.exists() {
+            let _ = fs::remove_file(&sidecar);
+        }
+    }
+    Ok(())
 }
 
 /// Writes text (e.g. a CSV export) to an arbitrary path the user chose via
@@ -311,6 +346,7 @@ pub fn restore_from_archive(
     dir: String,
     zip_name: String,
     file_name: String,
+    db_file: Option<String>,
 ) -> Result<(), String> {
     let base = resolve_base(&app, &dir)?;
     let zip_path = base.join("archive").join(&zip_name);
@@ -323,9 +359,10 @@ pub fn restore_from_archive(
     zf.read_to_end(&mut buf)
         .map_err(|e| format!("read archive entry failed: {e}"))?;
 
-    let tmp = db_path(&app)?.with_file_name("restore-from-archive.tmp.db");
+    let db = active_db(&db_file);
+    let tmp = db_path(&app, &db)?.with_file_name("restore-from-archive.tmp.db");
     fs::write(&tmp, &buf).map_err(|e| format!("extract failed: {e}"))?;
-    let result = restore_from_path(&app, tmp.clone());
+    let result = restore_from_path(&app, tmp.clone(), &db);
     let _ = fs::remove_file(&tmp);
     result
 }

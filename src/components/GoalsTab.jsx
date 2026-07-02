@@ -4,9 +4,10 @@ import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
+import { undoableDelete } from "../lib/undo.js";
 
 function GoalsTab({ goals, goalBalances, onChanged }) {
-  const { confirm } = useToast();
+  const { confirm, toast } = useToast();
   const addGoal = async () => {
     await db.upsertGoal({ name: "New goal", targetAmount: 0, startingBalance: 0 });
     onChanged();
@@ -19,8 +20,12 @@ function GoalsTab({ goals, goalBalances, onChanged }) {
 
   const removeGoal = async (goal) => {
     if (!(await confirm(`Delete the goal "${goal.name}"? Its contribution history stays in past months but the goal is removed.`, { danger: true, confirmLabel: "Delete" }))) return;
-    await db.deleteGoal(goal.id);
-    onChanged();
+    await undoableDelete({
+      label: `Goal "${goal.name}"`,
+      doDelete: () => db.deleteGoal(goal.id),
+      doRestore: () => db.restoreGoal(goal),
+      onChanged, toast,
+    });
   };
 
   return (

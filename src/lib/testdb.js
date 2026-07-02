@@ -5,7 +5,19 @@ import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(HERE, "../../src-tauri/migrations");
-const MIGRATIONS = ["0001_init.sql", "0002_auto_add_and_debt_payments.sql", "0003_debt_payment_applied.sql", "0004_debt_history_payment_link.sql", "0005_category_budgets.sql"];
+const MIGRATIONS = [
+  "0001_init.sql",
+  "0002_auto_add_and_debt_payments.sql",
+  "0003_debt_payment_applied.sql",
+  "0004_debt_history_payment_link.sql",
+  "0005_category_budgets.sql",
+  "0006_bill_dual_slot.sql",
+  "0007_transfers.sql",
+  "0008_transfer_goal_endpoints.sql",
+  "0009_account_exclude_from_total.sql",
+  "0010_card_budgets.sql",
+  "0011_generic_seed_names.sql",
+];
 
 // Rewrites the plugin's $1,$2 placeholders to positional ? and reorders the
 // params to match the order tokens appear (handles repeats / out-of-order).

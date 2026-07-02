@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { activeProfileDb, profileStem } from "./profiles.js";
+
+// Backups are per-profile: snapshots are named "<stem>-backup-…", so listings
+// are filtered to the active profile's stem.
+const mine = (names) => names.filter((n) => n.startsWith(`${profileStem()}-backup-`));
 
 // Prompts for a save location and writes text there. Returns the path, or
 // null if the user cancelled.
@@ -19,24 +24,24 @@ export async function importTextFile() {
 
 export async function backupNow() {
   // Returns the created file name on success.
-  return invoke("backup_now");
+  return invoke("backup_now", { dbFile: activeProfileDb() });
 }
 
 export async function listBackups() {
-  return invoke("list_backups");
+  return mine(await invoke("list_backups"));
 }
 
 // Lists .db snapshots actually present in the chosen folder (live read).
 export async function listFolderBackups(dir) {
-  return invoke("list_folder_backups", { dir });
+  return mine(await invoke("list_folder_backups", { dir }));
 }
 
 export async function restoreBackup(fileName) {
-  return invoke("restore_backup", { fileName });
+  return invoke("restore_backup", { fileName, dbFile: activeProfileDb() });
 }
 
 export async function restoreFromFolder(dir, fileName) {
-  return invoke("restore_from_folder", { dir, fileName });
+  return invoke("restore_from_folder", { dir, fileName, dbFile: activeProfileDb() });
 }
 
 // --- Archiving --------------------------------------------------------
@@ -57,7 +62,7 @@ export async function listArchiveContents(dir, zipName) {
 }
 
 export async function restoreFromArchive(dir, zipName, fileName) {
-  return invoke("restore_from_archive", { dir, zipName, fileName });
+  return invoke("restore_from_archive", { dir, zipName, fileName, dbFile: activeProfileDb() });
 }
 
 export async function deleteArchive(dir, zipName) {

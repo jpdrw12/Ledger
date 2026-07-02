@@ -4,9 +4,10 @@ import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
 import { Field, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
+import { undoableDelete } from "../lib/undo.js";
 
 function DebtsTab({ debts, debtHistory, onChanged }) {
-  const { confirm } = useToast();
+  const { confirm, toast } = useToast();
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [monthDraft, setMonthDraft] = useState("This month");
 
@@ -21,9 +22,15 @@ function DebtsTab({ debts, debtHistory, onChanged }) {
   };
 
   const removeDebt = async (debt) => {
-    if (!(await confirm(`Delete the debt "${debt.name}" and its payment history? This can't be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
-    await db.deleteDebt(debt.id);
-    onChanged();
+    if (!(await confirm(`Delete the debt "${debt.name}" and its payment history?`, { danger: true, confirmLabel: "Delete" }))) return;
+    // Snapshot the raw history rows so undo can restore them (delete cascades).
+    const history = (debtHistory || []).filter((h) => h.debt_id === debt.id);
+    await undoableDelete({
+      label: `Debt "${debt.name}"`,
+      doDelete: () => db.deleteDebt(debt.id),
+      doRestore: () => db.restoreDebt(debt, history),
+      onChanged, toast,
+    });
   };
 
   const removeHistoryEntry = async (historyId) => {

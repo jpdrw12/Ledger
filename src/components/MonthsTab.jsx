@@ -5,6 +5,7 @@ import { money, computeDueDate, parseExpensesCsv, planTransfer } from "../lib/ca
 import { importTextFile } from "../lib/backup.js";
 import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
+import { undoableDelete } from "../lib/undo.js";
 
 // Local YYYY-MM-DD (matches how due dates are stored/compared).
 const localToday = () => {
@@ -30,7 +31,7 @@ function MonthsTab({
   onCopyForward,
   onReorder,
 }) {
-  const { confirm } = useToast();
+  const { confirm, toast } = useToast();
   const [filter, setFilter] = useState("");
 
   const trimmed = filter.trim().toLowerCase();
@@ -88,9 +89,13 @@ function MonthsTab({
             onChanged={onChanged}
             onPatch={onPatch}
             onRemove={async () => {
-              if (!(await confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments? This can't be undone.`, { danger: true, confirmLabel: "Delete" }))) return;
-              await db.deleteMonth(m.id);
-              onChanged();
+              if (!(await confirm(`Delete "${m.monthLabel}" and all its bills, expenses, contributions, and debt payments?`, { danger: true, confirmLabel: "Delete" }))) return;
+              await undoableDelete({
+                label: `Month "${m.monthLabel}"`,
+                doDelete: () => db.deleteMonth(m.id),
+                doRestore: () => db.restoreMonth(m),
+                onChanged, toast,
+              });
             }}
             onCopyForward={() => onCopyForward(m)}
             onReorder={onReorder}
@@ -116,6 +121,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
   onAddBillPayment, onUpdateBillPayment, onRemoveBillPayment, onAddExpense, onUpdateExpense, onRemoveExpense }) {
 
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
   const additionsTotal = pay.additions.reduce((s, a) => s + (Number(a.amount) || 0), 0);
   const incomeTotal = (Number(pay.income) || 0) + additionsTotal;
 
@@ -128,8 +134,13 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
     onChanged();
   };
   const removeAddition = async (id) => {
-    await db.deleteAddition(id);
-    onChanged();
+    const a = pay.additions.find((x) => x.id === id);
+    await undoableDelete({
+      label: `Addition "${a?.name || "row"}"`,
+      doDelete: () => db.deleteAddition(id),
+      doRestore: () => db.restoreAddition(pay.payBlockId, a),
+      onChanged, toast,
+    });
   };
 
   const slotBills = (type) =>
@@ -375,8 +386,14 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     onChanged();
   };
   const removeBillPayment = async (id) => {
-    await db.deleteBillPayment(id);
-    onChanged();
+    const bp = (month.billPayments || []).find((x) => x.id === id);
+    const bill = bills.find((b) => b.id === bp?.billId);
+    await undoableDelete({
+      label: `Bill "${bill?.name || "payment"}"`,
+      doDelete: () => db.deleteBillPayment(id),
+      doRestore: () => db.restoreBillPayment(month.id, bp),
+      onChanged, toast,
+    });
   };
 
   const addExpense = async (slot) => {
@@ -409,8 +426,15 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     onChanged();
   };
   const removeExpense = async (id) => {
-    await db.deleteExpense(id);
-    onChanged();
+    const inP1 = (month.expensesPay1 || []).find((x) => x.id === id);
+    const e = inP1 || (month.expensesPay2 || []).find((x) => x.id === id);
+    const slot = inP1 ? 1 : 2;
+    await undoableDelete({
+      label: `Expense "${e?.category || "row"}"`,
+      doDelete: () => db.deleteExpense(id),
+      doRestore: () => db.restoreExpense(month.id, slot, e),
+      onChanged, toast,
+    });
   };
 
   const addGoalContribution = async (goal) => {
@@ -423,8 +447,14 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     onChanged();
   };
   const removeGoalContribution = async (id) => {
-    await db.deleteGoalContribution(id);
-    onChanged();
+    const gc = (month.goalContributions || []).find((x) => x.id === id);
+    const goal = goals.find((g) => g.id === gc?.goalId);
+    await undoableDelete({
+      label: `Contribution to "${goal?.name || "goal"}"`,
+      doDelete: () => db.deleteGoalContribution(id),
+      doRestore: () => db.restoreGoalContribution(month.id, gc),
+      onChanged, toast,
+    });
   };
 
   const addDebtPayment = async (debt) => {
@@ -437,8 +467,14 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     onChanged();
   };
   const removeDebtPayment = async (id) => {
-    await db.deleteMonthDebtPayment(id);
-    onChanged();
+    const dp = (month.debtPayments || []).find((x) => x.id === id);
+    const debt = debts.find((d) => d.id === dp?.debtId);
+    await undoableDelete({
+      label: `Payment to "${debt?.name || "debt"}"`,
+      doDelete: () => db.deleteMonthDebtPayment(id),
+      doRestore: () => db.restoreDebtPayment(month.id, dp),
+      onChanged, toast,
+    });
   };
   const applyDebtPayment = async (dp) => {
     const debt = debts.find((d) => d.id === dp.debtId);
@@ -497,8 +533,13 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     onChanged();
   };
   const removeTransferRow = async (row) => {
-    await db.deleteTransfer(row.id);
-    onChanged();
+    const t = (month.transfers || []).find((x) => x.id === row.id);
+    await undoableDelete({
+      label: "Transfer",
+      doDelete: () => db.deleteTransfer(row.id),
+      doRestore: () => db.restoreTransfer(month.id, t),
+      onChanged, toast,
+    });
   };
 
   // Account<->account and goal<->goal transfers (account<->goal lives in Savings).

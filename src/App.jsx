@@ -5,6 +5,7 @@ import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLab
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
+import { activeProfileName, getProfiles, setActiveProfile, PROFILE_SLOTS } from "./lib/profiles.js";
 import { useToast } from "./components/Toast.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
 import CardTab from "./components/CardTab.jsx";
@@ -136,6 +137,20 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
   const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
+  // Startup profile pick: when more than one profile exists, show a chooser
+  // before opening any database; with a single profile, boot straight in.
+  // Switching from Settings reloads the window with an explicit choice already
+  // made — the one-shot sessionStorage flag skips the picker for that reload
+  // (sessionStorage doesn't survive a real app restart, so launches still ask).
+  // NOTE: the initializer must stay pure — StrictMode invokes it twice, so a
+  // consume-the-flag side effect here would erase the flag before the render
+  // that counts. The flag is cleared in the mount effect below instead.
+  const [profileChosen, setProfileChosen] = useState(
+    () => sessionStorage.getItem("ledger.skipPicker") === "1" || Object.keys(getProfiles()).length <= 1
+  );
+  useEffect(() => {
+    sessionStorage.removeItem("ledger.skipPicker");
+  }, []);
   const [containScroll, setContainScroll] = useState(() => {
     const stored = localStorage.getItem("ledger.containScroll");
     return stored === null ? true : stored === "true"; // default on
@@ -284,12 +299,13 @@ export default function App() {
   }, [applyRetention]);
 
   useEffect(() => {
+    if (!profileChosen) return; // wait for the startup profile pick
     (async () => {
       await reload();
       await maybeAutoBackup();
       await refreshBackups();
     })();
-  }, [reload, refreshBackups, maybeAutoBackup]);
+  }, [profileChosen, reload, refreshBackups, maybeAutoBackup]);
 
   // Re-read the backup folder live each time the Backups tab is opened.
   useEffect(() => {
@@ -475,21 +491,6 @@ export default function App() {
     }
   };
 
-  if (loadError) {
-    return (
-      <div className="app">
-        <style>{css}</style>
-        <div className="screen-loading">
-          <p style={{ color: "var(--deficit)", fontWeight: 600 }}>Couldn't open the database.</p>
-          <p className="mono" style={{ fontSize: 12, maxWidth: 480, margin: "8px auto" }}>{loadError}</p>
-          <button className="btn-primary" style={{ margin: "12px auto" }} onClick={reload}>
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Derived values are memoized so they only recompute when their slice of
   // `state` actually changes — not on every render (tab switch, theme toggle,
   // the "Saving…" pill). Memoizing also keeps their references stable, which
@@ -546,6 +547,52 @@ export default function App() {
     [state]
   );
 
+  // Early returns live BELOW every hook (all useMemos above), so hook order
+  // never changes between renders — an early return above a hook crashes with
+  // "Rendered fewer hooks than expected" the moment its condition flips.
+  if (!profileChosen) {
+    const profiles = getProfiles();
+    return (
+      <div className="app">
+        <style>{css}</style>
+        <div className="screen-loading">
+          <BookOpen size={34} strokeWidth={1.5} style={{ margin: "0 auto 10px", display: "block" }} />
+          <h2 style={{ fontFamily: "Georgia, serif", marginBottom: 4 }}>Who's ledger is this?</h2>
+          <p className="empty small" style={{ marginBottom: 18 }}>Pick a profile to open its ledger.</p>
+          <div className="profile-pick-row">
+            {PROFILE_SLOTS.filter((s) => profiles[s]).map((slot) => (
+              <button
+                key={slot}
+                className="profile-pick"
+                onClick={() => {
+                  setActiveProfile(slot);
+                  setProfileChosen(true);
+                }}
+              >
+                {profiles[slot]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="app">
+        <style>{css}</style>
+        <div className="screen-loading">
+          <p style={{ color: "var(--deficit)", fontWeight: 600 }}>Couldn't open the database.</p>
+          <p className="mono" style={{ fontSize: 12, maxWidth: 480, margin: "8px auto" }}>{loadError}</p>
+          <button className="btn-primary" style={{ margin: "12px auto" }} onClick={reload}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!state) {
     return (
       <div className="app">
@@ -562,7 +609,7 @@ export default function App() {
       <header className="app-header">
         <BookOpen size={26} strokeWidth={1.5} />
         <div>
-          <h1>The Household Ledger <span className="app-version">v{APP_VERSION}</span></h1>
+          <h1>{activeProfileName()}'s Ledger <span className="app-version">v{APP_VERSION}</span></h1>
           <p className="tagline">Local-first — nothing leaves this computer unless you back it up.</p>
         </div>
         {(overdue > 0 || dueSoon > 0) && (
