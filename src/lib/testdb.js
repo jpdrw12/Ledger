@@ -17,6 +17,7 @@ const MIGRATIONS = [
   "0009_account_exclude_from_total.sql",
   "0010_card_budgets.sql",
   "0011_generic_seed_names.sql",
+  "0012_sort_order.sql",
 ];
 
 // Rewrites the plugin's $1,$2 placeholders to positional ? and reorders the

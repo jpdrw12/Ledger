@@ -2,12 +2,16 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field, parseNumberInput } from "./Shared.jsx";
+import { Field, parseNumberInput, useDragList, DragHandle } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
 function AccountsTab({ accounts, balances, consolidated, onChanged }) {
   const { toast, confirm } = useToast();
+  const { itemProps, handleProps } = useDragList(accounts.map((a) => a.id), async (ids) => {
+    await db.reorderAccounts(ids);
+    onChanged();
+  });
   const addAccount = async () => {
     await db.upsertAccount({ name: "New account", startingBalance: 0 });
     onChanged();
@@ -56,9 +60,12 @@ function AccountsTab({ accounts, balances, consolidated, onChanged }) {
         Every bill, expense, addition, and transfer is assigned to an account. Accounts counted in the consolidated total sum into the figure at the top of the app. Uncheck "Count this account in the total" for a prepaid spending card you load from your other accounts — its balance and spending are still tracked, just kept out of the total.
       </p>
       <div className="card-list">
-        {accounts.map((acc) => (
-          <div className="goal-card" key={acc.id}>
+        {accounts.map((acc, i) => {
+          const dp = itemProps(i);
+          return (
+          <div {...dp} className={`goal-card ${dp.className}`} key={acc.id}>
             <div className="debt-top">
+              <DragHandle {...handleProps(i)} />
               <input className="text-input" defaultValue={acc.name} onBlur={(e) => updateAccount(acc, { name: e.target.value })} />
               <button className="icon-btn" onClick={() => removeAccount(acc)}>
                 <Trash2 size={14} />
@@ -91,7 +98,8 @@ function AccountsTab({ accounts, balances, consolidated, onChanged }) {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
         <div className="goal-card consolidated-card">
           <div className="debt-top">
             <strong>Consolidated</strong>

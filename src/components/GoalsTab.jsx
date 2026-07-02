@@ -2,12 +2,16 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field, parseNumberInput } from "./Shared.jsx";
+import { Field, parseNumberInput, useDragList, DragHandle } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
 function GoalsTab({ goals, goalBalances, onChanged }) {
   const { confirm, toast } = useToast();
+  const { itemProps, handleProps } = useDragList(goals.map((g) => g.id), async (ids) => {
+    await db.reorderGoals(ids);
+    onChanged();
+  });
   const addGoal = async () => {
     await db.upsertGoal({ name: "New goal", targetAmount: 0, startingBalance: 0 });
     onChanged();
@@ -40,12 +44,14 @@ function GoalsTab({ goals, goalBalances, onChanged }) {
         Tracked separately from bills. Add contributions from inside a month — the balance below is starting balance plus every contribution ever logged.
       </p>
       <div className="card-list">
-        {goals.map((g) => {
+        {goals.map((g, i) => {
           const balance = goalBalances[g.id] || 0;
           const pct = g.targetAmount > 0 ? Math.min(100, Math.round((balance / g.targetAmount) * 100)) : null;
+          const dp = itemProps(i);
           return (
-            <div className="goal-card" key={g.id}>
+            <div {...dp} className={`goal-card ${dp.className}`} key={g.id}>
               <div className="debt-top">
+                <DragHandle {...handleProps(i)} />
                 <input className="text-input" defaultValue={g.name} onBlur={(e) => updateGoal(g, { name: e.target.value })} />
                 <button className="icon-btn" onClick={() => removeGoal(g)}>
                   <Trash2 size={14} />

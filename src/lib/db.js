@@ -44,17 +44,41 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 // ---------------------------------------------------------------------
 export async function getAccounts() {
   const db = await getDb();
-  const rows = await db.select("SELECT * FROM accounts ORDER BY name");
-  return rows.map((r) => ({ id: r.id, name: r.name, startingBalance: r.starting_balance, excludeFromTotal: r.exclude_from_total === 1 }));
+  const rows = await db.select("SELECT * FROM accounts ORDER BY sort_order, name");
+  return rows.map((r) => ({ id: r.id, name: r.name, startingBalance: r.starting_balance, excludeFromTotal: r.exclude_from_total === 1, sortOrder: r.sort_order }));
+}
+
+// Next sort_order for a new row (append at the end of the list).
+async function nextOrder(db, table) {
+  const rows = await db.select(`SELECT COALESCE(MAX(sort_order) + 1, 0) AS n FROM ${table}`);
+  return rows[0]?.n ?? 0;
+}
+
+// Persists a drag-reorder: sort_order = position in the given id list.
+async function setOrder(db, table, orderedIds) {
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.execute(`UPDATE ${table} SET sort_order = $1 WHERE id = $2`, [i, orderedIds[i]]);
+  }
+}
+
+export async function reorderAccounts(orderedIds) {
+  await setOrder(await getDb(), "accounts", orderedIds);
+}
+export async function reorderGoals(orderedIds) {
+  await setOrder(await getDb(), "goals", orderedIds);
+}
+export async function reorderDebts(orderedIds) {
+  await setOrder(await getDb(), "debts", orderedIds);
 }
 
 export async function upsertAccount(acc) {
   const db = await getDb();
   const id = acc.id || uid();
+  const order = acc.id ? 0 : await nextOrder(db, "accounts"); // ignored on update
   await db.execute(
-    `INSERT INTO accounts (id, name, starting_balance, exclude_from_total) VALUES ($1, $2, $3, $4)
+    `INSERT INTO accounts (id, name, starting_balance, exclude_from_total, sort_order) VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT(id) DO UPDATE SET name = $2, starting_balance = $3, exclude_from_total = $4`,
-    [id, acc.name, acc.startingBalance || 0, acc.excludeFromTotal ? 1 : 0]
+    [id, acc.name, acc.startingBalance || 0, acc.excludeFromTotal ? 1 : 0, order]
   );
   return id;
 }
@@ -141,17 +165,18 @@ export async function deleteBill(id) {
 // ---------------------------------------------------------------------
 export async function getGoals() {
   const db = await getDb();
-  const rows = await db.select("SELECT * FROM goals ORDER BY name");
-  return rows.map((r) => ({ id: r.id, name: r.name, targetAmount: r.target_amount, startingBalance: r.starting_balance }));
+  const rows = await db.select("SELECT * FROM goals ORDER BY sort_order, name");
+  return rows.map((r) => ({ id: r.id, name: r.name, targetAmount: r.target_amount, startingBalance: r.starting_balance, sortOrder: r.sort_order }));
 }
 
 export async function upsertGoal(goal) {
   const db = await getDb();
   const id = goal.id || uid();
+  const order = goal.id ? 0 : await nextOrder(db, "goals"); // ignored on update
   await db.execute(
-    `INSERT INTO goals (id, name, target_amount, starting_balance) VALUES ($1, $2, $3, $4)
+    `INSERT INTO goals (id, name, target_amount, starting_balance, sort_order) VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT(id) DO UPDATE SET name = $2, target_amount = $3, starting_balance = $4`,
-    [id, goal.name, goal.targetAmount || 0, goal.startingBalance || 0]
+    [id, goal.name, goal.targetAmount || 0, goal.startingBalance || 0, order]
   );
   return id;
 }
@@ -166,16 +191,17 @@ export async function deleteGoal(id) {
 // ---------------------------------------------------------------------
 export async function getDebts() {
   const db = await getDb();
-  return db.select("SELECT * FROM debts ORDER BY name");
+  return db.select("SELECT * FROM debts ORDER BY sort_order, name");
 }
 
 export async function upsertDebt(debt) {
   const db = await getDb();
   const id = debt.id || uid();
+  const order = debt.id ? 0 : await nextOrder(db, "debts"); // ignored on update
   await db.execute(
-    `INSERT INTO debts (id, name, apr, balance) VALUES ($1, $2, $3, $4)
+    `INSERT INTO debts (id, name, apr, balance, sort_order) VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT(id) DO UPDATE SET name = $2, apr = $3, balance = $4`,
-    [id, debt.name, debt.apr || 0, debt.balance || 0]
+    [id, debt.name, debt.apr || 0, debt.balance || 0, order]
   );
   return id;
 }
@@ -563,15 +589,16 @@ export async function restoreBill(bill) {
 export async function restoreGoal(goal) {
   const db = await getDb();
   await db.execute(
-    "INSERT INTO goals (id, name, target_amount, starting_balance) VALUES ($1, $2, $3, $4)",
-    [goal.id, goal.name, goal.targetAmount || 0, goal.startingBalance || 0]
+    "INSERT INTO goals (id, name, target_amount, starting_balance, sort_order) VALUES ($1, $2, $3, $4, $5)",
+    [goal.id, goal.name, goal.targetAmount || 0, goal.startingBalance || 0, goal.sortOrder || 0]
   );
 }
 
 // historyRows are raw snake_case rows (getDebtHistory returns SELECT *).
 export async function restoreDebt(debt, historyRows = []) {
   const db = await getDb();
-  await db.execute("INSERT INTO debts (id, name, apr, balance) VALUES ($1, $2, $3, $4)", [debt.id, debt.name, debt.apr || 0, debt.balance || 0]);
+  // Debt snapshots are raw rows (getDebts returns SELECT *), so snake_case.
+  await db.execute("INSERT INTO debts (id, name, apr, balance, sort_order) VALUES ($1, $2, $3, $4, $5)", [debt.id, debt.name, debt.apr || 0, debt.balance || 0, debt.sort_order || 0]);
   for (const h of historyRows) {
     await db.execute(
       `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance, created_at, month_debt_payment_id)
@@ -586,8 +613,8 @@ export async function restoreDebt(debt, historyRows = []) {
 export async function restoreAccount(account, affected) {
   const db = await getDb();
   await db.execute(
-    "INSERT INTO accounts (id, name, starting_balance, exclude_from_total) VALUES ($1, $2, $3, $4)",
-    [account.id, account.name, account.startingBalance || 0, account.excludeFromTotal ? 1 : 0]
+    "INSERT INTO accounts (id, name, starting_balance, exclude_from_total, sort_order) VALUES ($1, $2, $3, $4, $5)",
+    [account.id, account.name, account.startingBalance || 0, account.excludeFromTotal ? 1 : 0, account.sortOrder || 0]
   );
   const put = async (table, col, ids) => {
     for (const id of ids || []) await db.execute(`UPDATE ${table} SET ${col} = $1 WHERE id = $2`, [account.id, id]);

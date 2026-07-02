@@ -2,12 +2,16 @@ import React, { useState } from "react";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field, parseNumberInput } from "./Shared.jsx";
+import { Field, parseNumberInput, useDragList, DragHandle } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
 function DebtsTab({ debts, debtHistory, onChanged }) {
   const { confirm, toast } = useToast();
+  const { itemProps, handleProps } = useDragList(debts.map((d) => d.id), async (ids) => {
+    await db.reorderDebts(ids);
+    onChanged();
+  });
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [monthDraft, setMonthDraft] = useState("This month");
 
@@ -70,9 +74,12 @@ function DebtsTab({ debts, debtHistory, onChanged }) {
       </div>
 
       <div className="card-list">
-        {debts.map((debt) => (
-          <div className="debt-card" key={`${debt.id}-${debt.balance}`}>
+        {debts.map((debt, i) => {
+          const dp = itemProps(i);
+          return (
+          <div {...dp} className={`debt-card ${dp.className}`} key={`${debt.id}-${debt.balance}`}>
             <div className="debt-top">
+              <DragHandle {...handleProps(i)} />
               <input className="text-input" defaultValue={debt.name} onBlur={(e) => updateDebt(debt, { name: e.target.value })} />
               <button className="icon-btn" onClick={() => removeDebt(debt)}>
                 <Trash2 size={14} />
@@ -140,7 +147,8 @@ function DebtsTab({ debts, debtHistory, onChanged }) {
               </table>
             )}
           </div>
-        ))}
+          );
+        })}
         {debts.length === 0 && <p className="empty">No debts tracked yet.</p>}
       </div>
     </div>

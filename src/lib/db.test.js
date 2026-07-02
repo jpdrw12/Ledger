@@ -10,6 +10,11 @@ import {
   loadFullState,
   deleteMonth,
   restoreMonth,
+  upsertGoal,
+  getGoals,
+  reorderGoals,
+  deleteGoal,
+  restoreGoal,
   reassignAccountReferences,
   deleteAccount,
   restoreAccount,
@@ -101,6 +106,29 @@ describe("foreign key enforcement", () => {
     const pid = await addMonthDebtPayment("m", { debtId: "d", amount: 50, accountId: "a" });
     await updateMonthDebtPayment(pid, { amount: 75, accountId: "a" });
     expect(get("SELECT amount FROM month_debt_payments WHERE id=?", pid).amount).toBe(75);
+  });
+});
+
+describe("drag reordering", () => {
+  it("persists a custom order, appends new items last, and undo keeps position", async () => {
+    const a = await upsertGoal({ name: "Alpha" });
+    const b = await upsertGoal({ name: "Beta" });
+    const c = await upsertGoal({ name: "Gamma" });
+    expect((await getGoals()).map((g) => g.id)).toEqual([a, b, c]);
+
+    await reorderGoals([c, a, b]);
+    expect((await getGoals()).map((g) => g.id)).toEqual([c, a, b]);
+
+    // New goals land at the end, not alphabetically.
+    const d = await upsertGoal({ name: "Aardvark" });
+    expect((await getGoals()).map((g) => g.id)).toEqual([c, a, b, d]);
+
+    // Delete + restore returns the goal to its old slot.
+    const goals = await getGoals();
+    const snapshot = goals.find((g) => g.id === a);
+    await deleteGoal(a);
+    await restoreGoal(snapshot);
+    expect((await getGoals()).map((g) => g.id)).toEqual([c, a, b, d]);
   });
 });
 

@@ -84,6 +84,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0011_generic_seed_names.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 12,
+            description: "sort_order",
+            sql: include_str!("../migrations/0012_sort_order.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

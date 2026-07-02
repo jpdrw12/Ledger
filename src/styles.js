@@ -282,6 +282,12 @@ export const css = `
   .cat-row.selected .cat-amount { font-weight:700; color:var(--accent); font-size:15px; }
   /* When enabled, scrolling stays inside a section instead of chaining to the page. */
   :root[data-contain-scroll="true"] .scroll-panel { overscroll-behavior: contain; }
+  .drag-handle { display:inline-flex; align-items:center; color:var(--ink-soft); cursor:grab; padding:2px; flex-shrink:0; }
+  .drag-handle:active { cursor:grabbing; color:var(--accent); }
+  .goal-card.dragging, .debt-card.dragging { opacity:0.4; }
+  .goal-card.drag-over, .debt-card.drag-over { box-shadow:0 -3px 0 var(--accent); }
+  :root[data-dragging="1"] { cursor:grabbing; }
+  :root[data-dragging="1"] * { user-select:none !important; }
   .profile-pick-row { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:6px; }
   .profile-pick { min-width:140px; padding:18px 22px; font-size:15px; font-weight:600; font-family:Georgia, serif; background:var(--card); color:var(--ink); border:1px solid var(--paper-line); border-radius:6px; cursor:pointer; }
   .profile-pick:hover { border-color:var(--accent); color:var(--accent); }

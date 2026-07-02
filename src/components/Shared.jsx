@@ -1,6 +1,79 @@
 import React, { useRef, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import { money } from "../lib/calc.js";
+
+// Drag-to-reorder for a card list — pointer-based (native HTML5 DnD is
+// unreliable in the WebKitGTK webview and renders a giant drag ghost). Mousedown
+// on the handle starts a drag; the card under the cursor (found via a
+// data-drag-index attribute) becomes the drop target; mouseup commits.
+// `onDrop(orderedIds)` receives the full id list in its new order.
+export function useDragList(ids, onDrop) {
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
+  // Refs so the document listeners always see fresh values without re-binding.
+  const s = useRef({ ids, onDrop, over: null, drag: null });
+  s.current.ids = ids;
+  s.current.onDrop = onDrop;
+
+  useEffect(() => {
+    if (dragIndex === null) return;
+    document.documentElement.setAttribute("data-dragging", "1");
+    const onMove = (e) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const card = el && el.closest("[data-drag-index]");
+      const idx = card ? Number(card.getAttribute("data-drag-index")) : null;
+      if (idx !== s.current.over) {
+        s.current.over = idx;
+        setOverIndex(idx);
+      }
+    };
+    const onUp = () => {
+      const { drag, over, ids: cur, onDrop: drop } = s.current;
+      if (drag !== null && over !== null && drag !== over) {
+        const next = [...cur];
+        const [moved] = next.splice(drag, 1);
+        next.splice(over, 0, moved);
+        drop(next);
+      }
+      s.current.drag = null;
+      s.current.over = null;
+      setDragIndex(null);
+      setOverIndex(null);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.documentElement.removeAttribute("data-dragging");
+    };
+  }, [dragIndex]);
+
+  const itemProps = (i) => ({
+    "data-drag-index": i,
+    className: `${dragIndex === i ? "dragging" : ""} ${overIndex === i && dragIndex !== null && dragIndex !== i ? "drag-over" : ""}`.trim(),
+  });
+
+  const handleProps = (i) => ({
+    onMouseDown: (e) => {
+      e.preventDefault(); // no text selection while dragging
+      s.current.drag = i;
+      s.current.over = i;
+      setDragIndex(i);
+      setOverIndex(i);
+    },
+  });
+
+  return { itemProps, handleProps };
+}
+
+export function DragHandle(props) {
+  return (
+    <span className="drag-handle" title="Drag to reorder" {...props}>
+      <GripVertical size={15} />
+    </span>
+  );
+}
 
 // A .scroll-panel that auto-scrolls to the bottom when its content grows (i.e.
 // when a row is added) — but not on edits or removals (height unchanged/smaller).
