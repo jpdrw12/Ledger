@@ -80,6 +80,10 @@ export const css = `
   .changelog-history { margin-top:8px; max-height:340px; overflow:auto; }
   .changelog-entry { padding:8px 0; border-top:1px solid var(--paper-line); }
   .changelog-version { font-weight:600; margin-bottom:4px; color:var(--accent); }
+  .update-progress { display:flex; align-items:center; gap:10px; margin-top:8px; }
+  .update-progress-bar { flex:1; height:6px; background:var(--paper-line); border-radius:3px; overflow:hidden; }
+  .update-progress-fill { width:40%; height:100%; background:var(--accent); border-radius:3px; animation:indeterminate 1.1s ease-in-out infinite; }
+  @keyframes indeterminate { 0% { margin-left:-40%; } 100% { margin-left:100%; } }
   .due-chip { margin-left:auto; align-self:center; background:var(--card); border:1px solid var(--paper-line); border-radius:14px; padding:6px 12px; font-size:12.5px; cursor:pointer; color:var(--ink); }
   .due-chip:hover { border-color:var(--stamp); }
   .due-chip-over { color:var(--deficit); font-weight:600; }

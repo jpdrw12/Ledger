@@ -10,7 +10,7 @@
 use serde::Serialize;
 use std::path::PathBuf;
 use std::process::Command;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 const REPO: &str = "jpdrw12/Ledger";
 
@@ -122,6 +122,9 @@ pub fn install_update(
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not create cache dir: {e}"))?;
     let dest = dir.join(&asset_name);
 
+    // Let the UI show a phase label / animated bar — a bare install with no
+    // feedback looks frozen for the 10-30s it takes.
+    let _ = app.emit("update-progress", "downloading");
     let status = Command::new("curl")
         .args(["-L", "--fail", "-o"])
         .arg(&dest)
@@ -132,6 +135,7 @@ pub fn install_update(
         return Err("failed to download the update".into());
     }
     let path = dest.to_string_lossy().to_string();
+    let _ = app.emit("update-progress", "installing");
 
     #[cfg(target_os = "linux")]
     {
@@ -170,9 +174,22 @@ pub fn install_update(
     }
 }
 
-/// Relaunches the app so a freshly-installed update takes effect. `restart()`
-/// never returns.
+/// Relaunches the app so a freshly-installed update takes effect.
+///
+/// NOT `app.restart()` — that re-execs `/proc/self/exe`, which on Linux still
+/// resolves to the *old* binary's inode after apt replaces the file on disk
+/// (the path may even come back as "…/household-ledger (deleted)"). Re-execing
+/// that relaunches the version we just replaced. Instead we spawn the binary by
+/// its real on-disk path (stripping any " (deleted)" marker) and exit, so the
+/// freshly-installed binary is what comes up.
 #[tauri::command]
 pub fn restart_app(app: AppHandle) {
-    app.restart();
+    if let Ok(exe) = std::env::current_exe() {
+        let mut path = exe.to_string_lossy().to_string();
+        if let Some(stripped) = path.strip_suffix(" (deleted)") {
+            path = stripped.to_string();
+        }
+        let _ = Command::new(path).spawn();
+    }
+    app.exit(0);
 }

@@ -5,6 +5,16 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.14.0]
+
+### Added
+- The in-app updater now shows a progress bar with the current phase
+  ("Downloading…", "Installing…") instead of appearing frozen during an install.
+
+### Fixed
+- After installing an update the app relaunches into the **new** version. It
+  previously re-execed the old binary's inode and came back on the old version.
+
 ## [0.13.0]
 
 ### Changed

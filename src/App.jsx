@@ -139,6 +139,8 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateError, setUpdateError] = useState(null);
+  // Install phase for progress feedback: null | "downloading" | "installing" | "restarting".
+  const [updatePhase, setUpdatePhase] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
   const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
@@ -366,6 +368,17 @@ export default function App() {
     runUpdateCheck();
   }, [profileChosen, runUpdateCheck]);
 
+  // Progress phases emitted by the Rust installer, so the button can show a
+  // "Downloading…/Installing…" bar instead of looking frozen.
+  useEffect(() => {
+    let unlisten;
+    (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen("update-progress", (e) => setUpdatePhase(e.payload));
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
   const hasUpdate = !!updateInfo && isNewer(updateInfo.latestVersion, APP_VERSION);
 
   // Download + install the pending update; returns the Rust status word so the
@@ -373,18 +386,25 @@ export default function App() {
   const handleInstallUpdate = useCallback(async () => {
     if (!updateInfo) return "";
     setUpdateBusy(true);
+    setUpdatePhase("downloading");
     try {
       const status = await installUpdate(updateInfo.assetUrl, updateInfo.assetName);
       if (status === "installed") {
-        toast("Update installed — restart to apply.", "success");
+        // Relaunch straight into the new version (no manual step).
+        setUpdatePhase("restarting");
+        toast("Update installed — restarting…", "success");
+        setTimeout(() => restartApp(), 900);
       } else if (status === "opened") {
+        setUpdatePhase(null);
         toast("Installer opened — follow its prompts, then reopen the app.", "info");
       } else if (typeof status === "string" && status.startsWith("downloaded")) {
+        setUpdatePhase(null);
         const path = status.split("\n")[1] || "";
         toast(`Update downloaded to ${path} — open it to install.`, "info");
       }
       return status;
     } catch (e) {
+      setUpdatePhase(null);
       toast(`Update failed: ${typeof e === "string" ? e : e?.message || e}`, "error");
       return "";
     } finally {
@@ -827,6 +847,7 @@ export default function App() {
           updateInfo={updateInfo}
           hasUpdate={hasUpdate}
           updateBusy={updateBusy}
+          updatePhase={updatePhase}
           updateError={updateError}
           onCheckUpdate={runUpdateCheck}
           onInstallUpdate={handleInstallUpdate}

@@ -35,7 +35,7 @@ function SettingsTab({
   containScroll, onContainScrollChange,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
-  appVersion, updateInfo, hasUpdate, updateBusy, updateError,
+  appVersion, updateInfo, hasUpdate, updateBusy, updatePhase, updateError,
   onCheckUpdate, onInstallUpdate, onRestart,
 }) {
   const { confirm, toast } = useToast();
@@ -53,8 +53,16 @@ function SettingsTab({
 
   const doInstall = async () => {
     const status = await onInstallUpdate();
+    // On "installed" the app auto-restarts; only surface a manual Restart button
+    // as a fallback if that somehow didn't happen.
     if (status === "installed") setInstalled(true);
   };
+
+  const phaseLabel =
+    updatePhase === "downloading" ? "Downloading update…"
+    : updatePhase === "installing" ? "Installing… you may be asked for your password"
+    : updatePhase === "restarting" ? "Update installed — restarting…"
+    : null;
 
   const renameProfile = (slot, name) => {
     const next = { ...profiles, [slot]: name.trim() || profiles[slot] };
@@ -128,17 +136,24 @@ function SettingsTab({
                 <pre className="changelog-body">{whatsNew}</pre>
               </div>
             )}
-            <div className="backup-folder">
-              {installed ? (
-                <button className="btn-primary" onClick={onRestart}>
-                  <RefreshCw size={13} /> Restart now
-                </button>
-              ) : (
-                <button className="btn-primary" onClick={doInstall} disabled={updateBusy}>
-                  <Download size={13} /> {updateBusy ? "Installing…" : `Install v${updateInfo.latestVersion}`}
-                </button>
-              )}
-            </div>
+            {phaseLabel ? (
+              <div className="update-progress">
+                <div className="update-progress-bar"><div className="update-progress-fill" /></div>
+                <span className="small-label">{phaseLabel}</span>
+              </div>
+            ) : (
+              <div className="backup-folder">
+                {installed ? (
+                  <button className="btn-primary" onClick={onRestart}>
+                    <RefreshCw size={13} /> Restart now
+                  </button>
+                ) : (
+                  <button className="btn-primary" onClick={doInstall} disabled={updateBusy}>
+                    <Download size={13} /> Install v{updateInfo.latestVersion}
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
 
