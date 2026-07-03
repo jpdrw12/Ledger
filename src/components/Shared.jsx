@@ -67,6 +67,16 @@ export function useDragList(ids, onDrop) {
   return { itemProps, handleProps };
 }
 
+// Immutably patch one row (matched by id) inside a top-level state array
+// (e.g. "goals", "bills", "accounts", "debts"). Used for optimistic updates so
+// an edit shows instantly before the persist + reload reconcile lands.
+export function patchEntity(state, key, id, patch) {
+  return {
+    ...state,
+    [key]: state[key].map((r) => (r.id === id ? { ...r, ...patch } : r)),
+  };
+}
+
 export function DragHandle(props) {
   return (
     <span className="drag-handle" title="Drag to reorder" {...props}>

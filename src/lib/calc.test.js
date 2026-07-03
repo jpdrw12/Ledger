@@ -15,6 +15,7 @@ import {
   cardBudgetReport,
   monthlyEndingBalances,
   buildLedgerCsv,
+  buildCardCsv,
   budgetReport,
   netWorthSnapshot,
   billStatus,
@@ -575,6 +576,42 @@ describe("buildLedgerCsv", () => {
     const ledger = computeLedger(s.months, s.accounts);
     const csv = buildLedgerCsv(s, ledger);
     expect(csv).toContain('"Food, ""fancy"""');
+  });
+});
+
+describe("buildCardCsv", () => {
+  const state = {
+    accounts: [
+      { id: "a", name: "EQ Bank", startingBalance: 100, excludeFromTotal: false },
+      { id: "c", name: "Visa", startingBalance: 0, excludeFromTotal: true },
+    ],
+    months: [
+      makeMonth("m1", {
+        monthLabel: "June 2026",
+        expensesPay1: [
+          { category: "Groceries", amount: 120, tag: "food", accountId: "c" },
+          { category: "Rent", amount: 800, accountId: "a" }, // non-card, excluded
+        ],
+        expensesPay2: [{ category: "Gas", amount: 50, accountId: "c" }],
+      }),
+    ],
+  };
+
+  it("emits only card-account expenses with a per-month total", () => {
+    const lines = buildCardCsv(state).split("\n");
+    expect(lines[0]).toBe("Month,Category,Tag,Card,Slot,Amount");
+    expect(lines).toContain("June 2026,Groceries,food,Visa,1,120");
+    expect(lines).toContain("June 2026,Gas,,Visa,2,50");
+    expect(lines).toContain("June 2026,Total,,,,170");
+    expect(lines.some((l) => l.includes("Rent"))).toBe(false);
+  });
+
+  it("escapes commas and quotes", () => {
+    const s = {
+      ...state,
+      months: [makeMonth("m1", { monthLabel: "X", expensesPay1: [{ category: 'Food, "fancy"', amount: 10, accountId: "c" }] })],
+    };
+    expect(buildCardCsv(s)).toContain('"Food, ""fancy"""');
   });
 });
 

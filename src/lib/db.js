@@ -88,6 +88,29 @@ export async function deleteAccount(id) {
   await db.execute("DELETE FROM accounts WHERE id = $1", [id]);
 }
 
+// How many rows reference this account across every table that points at one.
+// Used to block deletion of an in-use account (rather than silently reassigning
+// its transactions elsewhere), so accounts behave like goals/debts.
+export async function countAccountReferences(id) {
+  const db = await getDb();
+  const refs = [
+    ["pay_blocks", "income_account_id"],
+    ["additions", "account_id"],
+    ["bill_payments", "account_id"],
+    ["expenses", "account_id"],
+    ["goal_contributions", "account_id"],
+    ["month_debt_payments", "account_id"],
+    ["transfers", "from_account_id"],
+    ["transfers", "to_account_id"],
+  ];
+  let total = 0;
+  for (const [table, col] of refs) {
+    const rows = await db.select(`SELECT COUNT(*) AS n FROM ${table} WHERE ${col} = $1`, [id]);
+    total += Number(rows[0]?.n) || 0;
+  }
+  return total;
+}
+
 // Every bill payment / expense / addition / contribution that pointed at
 // `fromId` gets moved to `toId` first. Without this, deleting an account
 // that's still referenced anywhere fails on the foreign key constraint —

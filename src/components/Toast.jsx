@@ -3,7 +3,8 @@ import { Check, AlertTriangle, X } from "lucide-react";
 
 const ToastContext = createContext(null);
 
-// useToast() returns { toast, confirm }.
+// useToast() returns { toast, confirm, undoLast }.
+//   undoLast() — fires the most recent live toast action (Undo); for Ctrl+Z.
 //   toast(message, type?, opts?) — transient notification ("success" | "error" | "info").
 //     opts.actionLabel + opts.onAction add an action button (e.g. Undo) and
 //     extend the timeout so there's time to click it.
@@ -20,13 +21,30 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const [dialog, setDialog] = useState(null); // { message, danger, resolve }
   const resolver = useRef(null);
+  // The most recent still-live toast that carries an action (i.e. an Undo), so
+  // a keyboard shortcut (Ctrl/Cmd+Z) can trigger it without a click.
+  const lastAction = useRef(null);
 
-  const dismiss = useCallback((id) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const dismiss = useCallback((id) => {
+    setToasts((t) => t.filter((x) => x.id !== id));
+    if (lastAction.current?.id === id) lastAction.current = null;
+  }, []);
 
   const toast = useCallback((message, type = "info", opts = {}) => {
     const id = nextId++;
     setToasts((t) => [...t, { id, message, type, actionLabel: opts.actionLabel, onAction: opts.onAction }]);
+    if (opts.onAction) lastAction.current = { id, onAction: opts.onAction };
     setTimeout(() => dismiss(id), opts.actionLabel ? 8000 : type === "error" ? 6000 : 3500);
+  }, [dismiss]);
+
+  // Trigger the latest live Undo (if any). Returns true if something ran.
+  const undoLast = useCallback(() => {
+    const la = lastAction.current;
+    if (!la) return false;
+    lastAction.current = null;
+    dismiss(la.id);
+    la.onAction();
+    return true;
   }, [dismiss]);
 
   const confirm = useCallback((message, opts = {}) => {
@@ -45,7 +63,7 @@ export function ToastProvider({ children }) {
   };
 
   return (
-    <ToastContext.Provider value={{ toast, confirm }}>
+    <ToastContext.Provider value={{ toast, confirm, undoLast }}>
       {children}
 
       <div className="toast-stack">

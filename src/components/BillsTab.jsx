@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import * as db from "../lib/db.js";
-import { parseNumberInput } from "./Shared.jsx";
+import { parseNumberInput, patchEntity } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
 const UNCATEGORIZED = "Uncategorized";
 const categoryOf = (b) => (b.category && b.category.trim()) || UNCATEGORIZED;
 
-function BillsTab({ bills, onChanged }) {
+function BillsTab({ bills, onChanged, onPatch }) {
   const { confirm, toast } = useToast();
   const [filter, setFilter] = useState("all");
   const [expanded, setExpanded] = useState(() => new Set()); // groups start collapsed
@@ -19,6 +19,7 @@ function BillsTab({ bills, onChanged }) {
   };
 
   const updateBill = async (bill, patch) => {
+    onPatch?.((s) => patchEntity(s, "bills", bill.id, patch));
     await db.upsertBill({ ...bill, ...patch });
     onChanged();
   };

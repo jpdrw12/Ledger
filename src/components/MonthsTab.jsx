@@ -35,15 +35,22 @@ function MonthsTab({
   const [filter, setFilter] = useState("");
 
   const trimmed = filter.trim().toLowerCase();
-  const visibleMonths = trimmed
-    ? months.filter((m) =>
-        [...m.expensesPay1, ...m.expensesPay2].some(
-          (e) =>
-            e.category?.toLowerCase().includes(trimmed) ||
-            e.tag?.toLowerCase().includes(trimmed)
-        )
-      )
-    : months;
+  // Search across everything visible in a month, not just expenses: the month
+  // label, expense categories/tags, bill names, goal/debt names on their
+  // contributions/payments, transfer notes, and addition names.
+  const monthMatches = (m) => {
+    const hay = [
+      m.monthLabel,
+      ...[...m.expensesPay1, ...m.expensesPay2].flatMap((e) => [e.category, e.tag]),
+      ...m.billPayments.map((bp) => bills.find((b) => b.id === bp.billId)?.name),
+      ...m.goalContributions.map((gc) => goals.find((g) => g.id === gc.goalId)?.name),
+      ...m.debtPayments.map((dp) => debts.find((d) => d.id === dp.debtId)?.name),
+      ...m.transfers.map((t) => t.note),
+      ...[m.pay1, m.pay2].flatMap((p) => p.additions.map((a) => a.name)),
+    ];
+    return hay.some((s) => s && s.toLowerCase().includes(trimmed));
+  };
+  const visibleMonths = trimmed ? months.filter(monthMatches) : months;
 
   return (
     <div className="section">
@@ -57,8 +64,9 @@ function MonthsTab({
       <div className="month-filter">
         <Search size={14} />
         <input
+          id="month-search-input"
           className="month-filter-input"
-          placeholder="Filter by expense category or tag…"
+          placeholder="Search months — bills, expenses, goals, transfers, notes…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -67,6 +75,26 @@ function MonthsTab({
             <Trash2 size={13} />
           </button>
         )}
+        {months.length > 1 && (
+          <select
+            className="account-select"
+            value=""
+            title="Jump to a month"
+            onChange={(e) => {
+              const id = e.target.value;
+              if (!id) return;
+              setOpenMonth(id);
+              requestAnimationFrame(() =>
+                document.getElementById(`month-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+              );
+            }}
+          >
+            <option value="">Jump to…</option>
+            {months.map((m) => (
+              <option key={m.id} value={m.id}>{m.monthLabel}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {months.length === 0 && (
@@ -74,7 +102,7 @@ function MonthsTab({
       )}
 
       {trimmed && visibleMonths.length === 0 && (
-        <p className="empty">No months contain expenses matching "{filter}".</p>
+        <p className="empty">No months match "{filter}".</p>
       )}
 
       <div className="stub-row">
@@ -117,7 +145,7 @@ function MonthsTab({
 }
 
 // Self-contained pay block: income + bills for this slot + expenses for this slot + additions.
-function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existingTags, existingCategories, accounts, onChanged,
+function PayBlock({ label, slot, pay, monthId, onPatch, billPayments, bills, expenseList, existingTags, existingCategories, accounts, onChanged,
   onAddBillPayment, onUpdateBillPayment, onRemoveBillPayment, onAddExpense, onUpdateExpense, onRemoveExpense }) {
 
   const [open, setOpen] = useState(false);
@@ -130,6 +158,7 @@ function PayBlock({ label, slot, pay, billPayments, bills, expenseList, existing
     onChanged();
   };
   const updateAddition = async (a, patch) => {
+    onPatch?.((s) => patchAddition(s, monthId, slot, a.id, patch));
     await db.updateAddition(a.id, { name: a.name, amount: a.amount, accountId: a.accountId, ...patch });
     onChanged();
   };
@@ -355,6 +384,19 @@ function patchMonthRow(state, monthId, rowId, patch, keys) {
         }
       }
       return next;
+    }),
+  };
+}
+
+// Immutably patch one addition (matched by id) inside a month's pay block.
+function patchAddition(state, monthId, slot, addId, patch) {
+  const key = slot === 1 ? "pay1" : "pay2";
+  return {
+    ...state,
+    months: state.months.map((m) => {
+      if (m.id !== monthId) return m;
+      const block = m[key];
+      return { ...m, [key]: { ...block, additions: block.additions.map((a) => (a.id === addId ? { ...a, ...patch } : a)) } };
     }),
   };
 }
@@ -591,7 +633,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
   })();
 
   return (
-    <div className={`stub ${isOpen ? "open" : ""}`}>
+    <div id={`month-${month.id}`} className={`stub ${isOpen ? "open" : ""}`}>
       <div className="stub-head" onClick={onToggle}>
         {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         <div className="stub-title">
@@ -677,6 +719,8 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             <PayBlock
               label="Pay 1" slot={1}
               pay={month.pay1}
+              monthId={month.id}
+              onPatch={onPatch}
               billPayments={month.billPayments}
               bills={bills}
               expenseList={month.expensesPay1}
@@ -694,6 +738,8 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             <PayBlock
               label="Pay 2" slot={2}
               pay={month.pay2}
+              monthId={month.id}
+              onPatch={onPatch}
               billPayments={month.billPayments}
               bills={bills}
               expenseList={month.expensesPay2}

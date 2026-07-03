@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Download, TrendingUp, Receipt, Target, Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, money } from "../lib/calc.js";
@@ -12,26 +12,33 @@ function InsightsTab({ state, ledger, onChanged }) {
   const [newAmt, setNewAmt] = useState("");
   const [horizon, setHorizon] = useState(6);
   const [selectedCat, setSelectedCat] = useState(null); // click a category row to highlight its total
-  // Card spending is tracked in its own tab, so leave excluded accounts out.
-  const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
-  const categories = spendingByCategory(state.months, { exclude: cardAccountIds });
-  const series = monthlyEndingBalances(state.months, ledger);
+
+  // These pure aggregations only depend on state/ledger/horizon — memoize so
+  // they don't re-run on every keystroke in the add-budget fields, etc.
+  const { categories, series, totalSpend, maxCat, budgets, latestLabel, nw, avgNet } = useMemo(() => {
+    const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+    const cats = spendingByCategory(state.months, { exclude: cardAccountIds });
+    return {
+      categories: cats,
+      series: monthlyEndingBalances(state.months, ledger),
+      totalSpend: cats.reduce((s, c) => s + c.total, 0),
+      maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
+      budgets: budgetReport(state.months, state.categoryBudgets),
+      latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
+      nw: netWorthSnapshot(state.months, ledger, state.debts),
+      avgNet: averageNetChange(state.months, ledger),
+    };
+  }, [state, ledger]);
 
   // Forecast: projected months appended after the real ones (never persisted).
-  const forecast = projectLedger(state.months, state.accounts, state.bills, { count: horizon });
-  const forecastSeries = monthlyEndingBalances(forecast.months, forecast.ledger);
-  const projectedSet = new Set(forecast.projectedIds);
-  const projectedRows = forecast.months
-    .filter((m) => projectedSet.has(m.id))
-    .map((m) => ({ id: m.id, label: m.monthLabel, value: forecast.ledger[m.id].consolidatedCarryOut }));
-  const firstNegative = projectedRows.find((r) => r.value < 0);
-  const totalSpend = categories.reduce((s, c) => s + c.total, 0);
-  const maxCat = categories.length ? Math.max(...categories.map((c) => c.total)) : 0;
-
-  const budgets = budgetReport(state.months, state.categoryBudgets);
-  const latestLabel = state.months.length ? state.months[state.months.length - 1].monthLabel : null;
-  const nw = netWorthSnapshot(state.months, ledger, state.debts);
-  const avgNet = averageNetChange(state.months, ledger);
+  const { forecastSeries, projectedSet, projectedRows, firstNegative } = useMemo(() => {
+    const forecast = projectLedger(state.months, state.accounts, state.bills, { count: horizon });
+    const pSet = new Set(forecast.projectedIds);
+    const rows = forecast.months
+      .filter((m) => pSet.has(m.id))
+      .map((m) => ({ id: m.id, label: m.monthLabel, value: forecast.ledger[m.id].consolidatedCarryOut }));
+    return { forecastSeries: monthlyEndingBalances(forecast.months, forecast.ledger), projectedSet: pSet, projectedRows: rows, firstNegative: rows.find((r) => r.value < 0) };
+  }, [state, horizon]);
 
   const saveBudget = async (category, amount) => {
     if (!category.trim()) return;

@@ -2,11 +2,11 @@ import React, { useState } from "react";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field, parseNumberInput, useDragList, DragHandle } from "./Shared.jsx";
+import { Field, parseNumberInput, useDragList, DragHandle, patchEntity } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
-function DebtsTab({ debts, debtHistory, onChanged }) {
+function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
   const { confirm, toast } = useToast();
   const { itemProps, handleProps } = useDragList(debts.map((d) => d.id), async (ids) => {
     await db.reorderDebts(ids);
@@ -21,6 +21,7 @@ function DebtsTab({ debts, debtHistory, onChanged }) {
   };
 
   const updateDebt = async (debt, patch) => {
+    onPatch?.((s) => patchEntity(s, "debts", debt.id, patch));
     await db.upsertDebt({ ...debt, ...patch });
     onChanged();
   };

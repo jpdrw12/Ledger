@@ -1,7 +1,8 @@
-import React, { useState } from "react";
-import { CreditCard, Plus, Trash2, TrendingUp, Receipt } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport } from "../lib/calc.js";
+import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv } from "../lib/calc.js";
+import { exportTextFile } from "../lib/backup.js";
 import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
@@ -17,6 +18,26 @@ function CardTab({ state, onChanged }) {
   const [newBudgetAmt, setNewBudgetAmt] = useState("");
   const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
   const cardIds = new Set(cardAccounts.map((a) => a.id));
+
+  // Pure aggregations — memoized (kept above the early return so hook order is
+  // stable) so they don't re-run on every keystroke in the budget fields.
+  const { trend, scopedMonths, scopeLabel, categories, perCard, maxCat, totalSpend, budgetMonth, budgets } = useMemo(() => {
+    const ids = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+    const scoped = chartMonth === "all" ? state.months : state.months.filter((m) => m.id === chartMonth);
+    const cats = spendingByCategory(scoped, { include: ids });
+    const bMonth = chartMonth === "all" ? state.months[state.months.length - 1] : scoped[0];
+    return {
+      trend: monthlyExpenseTotals(state.months, { include: ids }),
+      scopedMonths: scoped,
+      scopeLabel: chartMonth === "all" ? "all months" : (state.months.find((m) => m.id === chartMonth)?.monthLabel || ""),
+      categories: cats,
+      perCard: spendByAccount(scoped, [...ids]),
+      maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
+      totalSpend: cats.reduce((s, c) => s + c.total, 0),
+      budgetMonth: bMonth,
+      budgets: cardBudgetReport(bMonth, state.cardBudgets || [], ids),
+    };
+  }, [state, chartMonth]);
 
   if (cardAccounts.length === 0) {
     return (
@@ -54,18 +75,6 @@ function CardTab({ state, onChanged }) {
     });
   };
 
-  const trend = monthlyExpenseTotals(state.months, { include: cardIds });
-  // Category/per-card charts are scoped to the chosen month (or all months).
-  const scopedMonths = chartMonth === "all" ? state.months : state.months.filter((m) => m.id === chartMonth);
-  const scopeLabel = chartMonth === "all" ? "all months" : (state.months.find((m) => m.id === chartMonth)?.monthLabel || "");
-  const categories = spendingByCategory(scopedMonths, { include: cardIds });
-  const perCard = spendByAccount(scopedMonths, [...cardIds]);
-  const maxCat = categories.length ? Math.max(...categories.map((c) => c.total)) : 0;
-  const totalSpend = categories.reduce((s, c) => s + c.total, 0);
-
-  // Budgets are per-month: use the selected chart month, else the latest month.
-  const budgetMonth = chartMonth === "all" ? state.months[state.months.length - 1] : scopedMonths[0];
-  const budgets = cardBudgetReport(budgetMonth, state.cardBudgets || [], cardIds);
   const allowance = (state.cardBudgets || []).find((b) => b.category === "");
   const saveCardBudget = async (category, amount) => {
     await db.upsertCardBudget(category, amount);
@@ -87,9 +96,25 @@ function CardTab({ state, onChanged }) {
   };
   const knownCategories = Array.from(new Set(state.months.flatMap((m) => cardExpensesFor(m).map((e) => e.category).filter(Boolean)))).sort();
 
+  const handleExport = async () => {
+    try {
+      const csv = buildCardCsv(state);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const path = await exportTextFile(`card-spending-${stamp}.csv`, csv);
+      if (path) toast(`Exported to ${path}`, "success");
+    } catch (e) {
+      toast(`Export failed: ${e}`, "error");
+    }
+  };
+
   return (
     <div className="section">
-      <div className="section-head"><h2>Card Spending</h2></div>
+      <div className="section-head">
+        <h2>Card Spending</h2>
+        <button className="btn-primary" onClick={handleExport}>
+          <Download size={15} /> Export CSV
+        </button>
+      </div>
       <p className="empty" style={{ marginBottom: 16 }}>
         Spending on your card account{cardAccounts.length > 1 ? "s" : ""}, tracked month by month. This is separate from
         the consolidated total — load the card with a transfer on the Months tab, then log what you spend here.

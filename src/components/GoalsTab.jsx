@@ -2,11 +2,11 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field, parseNumberInput, useDragList, DragHandle } from "./Shared.jsx";
+import { Field, parseNumberInput, useDragList, DragHandle, patchEntity } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
-function GoalsTab({ goals, goalBalances, onChanged }) {
+function GoalsTab({ goals, goalBalances, onChanged, onPatch }) {
   const { confirm, toast } = useToast();
   const { itemProps, handleProps } = useDragList(goals.map((g) => g.id), async (ids) => {
     await db.reorderGoals(ids);
@@ -18,6 +18,7 @@ function GoalsTab({ goals, goalBalances, onChanged }) {
   };
 
   const updateGoal = async (goal, patch) => {
+    onPatch?.((s) => patchEntity(s, "goals", goal.id, patch));
     await db.upsertGoal({ ...goal, ...patch });
     onChanged();
   };

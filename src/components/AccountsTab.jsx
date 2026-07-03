@@ -2,11 +2,11 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money } from "../lib/calc.js";
-import { Field, parseNumberInput, useDragList, DragHandle } from "./Shared.jsx";
+import { Field, parseNumberInput, useDragList, DragHandle, patchEntity } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
-import { undoableDelete } from "../lib/undo.js";
+import { undoableDelete, friendlyDeleteError } from "../lib/undo.js";
 
-function AccountsTab({ accounts, balances, consolidated, onChanged }) {
+function AccountsTab({ accounts, balances, consolidated, onChanged, onPatch }) {
   const { toast, confirm } = useToast();
   const { itemProps, handleProps } = useDragList(accounts.map((a) => a.id), async (ids) => {
     await db.reorderAccounts(ids);
@@ -18,6 +18,7 @@ function AccountsTab({ accounts, balances, consolidated, onChanged }) {
   };
 
   const updateAccount = async (acc, patch) => {
+    onPatch?.((s) => patchEntity(s, "accounts", acc.id, patch));
     await db.upsertAccount({ ...acc, ...patch });
     onChanged();
   };
@@ -28,24 +29,27 @@ function AccountsTab({ accounts, balances, consolidated, onChanged }) {
       toast("This is your only account — add another one first if you want to remove this one.", "error");
       return;
     }
-    const fallback = others[0];
-    const ok = await confirm(
-      `Delete "${acc.name}"? Every bill, expense, addition, and contribution currently assigned to it will be moved to "${fallback.name}" first, so that money doesn't just disappear from the ledger.`,
-      { danger: true, confirmLabel: "Delete" }
-    );
-    if (!ok) return;
+    // Like goals/debts, an account that's still referenced can't be deleted —
+    // its transactions would be orphaned. Block it with a clear message rather
+    // than silently moving that money onto another account.
     try {
-      // Capture which rows get reassigned so undo can point them back.
-      const affected = await db.reassignAccountReferences(acc.id, fallback.id);
-      await undoableDelete({
-        label: `Account "${acc.name}"`,
-        doDelete: () => db.deleteAccount(acc.id),
-        doRestore: () => db.restoreAccount(acc, affected),
-        onChanged, toast,
-      });
+      const used = await db.countAccountReferences(acc.id);
+      if (used > 0) {
+        toast(`Account "${acc.name}" is still in use (${used} ${used === 1 ? "entry" : "entries"}). Reassign or remove those first.`, "error");
+        return;
+      }
     } catch (e) {
-      toast(`Couldn't delete account: ${e?.message || e}`, "error");
+      toast(friendlyDeleteError(e, `Account "${acc.name}"`), "error");
+      return;
     }
+    const ok = await confirm(`Delete "${acc.name}"? It isn't used anywhere, so this just removes the empty account.`, { danger: true, confirmLabel: "Delete" });
+    if (!ok) return;
+    await undoableDelete({
+      label: `Account "${acc.name}"`,
+      doDelete: () => db.deleteAccount(acc.id),
+      doRestore: () => db.restoreAccount(acc),
+      onChanged, toast,
+    });
   };
 
   return (

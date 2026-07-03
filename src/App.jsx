@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
@@ -123,7 +123,7 @@ function ArchiveGroup({ zipName, dir, onRestore, onDelete }) {
 }
 
 export default function App() {
-  const { confirm } = useToast();
+  const { confirm, undoLast } = useToast();
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [tab, setTab] = useState("months");
@@ -237,7 +237,13 @@ export default function App() {
     setState((prev) => (prev ? updater(prev) : prev));
   }, []);
 
-  const reload = useCallback(async () => {
+  // Coalesce reloads: every edit calls onChanged() → reload(), and rapid edits
+  // (or a burst of them) would otherwise stack N full refetches back-to-back.
+  // Instead, if a reload is already in flight, we just mark "run once more when
+  // it lands" — so at most one extra refetch trails any burst, always ending on
+  // fresh data. Callers still get a promise that resolves when data is current.
+  const reloadState = useRef({ running: false, again: false, waiters: [] });
+  const runReload = useCallback(async () => {
     setBusy(true);
     try {
       const full = await db.loadFullState();
@@ -250,6 +256,27 @@ export default function App() {
       setBusy(false);
     }
   }, []);
+  const reload = useCallback(() => {
+    const s = reloadState.current;
+    if (s.running) {
+      s.again = true;
+      return new Promise((resolve) => s.waiters.push(resolve));
+    }
+    return new Promise((resolve) => {
+      s.waiters.push(resolve);
+      (async () => {
+        s.running = true;
+        do {
+          s.again = false;
+          await runReload();
+        } while (s.again);
+        s.running = false;
+        const waiters = s.waiters;
+        s.waiters = [];
+        waiters.forEach((w) => w());
+      })();
+    });
+  }, [runReload]);
 
   // When a folder is chosen it's the source of truth — list what's actually
   // there (live). Otherwise fall back to the local backups dir.
@@ -312,6 +339,18 @@ export default function App() {
     if (tab === "backups") refreshBackups();
   }, [tab, refreshBackups]);
 
+  // Auto-open the current month once on launch: match this calendar month's
+  // "MonthName Year" label, else fall back to the most recent month. Runs only
+  // for the first load (guarded) so it never fights a manual open/close later.
+  const didAutoOpen = useRef(false);
+  useEffect(() => {
+    if (didAutoOpen.current || !state || state.months.length === 0) return;
+    didAutoOpen.current = true;
+    const nowLabel = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const match = state.months.find((m) => m.monthLabel === nowLabel);
+    setOpenMonth((match || state.months[state.months.length - 1]).id);
+  }, [state]);
+
   // ---- cross-month logic: cloning a month's bill setup into another ----
   const cloneBillsInto = async (sourceBillPayments, targetMonthId, targetMonthLabel, bills) => {
     for (const bp of sourceBillPayments) {
@@ -350,6 +389,31 @@ export default function App() {
     await reload();
     setOpenMonth(monthId);
   }, [state, reload]);
+
+  // App-wide keyboard shortcuts. Ctrl/Cmd+Z fires the latest Undo anywhere;
+  // `/` and `n` are single-key and only act when not typing in a field.
+  useEffect(() => {
+    const onKey = (e) => {
+      const el = e.target;
+      const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el?.isContentEditable;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        if (undoLast()) e.preventDefault();
+        return;
+      }
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        setTab("months");
+        // Defer focus so the search input is mounted if we just switched tabs.
+        requestAnimationFrame(() => document.getElementById("month-search-input")?.focus());
+      } else if (e.key === "n" && tab === "months") {
+        e.preventDefault();
+        handleAddMonth();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [tab, undoLast, handleAddMonth]);
 
   const handleCopyForward = useCallback(async (month) => {
     const idx = state.months.findIndex((m) => m.id === month.id);
@@ -666,13 +730,13 @@ export default function App() {
           onReorder={handleReorderMonth}
         />
       )}
-      {tab === "bills" && <BillsTab bills={state.bills} onChanged={reload} />}
-      {tab === "goals" && <GoalsTab goals={state.goals} goalBalances={goalBalances} onChanged={reload} />}
+      {tab === "bills" && <BillsTab bills={state.bills} onChanged={reload} onPatch={patchState} />}
+      {tab === "goals" && <GoalsTab goals={state.goals} goalBalances={goalBalances} onChanged={reload} onPatch={patchState} />}
       {tab === "accounts" && (
-        <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} />
+        <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} onPatch={patchState} />
       )}
       {tab === "card" && <CardTab state={state} onChanged={reload} />}
-      {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} />}
+      {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} onPatch={patchState} />}
       {tab === "insights" && <InsightsTab state={state} ledger={ledger} onChanged={reload} />}
       {tab === "settings" && (
         <SettingsTab

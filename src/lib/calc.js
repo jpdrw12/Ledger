@@ -380,6 +380,33 @@ export function buildLedgerCsv(state, ledger) {
   return rows.map((r) => r.map(esc).join(",")).join("\n");
 }
 
+// Card-scoped CSV: one row per card expense (spending on "exclude from total"
+// accounts), plus a per-month total line. Mirrors buildLedgerCsv's escaping.
+export function buildCardCsv(state) {
+  const cardIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+  const accountName = (id) => (state.accounts.find((a) => a.id === id) || {}).name || "";
+  const esc = (v) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = [["Month", "Category", "Tag", "Card", "Slot", "Amount"]];
+
+  state.months.forEach((m) => {
+    const cardExpenses = [
+      ...(m.expensesPay1 || []).map((e) => ["1", e]),
+      ...(m.expensesPay2 || []).map((e) => ["2", e]),
+    ].filter(([, e]) => cardIds.has(e.accountId));
+    let total = 0;
+    cardExpenses.forEach(([slot, e]) => {
+      total += Number(e.amount) || 0;
+      rows.push([m.monthLabel, e.category || "Uncategorized", e.tag || "", accountName(e.accountId), slot, Number(e.amount) || 0]);
+    });
+    if (cardExpenses.length) rows.push([m.monthLabel, "Total", "", "", "", total]);
+  });
+
+  return rows.map((r) => r.map(esc).join(",")).join("\n");
+}
+
 // Minimal RFC-4180-ish CSV parser: handles quoted fields, escaped quotes,
 // and commas/newlines inside quotes. Returns an array of row arrays.
 export function parseCsv(text) {
