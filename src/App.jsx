@@ -368,47 +368,57 @@ export default function App() {
     runUpdateCheck();
   }, [profileChosen, runUpdateCheck]);
 
-  // Progress phases emitted by the Rust installer, so the button can show a
-  // "Downloading…/Installing…" bar instead of looking frozen.
+  // The Rust installer runs on a background thread and reports via events, so
+  // the UI stays responsive (a synchronous command would block the main thread
+  // and freeze the window). "update-progress" drives the phase bar; "update-done"
+  // carries the terminal outcome.
   useEffect(() => {
-    let unlisten;
+    let unlistenProgress, unlistenDone;
     (async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen("update-progress", (e) => setUpdatePhase(e.payload));
+      unlistenProgress = await listen("update-progress", (e) => setUpdatePhase(e.payload));
+      unlistenDone = await listen("update-done", (e) => {
+        const { status, path, error } = e.payload || {};
+        if (status === "installed") {
+          setUpdatePhase("restarting");
+          toast("Update installed — restarting…", "success");
+          setTimeout(() => restartApp(), 900);
+          return; // stay "busy" through the relaunch
+        }
+        setUpdateBusy(false);
+        setUpdatePhase(null);
+        if (status === "opened") {
+          toast("Installer opened — follow its prompts, then reopen the app.", "info");
+        } else if (status === "downloaded") {
+          toast(`Update downloaded to ${path || "the cache folder"} — open it to install.`, "info");
+        } else if (status === "error") {
+          toast(`Update failed: ${error || "unknown error"}`, "error");
+        }
+      });
     })();
-    return () => { if (unlisten) unlisten(); };
-  }, []);
+    return () => {
+      if (unlistenProgress) unlistenProgress();
+      if (unlistenDone) unlistenDone();
+    };
+  }, [toast]);
 
   const hasUpdate = !!updateInfo && isNewer(updateInfo.latestVersion, APP_VERSION);
 
   // Download + install the pending update; returns the Rust status word so the
   // Settings section can decide whether to offer "Restart now".
+  // Kicks off the install; progress + the terminal outcome arrive via the
+  // "update-progress"/"update-done" events (see the listener above). Returns
+  // immediately — the Rust side does the blocking work off the main thread.
   const handleInstallUpdate = useCallback(async () => {
-    if (!updateInfo) return "";
+    if (!updateInfo) return;
     setUpdateBusy(true);
     setUpdatePhase("downloading");
     try {
-      const status = await installUpdate(updateInfo.assetUrl, updateInfo.assetName);
-      if (status === "installed") {
-        // Relaunch straight into the new version (no manual step).
-        setUpdatePhase("restarting");
-        toast("Update installed — restarting…", "success");
-        setTimeout(() => restartApp(), 900);
-      } else if (status === "opened") {
-        setUpdatePhase(null);
-        toast("Installer opened — follow its prompts, then reopen the app.", "info");
-      } else if (typeof status === "string" && status.startsWith("downloaded")) {
-        setUpdatePhase(null);
-        const path = status.split("\n")[1] || "";
-        toast(`Update downloaded to ${path} — open it to install.`, "info");
-      }
-      return status;
+      await installUpdate(updateInfo.assetUrl, updateInfo.assetName);
     } catch (e) {
+      setUpdateBusy(false);
       setUpdatePhase(null);
       toast(`Update failed: ${typeof e === "string" ? e : e?.message || e}`, "error");
-      return "";
-    } finally {
-      setUpdateBusy(false);
     }
   }, [updateInfo, toast]);
 

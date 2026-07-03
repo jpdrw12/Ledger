@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.16.0]
+
+### Fixed
+- The window no longer freezes during an update install. The installer now runs
+  on a background thread and reports progress via events, instead of blocking the
+  main thread (which locked up the UI while downloading and running apt).
+
 ## [0.15.0]
 
 ### Changed

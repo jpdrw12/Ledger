@@ -100,17 +100,21 @@ pub fn check_for_update() -> Result<UpdateInfo, String> {
 }
 
 /// Downloads the installer to the app cache dir, then hands it to the OS
-/// installer with that platform's standard admin prompt. Returns a status word:
-/// "installed" (ran a system installer), "opened" (launched an installer the
-/// user completes), or "downloaded" (couldn't launch — the path is included).
+/// installer with that platform's standard admin prompt.
+///
+/// Runs the whole download+install on a background thread and returns
+/// immediately: a synchronous Tauri command runs on the **main thread**, so
+/// doing the blocking work here directly freezes the UI (which is exactly what
+/// happened — the window locked up during `curl`/`apt-get`). Progress and the
+/// final outcome are reported via events instead of the return value:
+///   - "update-progress": "downloading" | "installing"
+///   - "update-done": { status: "installed" | "opened" | "downloaded" | "error",
+///                      path?, error? }
 #[tauri::command]
-pub fn install_update(
-    app: AppHandle,
-    asset_url: String,
-    asset_name: String,
-) -> Result<String, String> {
+pub fn install_update(app: AppHandle, asset_url: String, asset_name: String) -> Result<(), String> {
     // Guard the file name: no path separators, so a crafted asset name can't
-    // escape the cache dir.
+    // escape the cache dir. (Validated synchronously so obvious mistakes still
+    // surface as a rejected promise.)
     if asset_name.contains('/') || asset_name.contains('\\') || asset_name.contains("..") {
         return Err("unexpected asset name".into());
     }
@@ -122,56 +126,66 @@ pub fn install_update(
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not create cache dir: {e}"))?;
     let dest = dir.join(&asset_name);
 
-    // Let the UI show a phase label / animated bar — a bare install with no
-    // feedback looks frozen for the 10-30s it takes.
-    let _ = app.emit("update-progress", "downloading");
-    let status = Command::new("curl")
-        .args(["-L", "--fail", "-o"])
-        .arg(&dest)
-        .arg(&asset_url)
-        .status()
-        .map_err(|e| format!("couldn't run curl: {e}"))?;
-    if !status.success() {
-        return Err("failed to download the update".into());
-    }
-    let path = dest.to_string_lossy().to_string();
-    let _ = app.emit("update-progress", "installing");
-
-    #[cfg(target_os = "linux")]
-    {
-        // pkexec shows the desktop's graphical password prompt (polkit).
-        match Command::new("pkexec")
-            .args(["apt-get", "install", "-y"])
-            .arg(&dest)
-            .status()
-        {
-            Ok(s) if s.success() => Ok("installed".into()),
-            // Non-zero (e.g. user cancelled) or pkexec missing: leave the .deb
-            // downloaded and let the UI point the user at it.
-            _ => Ok(format!("downloaded\n{path}")),
+    let done = move |app: &AppHandle, status: &str, extra: serde_json::Value| {
+        let mut payload = serde_json::json!({ "status": status });
+        if let (Some(obj), Some(ex)) = (payload.as_object_mut(), extra.as_object()) {
+            for (k, v) in ex {
+                obj.insert(k.clone(), v.clone());
+            }
         }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
+        let _ = app.emit("update-done", payload);
+    };
+
+    std::thread::spawn(move || {
+        let _ = app.emit("update-progress", "downloading");
+        let dl = Command::new("curl")
+            .args(["-L", "--fail", "-o"])
             .arg(&dest)
-            .status()
-            .map_err(|e| format!("couldn't open the installer: {e}"))?;
-        Ok("opened".into())
-    }
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .args(["/C", "start", ""])
-            .arg(&dest)
-            .status()
-            .map_err(|e| format!("couldn't launch the installer: {e}"))?;
-        Ok("opened".into())
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        Ok(format!("downloaded\n{path}"))
-    }
+            .arg(&asset_url)
+            .status();
+        match dl {
+            Ok(s) if s.success() => {}
+            _ => {
+                done(&app, "error", serde_json::json!({ "error": "failed to download the update" }));
+                return;
+            }
+        }
+        let path = dest.to_string_lossy().to_string();
+        let _ = app.emit("update-progress", "installing");
+
+        #[cfg(target_os = "linux")]
+        {
+            match Command::new("pkexec")
+                .args(["apt-get", "install", "-y"])
+                .arg(&dest)
+                .status()
+            {
+                Ok(s) if s.success() => done(&app, "installed", serde_json::json!({})),
+                // Cancelled / pkexec missing: leave the .deb downloaded.
+                _ => done(&app, "downloaded", serde_json::json!({ "path": path })),
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            match Command::new("open").arg(&dest).status() {
+                Ok(_) => done(&app, "opened", serde_json::json!({})),
+                Err(e) => done(&app, "error", serde_json::json!({ "error": format!("couldn't open the installer: {e}") })),
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            match Command::new("cmd").args(["/C", "start", ""]).arg(&dest).status() {
+                Ok(_) => done(&app, "opened", serde_json::json!({})),
+                Err(e) => done(&app, "error", serde_json::json!({ "error": format!("couldn't launch the installer: {e}") })),
+            }
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        {
+            done(&app, "downloaded", serde_json::json!({ "path": path }));
+        }
+    });
+
+    Ok(())
 }
 
 /// Relaunches the app so a freshly-installed update takes effect.

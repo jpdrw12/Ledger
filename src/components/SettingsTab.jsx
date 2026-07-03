@@ -42,7 +42,6 @@ function SettingsTab({
   const [profiles, setProfiles] = useState(getProfiles);
   const [newProfileName, setNewProfileName] = useState("");
   const [showChangelog, setShowChangelog] = useState(false);
-  const [installed, setInstalled] = useState(false); // update installed → offer restart
   const active = activeProfileDb();
 
   // "What's new" preview: notes for every version newer than the running one,
@@ -50,13 +49,6 @@ function SettingsTab({
   const whatsNew = hasUpdate ? notesSince(parseChangelog(updateInfo.changelogMd), appVersion) : "";
   // Full history from the bundled changelog (works offline).
   const changelogSections = parseChangelog(changelogText);
-
-  const doInstall = async () => {
-    const status = await onInstallUpdate();
-    // On "installed" the app auto-restarts; only surface a manual Restart button
-    // as a fallback if that somehow didn't happen.
-    if (status === "installed") setInstalled(true);
-  };
 
   const phaseLabel =
     updatePhase === "downloading" ? "Downloading update…"
@@ -140,18 +132,17 @@ function SettingsTab({
               <div className="update-progress">
                 <div className="update-progress-bar"><div className="update-progress-fill" /></div>
                 <span className="small-label">{phaseLabel}</span>
+                {updatePhase === "restarting" && (
+                  <button className="btn-secondary" onClick={onRestart}>
+                    <RefreshCw size={13} /> Restart now
+                  </button>
+                )}
               </div>
             ) : (
               <div className="backup-folder">
-                {installed ? (
-                  <button className="btn-primary" onClick={onRestart}>
-                    <RefreshCw size={13} /> Restart now
-                  </button>
-                ) : (
-                  <button className="btn-primary" onClick={doInstall} disabled={updateBusy}>
-                    <Download size={13} /> Install v{updateInfo.latestVersion}
-                  </button>
-                )}
+                <button className="btn-primary" onClick={onInstallUpdate} disabled={updateBusy}>
+                  <Download size={13} /> Install v{updateInfo.latestVersion}
+                </button>
               </div>
             )}
           </>
