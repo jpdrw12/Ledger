@@ -5,6 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.15.0]
+
+### Changed
+- The "up to date" line in Settings now shows which version that is.
+
 ## [0.14.0]
 
 ### Added

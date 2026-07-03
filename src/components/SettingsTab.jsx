@@ -122,7 +122,7 @@ function SettingsTab({
 
         {updateError && <p className="empty small" style={{ color: "var(--deficit)" }}>{updateError}</p>}
         {!updateError && !updateBusy && updateInfo && !hasUpdate && (
-          <p className="empty small">You're on the latest version.</p>
+          <p className="empty small">You're on the latest version (v{updateInfo.latestVersion}).</p>
         )}
 
         {hasUpdate && (
