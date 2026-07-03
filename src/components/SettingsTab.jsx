@@ -150,7 +150,10 @@ function SettingsTab({
           <div className="changelog-history">
             {changelogSections.map((s) => (
               <div key={s.version} className="changelog-entry">
-                <div className="changelog-version mono">v{s.version}</div>
+                <div className="changelog-version mono">
+                  v{s.version}
+                  {s.version === appVersion && <span className="excluded-tag" style={{ marginLeft: 8 }}>current</span>}
+                </div>
                 <pre className="changelog-body">{s.body}</pre>
               </div>
             ))}

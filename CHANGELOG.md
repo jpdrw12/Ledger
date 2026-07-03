@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.13.0]
+
+### Changed
+- The changelog history in Settings now marks the version you're running with a
+  "current" tag.
+
 ## [0.12.0]
 
 ### Added
