@@ -768,7 +768,7 @@ export default function App() {
                 onClick={() => setTab("settings")}
                 title={`Update available: v${updateInfo.latestVersion} — open Settings`}
               >
-                ↑ update
+                ↑ v{updateInfo.latestVersion}
               </button>
             )}
           </h1>
