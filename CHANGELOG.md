@@ -5,6 +5,38 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.12.0]
+
+### Added
+- **In-app updater** (Settings → Updates): checks GitHub for the latest release
+  on launch and on demand, shows an "update available" badge in the header, and
+  installs the new version with one click using each OS's standard admin prompt
+  (polkit on Linux, the `.dmg`/UAC flows on macOS/Windows). No signing keys.
+- **Changelog in Settings**: a "What's new" preview of the pending update and a
+  collapsible history of past versions, both sourced from `CHANGELOG.md`.
+
+## [0.11.0]
+
+### Added
+- **Card spending CSV export**, mirroring the ledger export but scoped to card
+  accounts.
+- **Jump-to-month** dropdown on the Months tab; the current month auto-opens on
+  launch.
+- **Keyboard shortcuts**: Ctrl/Cmd+Z to undo the last delete, `/` to focus
+  search, `n` to add a month.
+
+### Changed
+- **Faster edits**: optimistic updates across Bills/Goals/Debts/Accounts and
+  month additions, memoized Insights/Card computations, and coalesced reloads so
+  rapid edits don't stack refetches.
+- **Broader Months search** — matches bills, goals, debts, transfers, notes, and
+  additions, not just expense categories.
+
+### Fixed
+- Deleting something still in use now shows a clear, dismissable message instead
+  of a stuck error banner; accounts block deletion when referenced (like goals
+  and debts) rather than silently reassigning their transactions.
+
 ## [0.2.1]
 
 ### Added

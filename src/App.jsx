@@ -7,6 +7,7 @@ import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
 import { activeProfileName, getProfiles, setActiveProfile, PROFILE_SLOTS } from "./lib/profiles.js";
 import { useToast } from "./components/Toast.jsx";
+import { checkForUpdate, installUpdate, restartApp, isNewer } from "./lib/update.js";
 import MonthsTab from "./components/MonthsTab.jsx";
 import CardTab from "./components/CardTab.jsx";
 import BillsTab from "./components/BillsTab.jsx";
@@ -123,7 +124,7 @@ function ArchiveGroup({ zipName, dir, onRestore, onDelete }) {
 }
 
 export default function App() {
-  const { confirm, undoLast } = useToast();
+  const { confirm, toast, undoLast } = useToast();
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [tab, setTab] = useState("months");
@@ -134,6 +135,10 @@ export default function App() {
   const [mirrorFolder, setMirrorFolderState] = useState(getMirrorFolder());
   const [retention, setRetentionState] = useState(getRetention());
   const [busy, setBusy] = useState(false);
+  // In-app updater: result of the last GitHub check (null until checked).
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateError, setUpdateError] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
   const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
@@ -338,6 +343,58 @@ export default function App() {
   useEffect(() => {
     if (tab === "backups") refreshBackups();
   }, [tab, refreshBackups]);
+
+  // Check GitHub for a newer release. Best-effort: network/OS failures set an
+  // error string rather than throwing. Used both on launch and by the manual
+  // "Check now" button in Settings.
+  const runUpdateCheck = useCallback(async () => {
+    setUpdateBusy(true);
+    setUpdateError(null);
+    try {
+      const info = await checkForUpdate();
+      setUpdateInfo(info);
+    } catch (e) {
+      setUpdateError(typeof e === "string" ? e : e?.message || "Couldn't check for updates.");
+    } finally {
+      setUpdateBusy(false);
+    }
+  }, []);
+
+  // One best-effort check shortly after launch (drives the header badge).
+  useEffect(() => {
+    if (!profileChosen) return;
+    runUpdateCheck();
+  }, [profileChosen, runUpdateCheck]);
+
+  const hasUpdate = !!updateInfo && isNewer(updateInfo.latestVersion, APP_VERSION);
+
+  // Download + install the pending update; returns the Rust status word so the
+  // Settings section can decide whether to offer "Restart now".
+  const handleInstallUpdate = useCallback(async () => {
+    if (!updateInfo) return "";
+    setUpdateBusy(true);
+    try {
+      const status = await installUpdate(updateInfo.assetUrl, updateInfo.assetName);
+      if (status === "installed") {
+        toast("Update installed — restart to apply.", "success");
+      } else if (status === "opened") {
+        toast("Installer opened — follow its prompts, then reopen the app.", "info");
+      } else if (typeof status === "string" && status.startsWith("downloaded")) {
+        const path = status.split("\n")[1] || "";
+        toast(`Update downloaded to ${path} — open it to install.`, "info");
+      }
+      return status;
+    } catch (e) {
+      toast(`Update failed: ${typeof e === "string" ? e : e?.message || e}`, "error");
+      return "";
+    } finally {
+      setUpdateBusy(false);
+    }
+  }, [updateInfo, toast]);
+
+  const handleRestartApp = useCallback(async () => {
+    await restartApp();
+  }, []);
 
   // Auto-open the current month once on launch: match this calendar month's
   // "MonthName Year" label, else fall back to the most recent month. Runs only
@@ -673,7 +730,18 @@ export default function App() {
       <header className="app-header">
         <BookOpen size={26} strokeWidth={1.5} />
         <div>
-          <h1>{activeProfileName()}'s Ledger <span className="app-version">v{APP_VERSION}</span></h1>
+          <h1>
+            {activeProfileName()}'s Ledger <span className="app-version">v{APP_VERSION}</span>
+            {hasUpdate && (
+              <button
+                className="update-badge"
+                onClick={() => setTab("settings")}
+                title={`Update available: v${updateInfo.latestVersion} — open Settings`}
+              >
+                ↑ update
+              </button>
+            )}
+          </h1>
           <p className="tagline">Local-first — nothing leaves this computer unless you back it up.</p>
         </div>
         {(overdue > 0 || dueSoon > 0) && (
@@ -755,6 +823,14 @@ export default function App() {
           onCopyAllToFolder={handleCopyAllToFolder}
           retention={retention}
           onRetentionChange={handleRetentionChange}
+          appVersion={APP_VERSION}
+          updateInfo={updateInfo}
+          hasUpdate={hasUpdate}
+          updateBusy={updateBusy}
+          updateError={updateError}
+          onCheckUpdate={runUpdateCheck}
+          onInstallUpdate={handleInstallUpdate}
+          onRestart={handleRestartApp}
         />
       )}
 

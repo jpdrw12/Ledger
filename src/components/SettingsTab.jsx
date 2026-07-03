@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { FolderSync, Trash2, Archive, Sun, Moon, Monitor, Users, Plus } from "lucide-react";
+import { FolderSync, Trash2, Archive, Sun, Moon, Monitor, Users, Plus, Download, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { closeDb } from "../lib/db.js";
 import { invoke } from "@tauri-apps/api/core";
 import { PROFILE_SLOTS, activeProfileDb, getProfiles, saveProfiles, addProfile, setActiveProfile, removeProfile } from "../lib/profiles.js";
+import { parseChangelog, notesSince } from "../lib/update.js";
+import changelogText from "../../CHANGELOG.md?raw";
 import { useToast } from "./Toast.jsx";
 
 const THEMES = [
@@ -33,11 +35,26 @@ function SettingsTab({
   containScroll, onContainScrollChange,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
+  appVersion, updateInfo, hasUpdate, updateBusy, updateError,
+  onCheckUpdate, onInstallUpdate, onRestart,
 }) {
   const { confirm, toast } = useToast();
   const [profiles, setProfiles] = useState(getProfiles);
   const [newProfileName, setNewProfileName] = useState("");
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [installed, setInstalled] = useState(false); // update installed → offer restart
   const active = activeProfileDb();
+
+  // "What's new" preview: notes for every version newer than the running one,
+  // parsed from the CHANGELOG.md fetched with the update check.
+  const whatsNew = hasUpdate ? notesSince(parseChangelog(updateInfo.changelogMd), appVersion) : "";
+  // Full history from the bundled changelog (works offline).
+  const changelogSections = parseChangelog(changelogText);
+
+  const doInstall = async () => {
+    const status = await onInstallUpdate();
+    if (status === "installed") setInstalled(true);
+  };
 
   const renameProfile = (slot, name) => {
     const next = { ...profiles, [slot]: name.trim() || profiles[slot] };
@@ -82,6 +99,64 @@ function SettingsTab({
     <div className="section">
       <div className="section-head">
         <h2>Settings</h2>
+      </div>
+
+      <h4 className="block-title"><Download size={13} /> Updates</h4>
+      <div className="insight-card">
+        <div className="backup-folder" style={{ marginTop: 0 }}>
+          <span className="small-label" style={{ flex: 1 }}>
+            Current version <span className="mono">v{appVersion}</span>
+          </span>
+          <button className="btn-secondary" onClick={onCheckUpdate} disabled={updateBusy}>
+            <RefreshCw size={13} /> {updateBusy ? "Checking…" : "Check now"}
+          </button>
+        </div>
+
+        {updateError && <p className="empty small" style={{ color: "var(--deficit)" }}>{updateError}</p>}
+        {!updateError && !updateBusy && updateInfo && !hasUpdate && (
+          <p className="empty small">You're on the latest version.</p>
+        )}
+
+        {hasUpdate && (
+          <>
+            <p className="empty small" style={{ marginTop: 4 }}>
+              <strong>Update available: v{updateInfo.latestVersion}</strong>
+            </p>
+            {whatsNew && (
+              <div className="changelog-preview">
+                <div className="small-label" style={{ marginBottom: 6 }}>What's new</div>
+                <pre className="changelog-body">{whatsNew}</pre>
+              </div>
+            )}
+            <div className="backup-folder">
+              {installed ? (
+                <button className="btn-primary" onClick={onRestart}>
+                  <RefreshCw size={13} /> Restart now
+                </button>
+              ) : (
+                <button className="btn-primary" onClick={doInstall} disabled={updateBusy}>
+                  <Download size={13} /> {updateBusy ? "Installing…" : `Install v${updateInfo.latestVersion}`}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="changelog-toggle" onClick={() => setShowChangelog((s) => !s)}>
+          {showChangelog ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <span className="small-label">Changelog history</span>
+        </div>
+        {showChangelog && (
+          <div className="changelog-history">
+            {changelogSections.map((s) => (
+              <div key={s.version} className="changelog-entry">
+                <div className="changelog-version mono">v{s.version}</div>
+                <pre className="changelog-body">{s.body}</pre>
+              </div>
+            ))}
+            {changelogSections.length === 0 && <p className="empty small">No changelog found.</p>}
+          </div>
+        )}
       </div>
 
       <h4 className="block-title">Appearance</h4>

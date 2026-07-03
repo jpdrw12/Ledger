@@ -1,4 +1,5 @@
 mod backup;
+mod updater;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -116,7 +117,10 @@ fn main() {
             backup::delete_archive,
             backup::delete_profile_db,
             backup::write_text_file,
-            backup::read_text_file
+            backup::read_text_file,
+            updater::check_for_update,
+            updater::install_update,
+            updater::restart_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Household Ledger application");

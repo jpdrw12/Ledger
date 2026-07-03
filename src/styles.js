@@ -72,6 +72,14 @@ export const css = `
   .app-header { display:flex; gap:14px; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:16px; margin-bottom:16px; }
   .app-header h1 { font-family: Georgia, 'Iowan Old Style', serif; font-size:26px; margin:0 0 4px; letter-spacing:0.2px; }
   .app-version { font-family: ui-monospace, monospace; font-size:12px; font-weight:400; color:var(--ink-soft); vertical-align:middle; margin-left:6px; }
+  .update-badge { vertical-align:middle; margin-left:8px; background:var(--accent); color:#fff; border:none; border-radius:12px; padding:3px 10px; font-size:11.5px; font-weight:600; cursor:pointer; }
+  .update-badge:hover { filter:brightness(1.06); }
+  .changelog-preview { margin:8px 0; padding:10px 12px; background:var(--paper); border:1px solid var(--paper-line); border-radius:8px; }
+  .changelog-body { margin:0; font-family:inherit; font-size:12.5px; line-height:1.5; color:var(--ink); white-space:pre-wrap; word-break:break-word; }
+  .changelog-toggle { display:flex; align-items:center; gap:6px; margin-top:12px; cursor:pointer; user-select:none; }
+  .changelog-history { margin-top:8px; max-height:340px; overflow:auto; }
+  .changelog-entry { padding:8px 0; border-top:1px solid var(--paper-line); }
+  .changelog-version { font-weight:600; margin-bottom:4px; color:var(--accent); }
   .due-chip { margin-left:auto; align-self:center; background:var(--card); border:1px solid var(--paper-line); border-radius:14px; padding:6px 12px; font-size:12.5px; cursor:pointer; color:var(--ink); }
   .due-chip:hover { border-color:var(--stamp); }
   .due-chip-over { color:var(--deficit); font-weight:600; }
