@@ -486,19 +486,34 @@ export async function updateMonthDebtPayment(id, { amount, accountId }) {
   await db.execute("UPDATE month_debt_payments SET amount = $1, account_id = $2 WHERE id = $3", [amount, accountId, id]);
 }
 
-export async function applyMonthDebtPayment(id, { debtId, amount, monthLabel, currentBalance, apr }) {
+// Applying a payment only reduces principal — interest is NOT charged per
+// payment (that would stack a month's interest on every transaction). Interest
+// is applied once per month via applyMonthlyInterest() on the Debts tab.
+export async function applyMonthDebtPayment(id, { debtId, amount, monthLabel, currentBalance }) {
   const db = await getDb();
-  const balanceAfterPayment = currentBalance - amount;
-  const interest = balanceAfterPayment * (apr / 12);
-  const newBalance = Math.round((balanceAfterPayment + interest) * 100) / 100;
+  const newBalance = Math.round((currentBalance - amount) * 100) / 100;
   const historyId = uid();
   await db.execute(
     `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance, month_debt_payment_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [historyId, debtId, monthLabel, currentBalance, amount, interest, newBalance, id]
+    [historyId, debtId, monthLabel, currentBalance, amount, 0, newBalance, id]
   );
   await db.execute("UPDATE debts SET balance = $1 WHERE id = $2", [newBalance, debtId]);
   await db.execute("UPDATE month_debt_payments SET applied = 1 WHERE id = $1", [id]);
+}
+
+// Charges one month's interest on the current balance — the once-per-month step,
+// separate from payments. Records a history row with no payment.
+export async function applyMonthlyInterest(debtId, { monthLabel, currentBalance, apr }) {
+  const db = await getDb();
+  const interest = Math.round(currentBalance * (apr / 12) * 100) / 100;
+  const newBalance = Math.round((currentBalance + interest) * 100) / 100;
+  await db.execute(
+    `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [uid(), debtId, monthLabel, currentBalance, 0, interest, newBalance]
+  );
+  await db.execute("UPDATE debts SET balance = $1 WHERE id = $2", [newBalance, debtId]);
 }
 
 export async function deleteDebtHistoryEntry(historyId) {
@@ -660,10 +675,52 @@ export async function restoreAccount(account, affected) {
 // calculation logic stay completely unchanged even though storage
 // moved from one JSON blob to real tables.
 // ---------------------------------------------------------------------
+// The most-recent entry/edit time per tab, from the updated_at columns kept
+// fresh by triggers (migration 0013). Returns ISO-ish datetime strings (local)
+// or null. "Months" spans every per-month table; "Card" is the card-account
+// subset of expenses.
+export async function getTabActivity() {
+  const db = await getDb();
+  const one = async (sql) => {
+    const rows = await db.select(sql);
+    return rows[0]?.t || null;
+  };
+  const [accounts, bills, goals, debts, card, months] = await Promise.all([
+    one("SELECT MAX(updated_at) t FROM accounts"),
+    one("SELECT MAX(updated_at) t FROM bills"),
+    one("SELECT MAX(updated_at) t FROM goals"),
+    one("SELECT MAX(t) t FROM (SELECT MAX(updated_at) t FROM debts UNION ALL SELECT MAX(created_at) FROM debt_history)"),
+    one("SELECT MAX(e.updated_at) t FROM expenses e JOIN accounts a ON e.account_id = a.id WHERE a.exclude_from_total = 1"),
+    one(`SELECT MAX(t) t FROM (
+           SELECT MAX(updated_at) t FROM months
+           UNION ALL SELECT MAX(updated_at) FROM pay_blocks
+           UNION ALL SELECT MAX(updated_at) FROM additions
+           UNION ALL SELECT MAX(updated_at) FROM bill_payments
+           UNION ALL SELECT MAX(updated_at) FROM expenses
+           UNION ALL SELECT MAX(updated_at) FROM goal_contributions
+           UNION ALL SELECT MAX(updated_at) FROM month_debt_payments
+           UNION ALL SELECT MAX(updated_at) FROM transfers)`),
+  ]);
+  return { accounts, bills, goals, debts, card, months };
+}
+
+// Deletes every row from the active database (schema kept). Used only to reset
+// the guide's demo profile before reseeding — never call on a real profile.
+// Order respects foreign keys: referencing rows before referenced ones.
+export async function wipeAllData() {
+  const db = await getDb();
+  const tables = [
+    "debt_history", "goal_contributions", "month_debt_payments", "transfers",
+    "additions", "bill_payments", "expenses", "pay_blocks", "months",
+    "category_budgets", "card_budgets", "bills", "goals", "debts", "accounts",
+  ];
+  for (const t of tables) await db.execute(`DELETE FROM ${t}`);
+}
+
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -672,6 +729,7 @@ export async function loadFullState() {
       getDebtHistory(),
       getCategoryBudgets(),
       getCardBudgets(),
+      getTabActivity(),
       db.select("SELECT * FROM months ORDER BY sequence"),
       db.select("SELECT * FROM pay_blocks"),
       db.select("SELECT * FROM additions"),
@@ -732,5 +790,5 @@ export async function loadFullState() {
     };
   });
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets };
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, activity };
 }

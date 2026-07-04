@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { FolderSync, Trash2, Archive, Sun, Moon, Monitor, Users, Plus, Download, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { FolderSync, Trash2, Archive, Sun, Moon, Monitor, Users, Plus, Download, RefreshCw, ChevronDown, ChevronRight, Compass, Keyboard } from "lucide-react";
+
+const SHORTCUTS = [
+  { keys: ["Ctrl", "Z"], desc: "Undo the last delete" },
+  { keys: ["/"], desc: "Jump to the Months search" },
+  { keys: ["N"], desc: "Add a new month (on the Months tab)" },
+  { keys: ["Enter"], desc: "Commit the field you're editing" },
+  { keys: ["Shift", "scroll"], desc: "Scroll the whole page past a section" },
+];
 import { closeDb } from "../lib/db.js";
 import { invoke } from "@tauri-apps/api/core";
 import { PROFILE_SLOTS, activeProfileDb, getProfiles, saveProfiles, addProfile, setActiveProfile, removeProfile } from "../lib/profiles.js";
@@ -36,7 +44,7 @@ function SettingsTab({
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
   appVersion, updateInfo, hasUpdate, updateBusy, updatePhase, updateError,
-  onCheckUpdate, onInstallUpdate, onRestart,
+  onCheckUpdate, onInstallUpdate, onRestart, onStartTour,
 }) {
   const { confirm, toast } = useToast();
   const [profiles, setProfiles] = useState(getProfiles);
@@ -99,6 +107,35 @@ function SettingsTab({
     <div className="section">
       <div className="section-head">
         <h2>Settings</h2>
+      </div>
+
+      <h4 className="block-title"><Compass size={13} /> Getting started</h4>
+      <div className="insight-card">
+        <div className="backup-folder" style={{ marginTop: 0 }}>
+          <span className="small-label" style={{ flex: 1 }}>
+            Take an interactive tour that walks through the app using a temporary demo profile — your real data isn't touched.
+          </span>
+          <button className="btn-secondary" onClick={onStartTour}>
+            <Compass size={13} /> Start the guide
+          </button>
+        </div>
+      </div>
+
+      <h4 className="block-title"><Keyboard size={13} /> Keyboard shortcuts</h4>
+      <div className="insight-card">
+        {SHORTCUTS.map((s) => (
+          <div className="shortcut-row" key={s.desc}>
+            <span className="shortcut-keys">
+              {s.keys.map((k, i) => (
+                <React.Fragment key={k}>
+                  {i > 0 && <span className="shortcut-plus">+</span>}
+                  <kbd className="kbd">{k}</kbd>
+                </React.Fragment>
+              ))}
+            </span>
+            <span className="small-label">{s.desc}</span>
+          </div>
+        ))}
       </div>
 
       <h4 className="block-title"><Download size={13} /> Updates</h4>

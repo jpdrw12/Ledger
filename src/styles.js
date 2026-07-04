@@ -74,6 +74,23 @@ export const css = `
   .app-version { font-family: ui-monospace, monospace; font-size:12px; font-weight:400; color:var(--ink-soft); vertical-align:middle; margin-left:6px; }
   .update-badge { vertical-align:middle; margin-left:8px; background:var(--accent); color:#fff; border:none; border-radius:12px; padding:3px 10px; font-size:11.5px; font-weight:600; cursor:pointer; }
   .update-badge:hover { filter:brightness(1.06); }
+  .tab-activity { margin:2px 2px 10px; font-size:11.5px; color:var(--ink-soft); font-style:italic; }
+  .shortcut-row { display:flex; align-items:center; gap:12px; padding:5px 0; }
+  .shortcut-keys { display:flex; align-items:center; gap:4px; flex:0 0 150px; }
+  .shortcut-plus { color:var(--ink-soft); font-size:11px; }
+  .kbd { display:inline-block; min-width:18px; text-align:center; padding:2px 6px; font-family:ui-monospace, monospace; font-size:11px; color:var(--ink); background:var(--control-bg); border:1px solid var(--paper-line); border-bottom-width:2px; border-radius:4px; }
+  .debt-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .balance-chip-excl { display:block; margin-top:3px; font-size:10.5px; color:var(--ink-soft); }
+  .balance-chip-excl .mono { font-size:11px; }
+  .tour-ring { position:fixed; z-index:10000; border-radius:8px; border:2px solid var(--accent); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 28%, transparent), 0 0 0 9999px color-mix(in srgb, black 8%, transparent); transition:top .18s, left .18s, width .18s, height .18s; pointer-events:none; }
+  .tour-card { position:fixed; max-width:calc(100vw - 16px); background:var(--card); color:var(--ink); border:1px solid var(--paper-line); border-radius:10px; padding:0 16px 12px; box-shadow:0 12px 40px rgba(0,0,0,0.35); z-index:10001; }
+  .tour-drag { display:flex; align-items:center; gap:6px; margin:0 -16px 8px; padding:7px 12px; border-bottom:1px solid var(--paper-line); color:var(--ink-soft); font-size:11.5px; cursor:grab; user-select:none; }
+  .tour-drag:active { cursor:grabbing; }
+  .tour-close { position:absolute; top:5px; right:8px; background:none; border:none; color:var(--ink-soft); cursor:pointer; }
+  .tour-step-count { font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
+  .tour-title { margin:4px 0 6px; font-family:Georgia, serif; font-size:17px; }
+  .tour-body { margin:0 0 14px; font-size:13px; line-height:1.5; color:var(--ink); }
+  .tour-actions { display:flex; align-items:center; gap:8px; }
   .changelog-preview { margin:8px 0; padding:10px 12px; background:var(--paper); border:1px solid var(--paper-line); border-radius:8px; }
   .changelog-body { margin:0; font-family:inherit; font-size:12.5px; line-height:1.5; color:var(--ink); white-space:pre-wrap; word-break:break-word; }
   .changelog-toggle { display:flex; align-items:center; gap:6px; margin-top:12px; cursor:pointer; user-select:none; }
@@ -93,8 +110,9 @@ export const css = `
 
   .balance-strip { display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
   .balance-chip { display:flex; flex-direction:column; gap:2px; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:8px 14px; min-width:140px; }
-  .balance-chip.consolidated { background:var(--accent); border-color:var(--accent); }
+  .balance-chip.consolidated { background:var(--accent); border-color:var(--accent); text-align:center; align-items:center; }
   .balance-chip.consolidated .balance-chip-label { color:#C3D0B7; }
+  .balance-chip.consolidated .balance-chip-excl { color:#C3D0B7; }
   .balance-chip.consolidated .surplus { color:#9FE3BC; }
   .balance-chip.consolidated .deficit { color:#F2A38F; }
   .balance-chip-label { font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }

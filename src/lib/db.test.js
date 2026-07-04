@@ -5,6 +5,7 @@ import {
   addMonthDebtPayment,
   updateMonthDebtPayment,
   applyMonthDebtPayment,
+  applyMonthlyInterest,
   deleteMonthDebtPayment,
   deleteDebtHistoryEntry,
   loadFullState,
@@ -18,6 +19,8 @@ import {
   reassignAccountReferences,
   deleteAccount,
   restoreAccount,
+  getTabActivity,
+  upsertDebt,
 } from "./db.js";
 
 let adapter;
@@ -40,19 +43,31 @@ beforeEach(async () => {
 });
 
 describe("applyMonthDebtPayment", () => {
-  it("applies payment + interest, links history, flags the payment applied", async () => {
+  it("reduces principal only — no interest per payment — and flags it applied", async () => {
     const pid = await addMonthDebtPayment("m", { debtId: "d", amount: 200, accountId: "a" });
-    await applyMonthDebtPayment(pid, { debtId: "d", amount: 200, monthLabel: "June 2026", currentBalance: 1000, apr: 0.12 });
+    await applyMonthDebtPayment(pid, { debtId: "d", amount: 200, monthLabel: "June 2026", currentBalance: 1000 });
 
-    // 1000 - 200 = 800; interest = 800 * 0.12/12 = 8; new balance = 808
-    expect(get("SELECT balance FROM debts WHERE id='d'").balance).toBeCloseTo(808, 5);
+    // 1000 - 200 = 800, no interest.
+    expect(get("SELECT balance FROM debts WHERE id='d'").balance).toBeCloseTo(800, 5);
     expect(get("SELECT applied FROM month_debt_payments WHERE id=?", pid).applied).toBe(1);
 
     const h = get("SELECT * FROM debt_history WHERE month_debt_payment_id=?", pid);
     expect(h.previous_balance).toBe(1000);
     expect(h.amount_paid).toBe(200);
-    expect(h.interest).toBeCloseTo(8, 5);
-    expect(h.new_balance).toBeCloseTo(808, 5);
+    expect(h.interest).toBe(0);
+    expect(h.new_balance).toBeCloseTo(800, 5);
+  });
+});
+
+describe("applyMonthlyInterest", () => {
+  it("charges one month's interest on the current balance, once", async () => {
+    await applyMonthlyInterest("d", { monthLabel: "June 2026", currentBalance: 1000, apr: 0.12 });
+    // interest = 1000 * 0.12/12 = 10; new balance = 1010
+    expect(get("SELECT balance FROM debts WHERE id='d'").balance).toBeCloseTo(1010, 5);
+    const h = get("SELECT * FROM debt_history WHERE debt_id='d'");
+    expect(h.amount_paid).toBe(0);
+    expect(h.interest).toBeCloseTo(10, 5);
+    expect(h.new_balance).toBeCloseTo(1010, 5);
   });
 });
 
@@ -129,6 +144,30 @@ describe("drag reordering", () => {
     await deleteGoal(a);
     await restoreGoal(snapshot);
     expect((await getGoals()).map((g) => g.id)).toEqual([c, a, b, d]);
+  });
+});
+
+describe("getTabActivity (updated_at triggers)", () => {
+  it("stamps updated_at on insert and bumps it on update", async () => {
+    const before = await getTabActivity();
+    expect(before.goals).toBeNull(); // no goals seeded
+
+    const gid = await upsertGoal({ name: "Vacation" });
+    const afterInsert = await getTabActivity();
+    expect(afterInsert.goals).toBeTruthy(); // AFTER INSERT trigger stamped it
+
+    // Force a later timestamp, then edit → AFTER UPDATE trigger should bump it.
+    adapter._raw.prepare("UPDATE goals SET updated_at = '2000-01-01 00:00:00' WHERE id = ?").run(gid);
+    expect((await getTabActivity()).goals).toBe("2000-01-01 00:00:00");
+    await upsertGoal({ id: gid, name: "Vacation Fund" });
+    expect((await getTabActivity()).goals).not.toBe("2000-01-01 00:00:00");
+  });
+
+  it("reports Debts activity from debts and debt_history, and does not recurse", async () => {
+    // 'd' (debt) is seeded. An upsert bumps debts.updated_at.
+    await upsertDebt({ id: "d", name: "Visa", apr: 0.12, balance: 900 });
+    const a = await getTabActivity();
+    expect(a.debts).toBeTruthy();
   });
 });
 

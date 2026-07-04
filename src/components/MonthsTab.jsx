@@ -56,7 +56,7 @@ function MonthsTab({
     <div className="section">
       <div className="section-head">
         <h2>Months</h2>
-        <button className="btn-primary" onClick={onAddMonth}>
+        <button className="btn-primary" onClick={onAddMonth} data-tour="add-month">
           <Plus size={15} /> Add next month
         </button>
       </div>
@@ -105,7 +105,7 @@ function MonthsTab({
         <p className="empty">No months match "{filter}".</p>
       )}
 
-      <div className="stub-row">
+      <div className="stub-row" data-tour="month">
         {visibleMonths.map((m) => (
           <MonthStub
             key={m.id}
@@ -358,7 +358,7 @@ function DebtPaymentRow({ dp, debt, accounts, onUpdate, onRemove, onApply }) {
       {dp.applied ? (
         <span className="debt-applied-badge"><Check size={11} /> Applied</span>
       ) : (
-        <button className="btn-apply-debt" onClick={handleApply} title="Apply payment + interest to debt balance">
+        <button className="btn-apply-debt" onClick={handleApply} title="Apply this payment to the debt balance (interest is charged once per month on the Debts tab)">
           Apply
         </button>
       )}

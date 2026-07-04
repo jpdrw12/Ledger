@@ -43,22 +43,32 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
     onChanged();
   };
 
-  const applyMonth = async (debt) => {
+  // A payment reduces principal only — no interest is charged here (that would
+  // stack a month's interest onto every payment). Interest is a separate
+  // once-per-month action below.
+  const applyPayment = async (debt) => {
     const paid = parseFloat(paymentDrafts[debt.id]) || 0;
-    const current = debt.balance - paid;
-    const interest = current * (debt.apr / 12);
-    const newBalance = Math.round((current + interest) * 100) / 100;
-
+    if (paid <= 0) {
+      toast("Enter a payment amount first.", "error");
+      return;
+    }
+    const newBalance = Math.round((debt.balance - paid) * 100) / 100;
     await db.logDebtHistory({
       debtId: debt.id,
       monthLabel: monthDraft,
       previousBalance: debt.balance,
       amountPaid: paid,
-      interest,
+      interest: 0,
       newBalance,
     });
     await db.upsertDebt({ ...debt, balance: newBalance });
     setPaymentDrafts((p) => ({ ...p, [debt.id]: "" }));
+    onChanged();
+  };
+
+  // Charges one month's interest on the current balance — do this once per month.
+  const applyInterest = async (debt) => {
+    await db.applyMonthlyInterest(debt.id, { monthLabel: monthDraft, currentBalance: debt.balance, apr: debt.apr });
     onChanged();
   };
 
@@ -107,9 +117,14 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
                 onChange={(e) => setPaymentDrafts((p) => ({ ...p, [debt.id]: e.target.value }))}
               />
             </div>
-            <button className="btn-secondary" onClick={() => applyMonth(debt)}>
-              Apply payment + interest
-            </button>
+            <div className="debt-actions">
+              <button className="btn-secondary" onClick={() => applyPayment(debt)}>
+                Apply payment
+              </button>
+              <button className="btn-secondary" onClick={() => applyInterest(debt)} title="Charge one month's interest on the current balance — do this once per month">
+                Apply monthly interest
+              </button>
+            </div>
 
             {debtHistory.filter((h) => h.debt_id === debt.id).length > 0 && (
               <table className="history-table">

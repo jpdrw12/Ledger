@@ -8,13 +8,18 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 /// profiles are a fixed set of slots: `ledger.db` is Profile 1 (pre-profiles
 /// data lands there), and each extra profile claims the next file. A new file
 /// gets the full migration chain on first open — i.e. a fresh ledger.
-pub const PROFILE_DB_FILES: [&str; 6] = [
+pub const PROFILE_DB_FILES: [&str; 7] = [
     "ledger.db",
     "profile2.db",
     "profile3.db",
     "profile4.db",
     "profile5.db",
     "profile6.db",
+    // Hidden slot reserved for the interactive guide's throwaway demo data —
+    // never shown in the profile picker. It's wiped + reseeded each tour rather
+    // than deleted, because the SQL plugin consumes a connection's migrations on
+    // first load per process and won't re-migrate a recreated file.
+    "demo.db",
 ];
 
 fn migrations() -> Vec<Migration> {
@@ -89,6 +94,12 @@ fn migrations() -> Vec<Migration> {
             version: 12,
             description: "sort_order",
             sql: include_str!("../migrations/0012_sort_order.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 13,
+            description: "updated_at",
+            sql: include_str!("../migrations/0013_updated_at.sql"),
             kind: MigrationKind::Up,
         },
     ]

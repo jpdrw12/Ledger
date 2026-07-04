@@ -5,7 +5,9 @@ import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLab
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton } from "./components/Shared.jsx";
-import { activeProfileName, getProfiles, setActiveProfile, PROFILE_SLOTS } from "./lib/profiles.js";
+import { activeProfileName, activeProfileDb, getProfiles, setActiveProfile, PROFILE_SLOTS, DEMO_DB } from "./lib/profiles.js";
+import { resetAndSeedDemo } from "./lib/demo.js";
+import TourOverlay, { TOUR_STEPS } from "./components/TourOverlay.jsx";
 import { useToast } from "./components/Toast.jsx";
 import { checkForUpdate, installUpdate, restartApp, isNewer } from "./lib/update.js";
 import MonthsTab from "./components/MonthsTab.jsx";
@@ -19,6 +21,20 @@ import SettingsTab from "./components/SettingsTab.jsx";
 
 // Injected by Vite's define from package.json (kept current by bump-version.sh).
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
+// Formats a stored `updated_at` ("YYYY-MM-DD HH:MM:SS", local) as a short,
+// friendly date for the per-tab "last entry" tag.
+function formatActivityDate(s) {
+  if (!s) return "";
+  const d = new Date(String(s).replace(" ", "T"));
+  if (isNaN(d.getTime())) return "";
+  const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  const days = Math.round((startOf(new Date()) - startOf(d)) / 86400000);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (days === 0) return `today at ${time}`;
+  if (days === 1) return `yesterday at ${time}`;
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} at ${time}`;
+}
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -141,6 +157,9 @@ export default function App() {
   const [updateError, setUpdateError] = useState(null);
   // Install phase for progress feedback: null | "downloading" | "installing" | "restarting".
   const [updatePhase, setUpdatePhase] = useState(null);
+  // Interactive guide: runs against a throwaway "Demo" profile (see startTour).
+  const [tourActive, setTourActive] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
   const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
@@ -210,6 +229,29 @@ export default function App() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Hold Shift while scrolling to bypass a section's contained scroll and move
+  // the whole page instead. Sections use `overscroll-behavior: contain` so the
+  // wheel stays inside a .scroll-panel; when Shift is down we intercept the
+  // wheel, cancel it, and scroll the window by the same delta.
+  useEffect(() => {
+    const onWheel = (e) => {
+      if (!e.shiftKey || e.ctrlKey) return;
+      // With Shift held, browsers report the wheel on deltaX, not deltaY — so
+      // read whichever axis actually moved.
+      const raw = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      // deltaMode 1 = lines, 2 = pages — normalize to pixels so all mice feel
+      // the same.
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
+      // Capture phase + preventDefault means this wins over any inner
+      // scroller, so the whole page moves regardless of what's under the cursor.
+      e.preventDefault();
+      e.stopPropagation();
+      window.scrollBy({ top: raw * unit, left: 0, behavior: "auto" });
+    };
+    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => window.removeEventListener("wheel", onWheel, { capture: true });
   }, []);
 
   // Focusing a number field selects its whole value, so typing replaces it.
@@ -336,6 +378,8 @@ export default function App() {
     if (!profileChosen) return; // wait for the startup profile pick
     (async () => {
       await reload();
+      // Don't auto-backup (or list backups) the throwaway demo profile.
+      if (sessionStorage.getItem("ledger.tour") === "1") return;
       await maybeAutoBackup();
       await refreshBackups();
     })();
@@ -425,6 +469,64 @@ export default function App() {
   const handleRestartApp = useCallback(async () => {
     await restartApp();
   }, []);
+
+  // ---- Interactive guide -------------------------------------------------
+  // The tour runs in a throwaway "Demo" profile so it never touches real data.
+  // Starting it claims a free profile slot, seeds sample data, and reloads into
+  // it; exiting switches back and deletes the demo profile. Tour state is carried
+  // across the reload in sessionStorage.
+  const startTour = useCallback(async () => {
+    // Already touring (the panel is non-blocking, so Settings is reachable):
+    // just restart the steps instead of re-entering the demo profile.
+    if (sessionStorage.getItem("ledger.tour") === "1") {
+      setTourStep(0);
+      setTourActive(true);
+      return;
+    }
+    // Switch into the dedicated hidden demo profile (demo.db). It's never
+    // deleted — reused and reseeded each run — so migrations stay applied.
+    sessionStorage.setItem("ledger.tour", "1");
+    sessionStorage.setItem("ledger.tourReturn", activeProfileDb());
+    sessionStorage.setItem("ledger.tourSeed", "1");
+    sessionStorage.setItem("ledger.skipPicker", "1");
+    await db.closeDb();
+    setActiveProfile(DEMO_DB);
+    window.location.reload();
+  }, []);
+
+  const exitTour = useCallback(async () => {
+    const ret = sessionStorage.getItem("ledger.tourReturn") || PROFILE_SLOTS[0];
+    ["ledger.tour", "ledger.tourReturn", "ledger.tourSeed"].forEach((k) => sessionStorage.removeItem(k));
+    sessionStorage.setItem("ledger.skipPicker", "1");
+    await db.closeDb();
+    setActiveProfile(ret);
+    window.location.reload();
+  }, []);
+
+  // After the reload into the demo profile, seed sample data (once) and open the
+  // overlay. Guarded so it runs a single time per launch.
+  const tourBootRef = useRef(false);
+  useEffect(() => {
+    if (tourBootRef.current || !state) return;
+    if (sessionStorage.getItem("ledger.tour") !== "1") return;
+    tourBootRef.current = true;
+    (async () => {
+      if (sessionStorage.getItem("ledger.tourSeed") === "1") {
+        try { await resetAndSeedDemo(); } catch (e) { console.error("demo seed failed", e); }
+        sessionStorage.removeItem("ledger.tourSeed");
+        await reload();
+      }
+      setTourStep(0);
+      setTourActive(true);
+    })();
+  }, [state, reload]);
+
+  // Each tour step drives the active tab.
+  useEffect(() => {
+    if (!tourActive) return;
+    const s = TOUR_STEPS[tourStep];
+    if (s?.tab) setTab(s.tab);
+  }, [tourActive, tourStep]);
 
   // Auto-open the current month once on launch: match this calendar month's
   // "MonthName Year" label, else fall back to the most recent month. Runs only
@@ -664,6 +766,25 @@ export default function App() {
     () => (state ? state.accounts.filter((a) => !a.excludeFromTotal).reduce((s, a) => s + (balances[a.id] || 0), 0) : 0),
     [state, balances]
   );
+  // Unpaid bills reduce the carried balance (computeLedger deducts all bills,
+  // paid or not). Adding a given account's unpaid total back gives its balance
+  // "excl. unpaid bills" — the money still actually sitting there. Summed across
+  // all months, since an unpaid bill in any month flows into the latest balance.
+  const unpaidByAccount = useMemo(() => {
+    const out = {};
+    if (!state) return out;
+    state.accounts.forEach((a) => (out[a.id] = 0));
+    state.months.forEach((m) =>
+      m.billPayments.forEach((bp) => {
+        if (!bp.paid && out[bp.accountId] !== undefined) out[bp.accountId] += Number(bp.amountPaid) || 0;
+      })
+    );
+    return out;
+  }, [state]);
+  const consolidatedExclUnpaid = useMemo(
+    () => (state ? state.accounts.filter((a) => !a.excludeFromTotal).reduce((s, a) => s + (balances[a.id] || 0) + (unpaidByAccount[a.id] || 0), 0) : 0),
+    [state, balances, unpaidByAccount]
+  );
   const { overdue, dueSoon } = useMemo(() => {
     if (!state) return { overdue: [], dueSoon: [] };
     const now = new Date();
@@ -784,29 +905,44 @@ export default function App() {
       </header>
 
       <div className="balance-strip">
-        {state.accounts.map((a) => (
-          <div className="balance-chip" key={a.id}>
-            <span className="balance-chip-label">{a.name}{a.excludeFromTotal && <span className="excluded-tag">not in total</span>}</span>
-            <span className={`amount ${balances[a.id] < 0 ? "deficit" : "surplus"}`}>{money(balances[a.id])}</span>
-          </div>
-        ))}
-        <div className="balance-chip consolidated">
+        {state.accounts.map((a) => {
+          const exclUnpaid = (balances[a.id] || 0) + (unpaidByAccount[a.id] || 0);
+          return (
+            <div className="balance-chip" key={a.id}>
+              <span className="balance-chip-label">{a.name}{a.excludeFromTotal && <span className="excluded-tag">not in total</span>}</span>
+              <span className={`amount ${balances[a.id] < 0 ? "deficit" : "surplus"}`}>{money(balances[a.id])}</span>
+              {unpaidByAccount[a.id] > 0 && (
+                <span className="balance-chip-excl">excl. unpaid bills <span className={`mono ${exclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(exclUnpaid)}</span></span>
+              )}
+            </div>
+          );
+        })}
+        <div className="balance-chip consolidated" data-tour="total">
           <span className="balance-chip-label">Consolidated</span>
           <span className={`amount ${consolidated < 0 ? "deficit" : "surplus"}`}>{money(consolidated)}</span>
+          {consolidatedExclUnpaid !== consolidated && (
+            <span className="balance-chip-excl">excl. unpaid bills <span className={`mono ${consolidatedExclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(consolidatedExclUnpaid)}</span></span>
+          )}
         </div>
       </div>
 
-      <nav className="tabs">
+      <nav className="tabs" data-tour="tabs">
         <TabButton active={tab === "months"} onClick={() => setTab("months")} icon={<ListChecks size={16} />} label="Months" />
-        <TabButton active={tab === "card"} onClick={() => setTab("card")} icon={<CreditCard size={16} />} label="Card Spending" />
-        <TabButton active={tab === "bills"} onClick={() => setTab("bills")} icon={<Receipt size={16} />} label="Bill Templates" />
-        <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" />
-        <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" />
+        <TabButton active={tab === "card"} onClick={() => setTab("card")} icon={<CreditCard size={16} />} label="Card Spending" dataTour="tab-card" />
+        <TabButton active={tab === "bills"} onClick={() => setTab("bills")} icon={<Receipt size={16} />} label="Bill Templates" dataTour="tab-bills" />
+        <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" dataTour="tab-goals" />
+        <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" dataTour="tab-accounts" />
         <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" />
-        <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" />
-        <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" />
+        <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" dataTour="tab-insights" />
+        <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" dataTour="tab-backups" />
         <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
       </nav>
+
+      {state.activity?.[tab] && (
+        <div className="tab-activity" title="Most recent entry or edit on this tab">
+          Last entry {formatActivityDate(state.activity[tab])}
+        </div>
+      )}
 
       {tab === "months" && (
         <MonthsTab
@@ -862,6 +998,7 @@ export default function App() {
           onCheckUpdate={runUpdateCheck}
           onInstallUpdate={handleInstallUpdate}
           onRestart={handleRestartApp}
+          onStartTour={startTour}
         />
       )}
 
@@ -917,6 +1054,15 @@ export default function App() {
             </>
           )}
         </div>
+      )}
+
+      {tourActive && (
+        <TourOverlay
+          stepIndex={tourStep}
+          onNext={() => setTourStep((s) => Math.min(s + 1, TOUR_STEPS.length - 1))}
+          onBack={() => setTourStep((s) => Math.max(0, s - 1))}
+          onExit={exitTour}
+        />
       )}
     </div>
   );

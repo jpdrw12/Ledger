@@ -161,9 +161,9 @@ export function Sparkline({ series, projectedIds }) {
   );
 }
 
-export function TabButton({ active, onClick, icon, label }) {
+export function TabButton({ active, onClick, icon, label, dataTour }) {
   return (
-    <button className={`tab-btn ${active ? "active" : ""}`} onClick={onClick}>
+    <button className={`tab-btn ${active ? "active" : ""}`} onClick={onClick} data-tour={dataTour}>
       {icon}
       {label}
     </button>

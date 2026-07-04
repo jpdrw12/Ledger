@@ -5,6 +5,25 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.18.0]
+
+### Added
+- **Interactive guide** (Settings → Getting started): a step-by-step tour that
+  runs on a throwaway demo profile with sample data, with a movable info card
+  and highlight ring. Your real data is never touched.
+- **"Last entry" date + time** tag on each data tab, from new `updated_at`
+  timestamps kept current by database triggers.
+- **Keyboard shortcuts** reference in Settings.
+- Header now shows an **"excl. unpaid bills"** figure under each account and the
+  consolidated total — your balance with not-yet-paid bills added back.
+
+### Changed
+- **Debt interest is charged once per month**, not on every payment. Applying a
+  payment (Months or Debts tab) now only reduces principal; the Debts tab has a
+  new **"Apply monthly interest"** button.
+- **Shift + scroll** now scrolls the whole page from anywhere, bypassing a
+  section's contained scroll.
+
 ## [0.17.0]
 
 ### Changed
