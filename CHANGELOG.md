@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.18.1]
+
+### Added
+- The Insights "Spending by category" section now has a month filter (all months
+  or a specific month), matching the Card spending tab.
+
 ## [0.18.0]
 
 ### Added

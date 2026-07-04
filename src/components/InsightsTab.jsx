@@ -12,23 +12,34 @@ function InsightsTab({ state, ledger, onChanged }) {
   const [newAmt, setNewAmt] = useState("");
   const [horizon, setHorizon] = useState(6);
   const [selectedCat, setSelectedCat] = useState(null); // click a category row to highlight its total
+  const [catMonth, setCatMonth] = useState("all"); // scope the spending-by-category chart
 
   // These pure aggregations only depend on state/ledger/horizon — memoize so
   // they don't re-run on every keystroke in the add-budget fields, etc.
-  const { categories, series, totalSpend, maxCat, budgets, latestLabel, nw, avgNet } = useMemo(() => {
+  const { categories, series, budgets, latestLabel, nw, avgNet } = useMemo(() => {
     const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
-    const cats = spendingByCategory(state.months, { exclude: cardAccountIds });
     return {
-      categories: cats,
+      categories: spendingByCategory(state.months, { exclude: cardAccountIds }), // full list, for budget suggestions
       series: monthlyEndingBalances(state.months, ledger),
-      totalSpend: cats.reduce((s, c) => s + c.total, 0),
-      maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
       budgets: budgetReport(state.months, state.categoryBudgets),
       latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
       nw: netWorthSnapshot(state.months, ledger, state.debts),
       avgNet: averageNetChange(state.months, ledger),
     };
   }, [state, ledger]);
+
+  // Spending by category, scoped to the selected month (or all months).
+  const { scopedCategories, scopedTotal, scopedMax, catScopeLabel } = useMemo(() => {
+    const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+    const scoped = catMonth === "all" ? state.months : state.months.filter((m) => m.id === catMonth);
+    const cats = spendingByCategory(scoped, { exclude: cardAccountIds });
+    return {
+      scopedCategories: cats,
+      scopedTotal: cats.reduce((s, c) => s + c.total, 0),
+      scopedMax: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
+      catScopeLabel: catMonth === "all" ? "all months" : (state.months.find((m) => m.id === catMonth)?.monthLabel || ""),
+    };
+  }, [state, catMonth]);
 
   // Forecast: projected months appended after the real ones (never persisted).
   const { forecastSeries, projectedSet, projectedRows, firstNegative } = useMemo(() => {
@@ -153,10 +164,19 @@ function InsightsTab({ state, ledger, onChanged }) {
         )}
       </div>
 
-      <h4 className="block-title"><Receipt size={13} /> Spending by category (all months)</h4>
+      <h4 className="block-title"><Receipt size={13} /> Spending by category</h4>
       <div className="insight-card">
-        {categories.length === 0 && <p className="empty small">No expenses logged yet.</p>}
-        {categories.map((c) => (
+        <div className="backup-folder" style={{ marginTop: 0 }}>
+          <span className="small-label" style={{ flex: 1 }}>Month</span>
+          <select value={catMonth} onChange={(e) => setCatMonth(e.target.value)}>
+            <option value="all">All months</option>
+            {state.months.map((m) => (
+              <option key={m.id} value={m.id}>{m.monthLabel}</option>
+            ))}
+          </select>
+        </div>
+        {scopedCategories.length === 0 && <p className="empty small">No expenses logged for {catScopeLabel}.</p>}
+        {scopedCategories.map((c) => (
           <div
             className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
             key={c.category}
@@ -164,16 +184,16 @@ function InsightsTab({ state, ledger, onChanged }) {
           >
             <span className="cat-name">{c.category}</span>
             <div className="cat-bar-track">
-              <div className="cat-bar-fill" style={{ width: `${maxCat ? (c.total / maxCat) * 100 : 0}%` }} />
+              <div className="cat-bar-fill" style={{ width: `${scopedMax ? (c.total / scopedMax) * 100 : 0}%` }} />
             </div>
             <span className="cat-amount mono">{money(c.total)}</span>
           </div>
         ))}
-        {categories.length > 0 && (
+        {scopedCategories.length > 0 && (
           <div className="cat-row cat-total">
             <span className="cat-name">Total</span>
             <div className="cat-bar-track" />
-            <span className="cat-amount mono">{money(totalSpend)}</span>
+            <span className="cat-amount mono">{money(scopedTotal)}</span>
           </div>
         )}
       </div>
