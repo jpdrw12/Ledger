@@ -30,6 +30,7 @@ function MonthsTab({
   onAddMonth,
   onCopyForward,
   onReorder,
+  forceOpenPay1,
 }) {
   const { confirm, toast } = useToast();
   const [filter, setFilter] = useState("");
@@ -110,6 +111,7 @@ function MonthsTab({
           <MonthStub
             key={m.id}
             month={m}
+            forceOpenPay1={forceOpenPay1}
             computed={ledger[m.id]}
             index={months.indexOf(m)}
             isOpen={openMonth === m.id}
@@ -145,10 +147,10 @@ function MonthsTab({
 }
 
 // Self-contained pay block: income + bills for this slot + expenses for this slot + additions.
-function PayBlock({ label, slot, pay, monthId, onPatch, billPayments, bills, expenseList, existingTags, existingCategories, accounts, onChanged,
+function PayBlock({ label, slot, pay, monthId, onPatch, forceOpen, billPayments, bills, expenseList, existingTags, existingCategories, accounts, onChanged,
   onAddBillPayment, onUpdateBillPayment, onRemoveBillPayment, onAddExpense, onUpdateExpense, onRemoveExpense }) {
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!forceOpen);
   const { toast } = useToast();
   const additionsTotal = pay.additions.reduce((s, a) => s + (Number(a.amount) || 0), 0);
   const incomeTotal = (Number(pay.income) || 0) + additionsTotal;
@@ -191,7 +193,7 @@ function PayBlock({ label, slot, pay, monthId, onPatch, billPayments, bills, exp
     const overdue = !bp.paid && bp.dueDate && bp.dueDate < localToday();
     return (
       <div className="ledger-row" key={bp.id}>
-        <button className={`check ${bp.paid ? "checked" : ""}`} title={bp.paid ? "Paid" : "Mark paid"} onClick={() => onUpdateBillPayment(bp, { paid: !bp.paid })}>
+        <button data-tour="bill-paid" className={`check ${bp.paid ? "checked" : ""}`} title={bp.paid ? "Paid" : "Mark paid"} onClick={() => onUpdateBillPayment(bp, { paid: !bp.paid })}>
           {bp.paid ? <Check size={18} strokeWidth={3.5} /> : null}
         </button>
         <span className="row-name">
@@ -225,7 +227,7 @@ function PayBlock({ label, slot, pay, monthId, onPatch, billPayments, bills, exp
       </div>
       {!open && null}
       {open && <div className="pay-block-body">
-      <div className="grid-2">
+      <div className="grid-2" data-tour="income">
         <Field
           label="Income"
           type="number"
@@ -295,7 +297,7 @@ function PayBlock({ label, slot, pay, monthId, onPatch, billPayments, bills, exp
         ))}
         {mainExpenses.length === 0 && <p className="empty small scroll-panel-empty">No expenses logged yet.</p>}
       </ScrollPanel>
-      <button className="btn-secondary" onClick={() => onAddExpense(slot)}>
+      <button className="btn-secondary" data-tour="add-expense" onClick={() => onAddExpense(slot)}>
         <Plus size={13} /> Add expense
       </button>
 
@@ -401,7 +403,7 @@ function patchAddition(state, monthId, slot, addId, patch) {
   };
 }
 
-function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags, existingCategories }) {
+function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags, existingCategories, forceOpenPay1 }) {
   const { toast } = useToast();
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
@@ -673,7 +675,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             </button>
           </>
         )}
-        <button className="icon-btn" title="Copy this bill setup to next month" onClick={(e) => { e.stopPropagation(); onCopyForward(); }}>
+        <button className="icon-btn" data-tour="copy-forward" title="Copy this bill setup to next month" onClick={(e) => { e.stopPropagation(); onCopyForward(); }}>
           <ArrowRightCircle size={16} />
         </button>
         <button className="icon-btn" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
@@ -683,7 +685,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
 
       {isOpen && (
         <div className="stub-body">
-          <div className="month-summary">
+          <div className="month-summary" data-tour="month-summary">
             <div className="ms-cell"><span className="ms-label">Income</span><span className="ms-val mono">{money(totalIncome + totalAdditions)}</span></div>
             <div className="ms-cell"><span className="ms-label">Bills</span><span className="ms-val mono">{money(totalBills)}</span></div>
             <div className="ms-cell"><span className="ms-label">Outstanding</span><span className={`ms-val mono ${outstandingBills > 0 ? "deficit" : ""}`}>{money(outstandingBills)}</span></div>
@@ -731,6 +733,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               pay={month.pay1}
               monthId={month.id}
               onPatch={onPatch}
+              forceOpen={forceOpenPay1}
               billPayments={month.billPayments}
               bills={bills}
               expenseList={month.expensesPay1}
@@ -842,6 +845,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           </div>
           </MonthSection>
 
+          <div data-tour="transfers">
           <MonthSection icon={<ArrowLeftRight size={13} />} title="Transfers" hint="Between accounts, or between savings goals (account↔goal is a Savings contribution)." total={totalTransfers}>
           <ScrollPanel>
             {transferRows.map(renderTransferRow)}
@@ -857,6 +861,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             <p className="empty small">Add a second account or a second savings goal to move money between them.</p>
           )}
           </MonthSection>
+          </div>
 
           <Collapsible title="Full breakdown">
           <div className="sticky-totals">

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useContext, createContext } from "react";
 import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import { money } from "../lib/calc.js";
 
@@ -109,8 +109,15 @@ export function ScrollPanel({ className = "scroll-panel", children, ...rest }) {
 // with an optional right-aligned slot (e.g. a summary/total). Used to declutter
 // Settings, Insights, Card, and the open-month breakdown behind one consistent
 // expand/collapse. `right` shows even while collapsed, so a summary stays glanceable.
+// When true, collapsible sections start (and re-open to) expanded — driven by
+// the "Expand sections by default" setting.
+export const ExpandContext = createContext(false);
+
 export function Collapsible({ title, icon, right, defaultOpen = false, className = "", children }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const expandDefault = useContext(ExpandContext);
+  const [open, setOpen] = useState(defaultOpen || expandDefault);
+  // Follow the global setting when it's toggled (opens/closes all sections live).
+  useEffect(() => { setOpen(defaultOpen || expandDefault); }, [expandDefault, defaultOpen]);
   return (
     <div className={`collapsible ${open ? "open" : ""} ${className}`.trim()}>
       <button type="button" className="collapsible-head" onClick={() => setOpen((o) => !o)}>

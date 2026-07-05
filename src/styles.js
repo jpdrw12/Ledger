@@ -131,6 +131,9 @@ export const css = `
   .update-badge { vertical-align:middle; margin-left:8px; background:var(--accent); color:#fff; border:none; border-radius:12px; padding:3px 10px; font-size:11.5px; font-weight:600; cursor:pointer; }
   .update-badge:hover { filter:brightness(1.06); }
   .tab-activity { margin:2px 2px 10px; font-size:11.5px; color:var(--ink-soft); font-style:italic; }
+  .first-run-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; background:var(--card); border:1px solid var(--accent); border-radius:8px; padding:14px 16px; margin-bottom:16px; }
+  .first-run-banner p { margin:4px 0 0; font-size:13px; color:var(--ink-soft); }
+  .first-run-actions { display:flex; gap:8px; flex-wrap:wrap; }
   .shortcut-row { display:flex; align-items:center; gap:12px; padding:5px 0; }
   .shortcut-keys { display:flex; align-items:center; gap:4px; flex:0 0 150px; }
   .shortcut-plus { color:var(--ink-soft); font-size:11px; }
@@ -143,7 +146,21 @@ export const css = `
   .tour-drag { display:flex; align-items:center; gap:6px; margin:0 -16px 8px; padding:7px 12px; border-bottom:1px solid var(--paper-line); color:var(--ink-soft); font-size:11.5px; cursor:grab; user-select:none; }
   .tour-drag:active { cursor:grabbing; }
   .tour-close { position:absolute; top:5px; right:8px; background:none; border:none; color:var(--ink-soft); cursor:pointer; }
-  .tour-step-count { font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
+  .tour-progress { height:4px; background:var(--paper-line); border-radius:2px; overflow:hidden; margin-bottom:8px; }
+  .tour-progress-fill { height:100%; background:var(--accent); border-radius:2px; transition:width .25s ease; }
+  .tour-step-count { font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); display:flex; align-items:center; gap:8px; }
+  .tour-section { background:var(--accent); color:#fff; border-radius:10px; padding:2px 8px; font-size:10px; letter-spacing:0.3px; }
+  .tour-chips { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+  .tour-chip { font-size:10px; padding:3px 8px; border-radius:10px; border:1px solid var(--paper-line); background:none; color:var(--ink-soft); cursor:pointer; }
+  .tour-chip.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .tour-kbd-hint { color:var(--ink-soft); opacity:0.7; text-transform:none; letter-spacing:0; }
+  .help-btn { width:22px; height:22px; border-radius:50%; border:1px solid var(--paper-line); background:var(--card); color:var(--ink-soft); font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+  .help-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .layout-classic .app-header .help-btn { margin-left:8px; align-self:center; }
+  .help-panel { position:fixed; top:70px; right:24px; width:300px; max-width:calc(100vw - 32px); background:var(--card); border:1px solid var(--paper-line); border-radius:10px; padding:16px; box-shadow:0 12px 40px rgba(0,0,0,0.35); z-index:60; }
+  .help-panel-close { position:absolute; top:8px; right:10px; background:none; border:none; color:var(--ink-soft); cursor:pointer; font-size:13px; }
+  .help-panel-title { font-family:Georgia, serif; font-size:16px; margin:0 0 6px; }
+  .help-panel-body { font-size:13px; line-height:1.5; color:var(--ink); margin:0 0 12px; }
   .tour-title { margin:4px 0 6px; font-family:Georgia, serif; font-size:17px; }
   .tour-body { margin:0 0 14px; font-size:13px; line-height:1.5; color:var(--ink); }
   .tour-actions { display:flex; align-items:center; gap:8px; }

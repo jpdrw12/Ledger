@@ -3,7 +3,7 @@
 // ordinary db.js actions, so it exercises exactly the same code paths the user
 // will. Idempotent-ish: only seeds when the demo ledger is empty.
 import * as db from "./db.js";
-import { nextMonthLabel } from "./calc.js";
+import { nextMonthLabel, computeDueDate } from "./calc.js";
 
 // A "MonthName Year" label for the current month, matching how due-date parsing
 // expects labels to read.
@@ -23,9 +23,9 @@ export async function resetAndSeedDemo() {
   const card = await db.upsertAccount({ name: "Visa card", startingBalance: 0, excludeFromTotal: true });
 
   // Bill templates that auto-add to new months.
-  await db.upsertBill({ name: "Rent", category: "Housing", defaultAmount: 1400, addToSlot1: true, addToSlot2: false, dueDay: 1, paymentType: "manual", autoAdd: true });
-  await db.upsertBill({ name: "Phone", category: "Utilities", defaultAmount: 60, addToSlot1: false, addToSlot2: true, dueDay: 15, paymentType: "manual", autoAdd: true });
-  await db.upsertBill({ name: "Internet", category: "Utilities", defaultAmount: 75, addToSlot1: true, addToSlot2: false, dueDay: 5, paymentType: "manual", autoAdd: true });
+  const rentBill = await db.upsertBill({ name: "Rent", category: "Housing", defaultAmount: 1400, addToSlot1: true, addToSlot2: false, dueDay: 1, paymentType: "manual", autoAdd: true });
+  const phoneBill = await db.upsertBill({ name: "Phone", category: "Utilities", defaultAmount: 60, addToSlot1: false, addToSlot2: true, dueDay: 15, paymentType: "manual", autoAdd: true });
+  const internetBill = await db.upsertBill({ name: "Internet", category: "Utilities", defaultAmount: 75, addToSlot1: true, addToSlot2: false, dueDay: 5, paymentType: "manual", autoAdd: true });
 
   // A savings goal and a debt to populate those tabs.
   await db.upsertGoal({ name: "Emergency fund", targetAmount: 10000, startingBalance: 1500 });
@@ -36,7 +36,15 @@ export async function resetAndSeedDemo() {
   const m1 = await db.addMonth({ monthLabel: label1, sequence: 1, defaultAccountId: checking });
   const m2 = await db.addMonth({ monthLabel: nextMonthLabel(label1), sequence: 2, defaultAccountId: checking });
 
-  // Fill in income + a few expenses on the first month.
+  // Bills into month 1 (db.addMonth doesn't auto-add — that lives in the app's
+  // "Add month" flow — so the guide seeds them itself). One is marked paid so the
+  // "Pay your bills" step shows both a paid and an unpaid (Outstanding) bill.
+  const rentBp = await db.addBillPayment(m1, { billId: rentBill, amountPaid: 1400, accountId: checking, dueDate: computeDueDate(label1, 1), slot: 1 });
+  await db.addBillPayment(m1, { billId: internetBill, amountPaid: 75, accountId: checking, dueDate: computeDueDate(label1, 5), slot: 1 });
+  await db.addBillPayment(m1, { billId: phoneBill, amountPaid: 60, accountId: checking, dueDate: computeDueDate(label1, 15), slot: 2 });
+  await db.updateBillPayment(rentBp, { amountPaid: 1400, paid: true, accountId: checking, dueDate: computeDueDate(label1, 1) });
+
+  // Fill in income + a few expenses (incl. card spending) on the first month.
   const state = await db.loadFullState();
   const month1 = state.months.find((m) => m.id === m1);
   if (month1) {

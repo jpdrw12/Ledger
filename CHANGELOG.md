@@ -5,6 +5,26 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.20.0]
+
+### Added
+- **Much richer interactive guide**: chapters with a progress bar and clickable
+  section jumps, keyboard navigation (←/→, Esc), and a deeper "Inside a month"
+  walkthrough that opens the demo month and highlights income, a bill's paid
+  toggle, adding an expense, transfers, and copy-forward. Now also covers Debts
+  and the layout/sidebar options.
+- **First-run onboarding** prompt (Take the tour / Maybe later / Don't show again)
+  and a **"start here" banner** when a real profile has no months yet.
+- **Per-tab "?" help** — a quick-reference popover on every tab, linking to the
+  full guide.
+- **Resume the guide** where you left off if you exit partway.
+- **"Expand sections by default"** setting (Settings → Appearance), now the
+  default — Insights/Card cards and open-month sections start expanded.
+
+### Fixed
+- The guide's demo month is now populated with real bill rows (one paid, others
+  outstanding) alongside the card expenses, so the walkthrough has data to show.
+
 ## [0.19.0]
 
 ### Added

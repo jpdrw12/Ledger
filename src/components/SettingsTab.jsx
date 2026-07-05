@@ -45,13 +45,13 @@ function SettingsTab({
   retention, onRetentionChange,
   appVersion, updateInfo, hasUpdate, updateBusy, updatePhase, updateError,
   onCheckUpdate, onInstallUpdate, onRestart, onStartTour,
-  layout, onLayoutChange,
+  layout, onLayoutChange, expandSections, onExpandSectionsChange,
+  settingsGroup, onSettingsGroupChange,
 }) {
   const { confirm, toast } = useToast();
   const [profiles, setProfiles] = useState(getProfiles);
   const [newProfileName, setNewProfileName] = useState("");
   const [showChangelog, setShowChangelog] = useState(false);
-  const [settingsGroup, setSettingsGroup] = useState("preferences"); // "preferences" | "help"
   const active = activeProfileDb();
 
   // "What's new" preview: notes for every version newer than the running one,
@@ -110,8 +110,8 @@ function SettingsTab({
       <div className="section-head">
         <h2>Settings</h2>
         <div className="seg-group">
-          <button className={"seg-btn" + (settingsGroup === "preferences" ? " selected" : "")} onClick={() => setSettingsGroup("preferences")}>Preferences</button>
-          <button className={"seg-btn" + (settingsGroup === "help" ? " selected" : "")} onClick={() => setSettingsGroup("help")}>Help &amp; About</button>
+          <button className={"seg-btn" + (settingsGroup === "preferences" ? " selected" : "")} onClick={() => onSettingsGroupChange("preferences")}>Preferences</button>
+          <button className={"seg-btn" + (settingsGroup === "help" ? " selected" : "")} onClick={() => onSettingsGroupChange("help")}>Help &amp; About</button>
         </div>
       </div>
 
@@ -272,6 +272,17 @@ function SettingsTab({
               />
             ))}
           </div>
+        </div>
+        <div className="backup-folder" style={{ marginTop: 10 }}>
+          <span className="small-label" style={{ flex: 1 }}>Sections</span>
+          <label className="exclude-toggle">
+            <input
+              type="checkbox"
+              checked={expandSections}
+              onChange={(e) => onExpandSectionsChange(e.target.checked)}
+            />
+            Expand collapsible sections by default (Insights, Card, open months)
+          </label>
         </div>
         <div className="backup-folder" style={{ marginTop: 10 }}>
           <span className="small-label" style={{ flex: 1 }}>Scrolling</span>

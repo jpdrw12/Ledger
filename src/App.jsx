@@ -4,7 +4,7 @@ import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
-import { TabButton } from "./components/Shared.jsx";
+import { TabButton, ExpandContext } from "./components/Shared.jsx";
 import { activeProfileName, activeProfileDb, getProfiles, setActiveProfile, PROFILE_SLOTS, DEMO_DB } from "./lib/profiles.js";
 import { resetAndSeedDemo } from "./lib/demo.js";
 import TourOverlay, { TOUR_STEPS } from "./components/TourOverlay.jsx";
@@ -21,6 +21,20 @@ import SettingsTab from "./components/SettingsTab.jsx";
 
 // Injected by Vite's define from package.json (kept current by bump-version.sh).
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
+// Per-tab quick-reference help, shown by the "?" button. Concise; the full
+// walkthrough is the interactive guide in Settings.
+const TAB_HELP = {
+  months: { title: "Months", body: "Your month-by-month budget. Open a month to log income, pay bills, and record expenses across the two pays — balances carry forward automatically." },
+  card: { title: "Card Spending", body: "Track spending on a card account separately from your consolidated total. Load the card with a transfer on the Months tab, then log purchases here." },
+  bills: { title: "Bill Templates", body: "Define recurring bills once. Mark a bill auto-add and it drops into every new month at its due date." },
+  goals: { title: "Savings Goals", body: "Set a target and track progress. Contribute to goals from any account, month by month." },
+  accounts: { title: "Accounts", body: "Your bank accounts and cards. Uncheck 'count in the total' for a prepaid spending card you load from other accounts." },
+  debts: { title: "Debts", body: "Track balances and APR. Payments reduce principal; charge interest once a month with 'Apply monthly interest'." },
+  insights: { title: "Insights", body: "Net worth, spending by category, budgets, and a forecast projected from your income and recent spending." },
+  backups: { title: "Backups", body: "Back up your ledger locally or mirror it to a synced folder. Nothing leaves this computer unless you send it." },
+  settings: { title: "Settings", body: "Appearance & layout, profiles, backups, updates, keyboard shortcuts, and the interactive guide." },
+};
 
 // A short 2-letter badge for an account when the sidebar is collapsed: initials
 // of the first two words, else the first two letters.
@@ -168,6 +182,9 @@ export default function App() {
   // Interactive guide: runs against a throwaway "Demo" profile (see startTour).
   const [tourActive, setTourActive] = useState(false);
   const [tourStep, setTourStep] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [settingsGroup, setSettingsGroup] = useState("preferences"); // "preferences" | "help"
   const [theme, setTheme] = useState(() => localStorage.getItem("ledger.theme") || "light");
   const [uiScale, setUiScale] = useState(() => Number(localStorage.getItem("ledger.uiScale")) || 75);
   const [accent, setAccent] = useState(() => localStorage.getItem("ledger.accent") || "green");
@@ -189,6 +206,11 @@ export default function App() {
   const setLayout = useCallback((v) => {
     setLayoutState(v);
     localStorage.setItem("ledger.layout", v);
+  }, []);
+  const [expandSections, setExpandSectionsState] = useState(() => localStorage.getItem("ledger.expandSections") !== "0"); // default on
+  const setExpandSections = useCallback((v) => {
+    setExpandSectionsState(v);
+    localStorage.setItem("ledger.expandSections", v ? "1" : "0");
   }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("ledger.sidebarCollapsed") === "1");
   const toggleSidebar = useCallback(() => {
@@ -516,13 +538,17 @@ export default function App() {
   }, []);
 
   const exitTour = useCallback(async () => {
+    localStorage.setItem("ledger.tourSeen", "1"); // don't prompt onboarding after a tour
+    // Remember where we left off (unless the tour was finished), so it can resume.
+    if (tourStep >= TOUR_STEPS.length - 1) localStorage.removeItem("ledger.tourResumeStep");
+    else localStorage.setItem("ledger.tourResumeStep", String(tourStep));
     const ret = sessionStorage.getItem("ledger.tourReturn") || PROFILE_SLOTS[0];
     ["ledger.tour", "ledger.tourReturn", "ledger.tourSeed"].forEach((k) => sessionStorage.removeItem(k));
     sessionStorage.setItem("ledger.skipPicker", "1");
     await db.closeDb();
     setActiveProfile(ret);
     window.location.reload();
-  }, []);
+  }, [tourStep]);
 
   // After the reload into the demo profile, seed sample data (once) and open the
   // overlay. Guarded so it runs a single time per launch.
@@ -537,17 +563,45 @@ export default function App() {
         sessionStorage.removeItem("ledger.tourSeed");
         await reload();
       }
-      setTourStep(0);
+      // Resume where the user left off, if they exited partway before.
+      const resume = parseInt(localStorage.getItem("ledger.tourResumeStep") || "0", 10);
+      setTourStep(Number.isFinite(resume) && resume > 0 && resume < TOUR_STEPS.length ? resume : 0);
       setTourActive(true);
     })();
   }, [state, reload]);
 
-  // Each tour step drives the active tab.
+  // Each tour step drives the active tab, and opens the demo month for the
+  // steps that walk through a month's interior.
   useEffect(() => {
     if (!tourActive) return;
     const s = TOUR_STEPS[tourStep];
     if (s?.tab) setTab(s.tab);
-  }, [tourActive, tourStep]);
+    if (s?.openMonth && state?.months?.length) setOpenMonth(state.months[0].id);
+  }, [tourActive, tourStep, state]);
+
+  // First-run onboarding: offer the tour once, unless already seen (or the user
+  // said "don't show again"). "Maybe later" defers to the next launch only.
+  useEffect(() => {
+    if (!profileChosen || !state) return;
+    if (sessionStorage.getItem("ledger.tour") === "1") return; // currently touring
+    if (localStorage.getItem("ledger.tourSeen") === "1") return;
+    if (sessionStorage.getItem("ledger.onboardingDismissed") === "1") return;
+    setShowOnboarding(true);
+  }, [profileChosen, state]);
+
+  const onboardingTakeTour = useCallback(() => {
+    localStorage.setItem("ledger.tourSeen", "1");
+    setShowOnboarding(false);
+    startTour();
+  }, [startTour]);
+  const onboardingLater = useCallback(() => {
+    sessionStorage.setItem("ledger.onboardingDismissed", "1");
+    setShowOnboarding(false);
+  }, []);
+  const onboardingNever = useCallback(() => {
+    localStorage.setItem("ledger.tourSeen", "1");
+    setShowOnboarding(false);
+  }, []);
 
   // Auto-open the current month once on launch: match this calendar month's
   // "MonthName Year" label, else fall back to the most recent month. Runs only
@@ -903,7 +957,7 @@ export default function App() {
       <TabButton active={tab === "bills"} onClick={() => setTab("bills")} icon={<Receipt size={16} />} label="Bill Templates" dataTour="tab-bills" />
       <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" dataTour="tab-goals" />
       <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" dataTour="tab-accounts" />
-      <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" />
+      <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" dataTour="tab-debts" />
       <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" dataTour="tab-insights" />
       <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" dataTour="tab-backups" />
       <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
@@ -913,6 +967,7 @@ export default function App() {
   const classic = layout === "classic";
 
   return (
+    <ExpandContext.Provider value={expandSections}>
     <div className={`app layout-${layout} ${!classic && sidebarCollapsed ? "sidebar-collapsed" : ""}`.trim()}>
       <style>{css}</style>
 
@@ -923,6 +978,7 @@ export default function App() {
           <span className="brand-name">{activeProfileName()}'s Ledger</span>
           <button
             className="sidebar-toggle"
+            data-tour="sidebar-toggle"
             onClick={toggleSidebar}
             title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -931,7 +987,7 @@ export default function App() {
           </button>
         </div>
         <nav className="tabs" data-tour="tabs">{tabNav}</nav>
-        <div className="sidebar-balances">
+        <div className="sidebar-balances" data-tour="accounts-panel">
           {state.accounts.map((a) => {
             const bal = balances[a.id] || 0;
             const exclUnpaid = bal + (unpaidByAccount[a.id] || 0);
@@ -979,8 +1035,11 @@ export default function App() {
                   {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
                 </button>
               )}
+              {TAB_HELP[tab] && (
+                <button className="help-btn" onClick={() => setShowHelp((v) => !v)} title="What's this tab?" aria-label="Tab help">?</button>
+              )}
             </header>
-            <div className="balance-strip">
+            <div className="balance-strip" data-tour="accounts-panel">
               {state.accounts.map((a) => {
                 const exclUnpaid = (balances[a.id] || 0) + (unpaidByAccount[a.id] || 0);
                 return (
@@ -1025,7 +1084,23 @@ export default function App() {
                   ↑ v{updateInfo.latestVersion}
                 </button>
               )}
+              {TAB_HELP[tab] && (
+                <button className="help-btn" onClick={() => setShowHelp((v) => !v)} title="What's this tab?" aria-label="Tab help">?</button>
+              )}
               <span className="app-version">v{APP_VERSION}</span>
+            </div>
+          </div>
+        )}
+
+        {!tourActive && state.months.length === 0 && (
+          <div className="first-run-banner">
+            <div>
+              <strong>Welcome! Let's get your ledger started.</strong>
+              <p>Add your first month to begin budgeting, or take a quick guided tour on a demo profile first.</p>
+            </div>
+            <div className="first-run-actions">
+              <button className="btn-primary" onClick={() => { setTab("months"); handleAddMonth(); }}>Add your first month</button>
+              <button className="btn-secondary" onClick={startTour}>Take the tour</button>
             </div>
           </div>
         )}
@@ -1054,6 +1129,7 @@ export default function App() {
           onAddMonth={handleAddMonth}
           onCopyForward={handleCopyForward}
           onReorder={handleReorderMonth}
+          forceOpenPay1={tourActive}
         />
       )}
       {tab === "bills" && <BillsTab bills={state.bills} onChanged={reload} onPatch={patchState} />}
@@ -1093,6 +1169,10 @@ export default function App() {
           onStartTour={startTour}
           layout={layout}
           onLayoutChange={setLayout}
+          expandSections={expandSections}
+          onExpandSectionsChange={setExpandSections}
+          settingsGroup={settingsGroup}
+          onSettingsGroupChange={setSettingsGroup}
         />
       )}
 
@@ -1156,9 +1236,34 @@ export default function App() {
           stepIndex={tourStep}
           onNext={() => setTourStep((s) => Math.min(s + 1, TOUR_STEPS.length - 1))}
           onBack={() => setTourStep((s) => Math.max(0, s - 1))}
+          onJumpTo={(i) => setTourStep(i)}
           onExit={exitTour}
         />
       )}
+
+      {showHelp && TAB_HELP[tab] && (
+        <div className="help-panel">
+          <button className="help-panel-close" onClick={() => setShowHelp(false)} aria-label="Close help">✕</button>
+          <h3 className="help-panel-title">{TAB_HELP[tab].title}</h3>
+          <p className="help-panel-body">{TAB_HELP[tab].body}</p>
+          <button className="btn-secondary" onClick={() => { setShowHelp(false); setSettingsGroup("help"); setTab("settings"); }}>Open the full guide →</button>
+        </div>
+      )}
+
+      {showOnboarding && (
+        <div className="modal-backdrop" onClick={onboardingLater}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ fontFamily: "Georgia, serif", margin: "0 0 6px" }}>Welcome to your ledger</h2>
+            <p className="modal-message">New here? Take a short interactive tour — it runs on a demo profile, so your real data is never touched. You can exit anytime.</p>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={onboardingNever}>Don't show again</button>
+              <button className="btn-secondary" onClick={onboardingLater}>Maybe later</button>
+              <button className="btn-primary" onClick={onboardingTakeTour}>Take the tour</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+    </ExpandContext.Provider>
   );
 }
