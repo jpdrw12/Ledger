@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ChevronsLeft, ChevronsRight } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -21,6 +21,14 @@ import SettingsTab from "./components/SettingsTab.jsx";
 
 // Injected by Vite's define from package.json (kept current by bump-version.sh).
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
+// A short 2-letter badge for an account when the sidebar is collapsed: initials
+// of the first two words, else the first two letters.
+function accountAbbrev(name) {
+  const words = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return String(name || "?").trim().slice(0, 2).toUpperCase() || "?";
+}
 
 // Formats a stored `updated_at` ("YYYY-MM-DD HH:MM:SS", local) as a short,
 // friendly date for the per-tab "last entry" tag.
@@ -176,6 +184,19 @@ export default function App() {
   );
   useEffect(() => {
     sessionStorage.removeItem("ledger.skipPicker");
+  }, []);
+  const [layout, setLayoutState] = useState(() => (localStorage.getItem("ledger.layout") === "classic" ? "classic" : "sidebar"));
+  const setLayout = useCallback((v) => {
+    setLayoutState(v);
+    localStorage.setItem("ledger.layout", v);
+  }, []);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("ledger.sidebarCollapsed") === "1");
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem("ledger.sidebarCollapsed", next ? "1" : "0");
+      return next;
+    });
   }, []);
   const [containScroll, setContainScroll] = useState(() => {
     const stored = localStorage.getItem("ledger.containScroll");
@@ -825,7 +846,7 @@ export default function App() {
   if (!profileChosen) {
     const profiles = getProfiles();
     return (
-      <div className="app">
+      <div className="app app-plain">
         <style>{css}</style>
         <div className="screen-loading">
           <BookOpen size={34} strokeWidth={1.5} style={{ margin: "0 auto 10px", display: "block" }} />
@@ -852,7 +873,7 @@ export default function App() {
 
   if (loadError) {
     return (
-      <div className="app">
+      <div className="app app-plain">
         <style>{css}</style>
         <div className="screen-loading">
           <p style={{ color: "var(--deficit)", fontWeight: 600 }}>Couldn't open the database.</p>
@@ -867,82 +888,153 @@ export default function App() {
 
   if (!state) {
     return (
-      <div className="app">
+      <div className="app app-plain">
         <style>{css}</style>
         <div className="screen-loading">Opening the ledger…</div>
       </div>
     );
   }
 
-  return (
-    <div className="app">
-      <style>{css}</style>
-      {busy && state && <div className="saving-pill">Saving…</div>}
-      <header className="app-header">
-        <BookOpen size={26} strokeWidth={1.5} />
-        <div>
-          <h1>
-            {activeProfileName()}'s Ledger <span className="app-version">v{APP_VERSION}</span>
-            {hasUpdate && (
-              <button
-                className="update-badge"
-                onClick={() => setTab("settings")}
-                title={`Update available: v${updateInfo.latestVersion} — open Settings`}
-              >
-                ↑ v{updateInfo.latestVersion}
-              </button>
-            )}
-          </h1>
-          <p className="tagline">Local-first — nothing leaves this computer unless you back it up.</p>
-        </div>
-        {(overdue > 0 || dueSoon > 0) && (
-          <button className="due-chip" onClick={() => setTab("months")} title="Go to Months">
-            {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
-            {overdue > 0 && dueSoon > 0 && " · "}
-            {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
-          </button>
-        )}
-      </header>
+  // The 9 nav buttons — reused by both the sidebar rail and the classic top nav.
+  const tabNav = (
+    <>
+      <TabButton active={tab === "months"} onClick={() => setTab("months")} icon={<ListChecks size={16} />} label="Months" />
+      <TabButton active={tab === "card"} onClick={() => setTab("card")} icon={<CreditCard size={16} />} label="Card Spending" dataTour="tab-card" />
+      <TabButton active={tab === "bills"} onClick={() => setTab("bills")} icon={<Receipt size={16} />} label="Bill Templates" dataTour="tab-bills" />
+      <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" dataTour="tab-goals" />
+      <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" dataTour="tab-accounts" />
+      <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" />
+      <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" dataTour="tab-insights" />
+      <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" dataTour="tab-backups" />
+      <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
+    </>
+  );
 
-      <div className="balance-strip">
-        {state.accounts.map((a) => {
-          const exclUnpaid = (balances[a.id] || 0) + (unpaidByAccount[a.id] || 0);
-          return (
-            <div className="balance-chip" key={a.id}>
-              <span className="balance-chip-label">{a.name}{a.excludeFromTotal && <span className="excluded-tag">not in total</span>}</span>
-              <span className={`amount ${balances[a.id] < 0 ? "deficit" : "surplus"}`}>{money(balances[a.id])}</span>
-              {unpaidByAccount[a.id] > 0 && (
-                <span className="balance-chip-excl">excl. unpaid bills <span className={`mono ${exclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(exclUnpaid)}</span></span>
+  const classic = layout === "classic";
+
+  return (
+    <div className={`app layout-${layout} ${!classic && sidebarCollapsed ? "sidebar-collapsed" : ""}`.trim()}>
+      <style>{css}</style>
+
+      {!classic && (
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-icon"><BookOpen size={22} strokeWidth={1.5} /></span>
+          <span className="brand-name">{activeProfileName()}'s Ledger</span>
+          <button
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+          </button>
+        </div>
+        <nav className="tabs" data-tour="tabs">{tabNav}</nav>
+        <div className="sidebar-balances">
+          {state.accounts.map((a) => {
+            const bal = balances[a.id] || 0;
+            const exclUnpaid = bal + (unpaidByAccount[a.id] || 0);
+            const hasUnpaid = unpaidByAccount[a.id] > 0;
+            const tip = `${a.name} — ${money(bal)}${hasUnpaid ? ` (excl. unpaid ${money(exclUnpaid)})` : ""}${a.excludeFromTotal ? " · not in total" : ""}`;
+            return (
+              <div className="sb-balance" key={a.id} data-tip={tip}>
+                <span className={`sb-badge ${a.excludeFromTotal ? "card" : ""}`}>
+                  {a.excludeFromTotal ? <CreditCard size={15} /> : accountAbbrev(a.name)}
+                </span>
+                <span className="sb-balance-body">
+                  <span className="sb-balance-name">{a.name}{a.excludeFromTotal && <span className="excluded-tag">not in total</span>}</span>
+                  <span className={`sb-balance-amt mono ${bal < 0 ? "deficit" : "surplus"}`}>{money(bal)}</span>
+                  {hasUnpaid && <span className="sb-balance-excl">excl. unpaid {money(exclUnpaid)}</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+      )}
+
+      <main className="app-main">
+        {busy && state && <div className="saving-pill">Saving…</div>}
+
+        {classic ? (
+          <>
+            <header className="app-header">
+              <BookOpen size={26} strokeWidth={1.5} />
+              <div>
+                <h1>
+                  {activeProfileName()}'s Ledger <span className="app-version">v{APP_VERSION}</span>
+                  {hasUpdate && (
+                    <button className="update-badge" onClick={() => setTab("settings")} title={`Update available: v${updateInfo.latestVersion} — open Settings`}>
+                      ↑ v{updateInfo.latestVersion}
+                    </button>
+                  )}
+                </h1>
+                <p className="tagline">Local-first — nothing leaves this computer unless you back it up.</p>
+              </div>
+              {(overdue > 0 || dueSoon > 0) && (
+                <button className="due-chip" onClick={() => setTab("months")} title="Go to Months">
+                  {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
+                  {overdue > 0 && dueSoon > 0 && " · "}
+                  {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
+                </button>
+              )}
+            </header>
+            <div className="balance-strip">
+              {state.accounts.map((a) => {
+                const exclUnpaid = (balances[a.id] || 0) + (unpaidByAccount[a.id] || 0);
+                return (
+                  <div className="balance-chip" key={a.id}>
+                    <span className="balance-chip-label">{a.name}{a.excludeFromTotal && <span className="excluded-tag">not in total</span>}</span>
+                    <span className={`amount ${balances[a.id] < 0 ? "deficit" : "surplus"}`}>{money(balances[a.id])}</span>
+                    {unpaidByAccount[a.id] > 0 && (
+                      <span className="balance-chip-excl">excl. unpaid bills <span className={`mono ${exclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(exclUnpaid)}</span></span>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="balance-chip consolidated" data-tour="total">
+                <span className="balance-chip-label">Consolidated</span>
+                <span className={`amount ${consolidated < 0 ? "deficit" : "surplus"}`}>{money(consolidated)}</span>
+                {consolidatedExclUnpaid !== consolidated && (
+                  <span className="balance-chip-excl">excl. unpaid bills <span className={`mono ${consolidatedExclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(consolidatedExclUnpaid)}</span></span>
+                )}
+              </div>
+            </div>
+            <nav className="tabs" data-tour="tabs">{tabNav}</nav>
+          </>
+        ) : (
+          <div className="topbar">
+            <div className="topbar-total" data-tour="total">
+              <span className="topbar-total-label">Consolidated</span>
+              <span className={`topbar-total-amt ${consolidated < 0 ? "deficit" : "surplus"}`}>{money(consolidated)}</span>
+              {consolidatedExclUnpaid !== consolidated && (
+                <span className="topbar-total-excl">excl. unpaid bills {money(consolidatedExclUnpaid)}</span>
               )}
             </div>
-          );
-        })}
-        <div className="balance-chip consolidated" data-tour="total">
-          <span className="balance-chip-label">Consolidated</span>
-          <span className={`amount ${consolidated < 0 ? "deficit" : "surplus"}`}>{money(consolidated)}</span>
-          {consolidatedExclUnpaid !== consolidated && (
-            <span className="balance-chip-excl">excl. unpaid bills <span className={`mono ${consolidatedExclUnpaid < 0 ? "deficit" : "surplus"}`}>{money(consolidatedExclUnpaid)}</span></span>
-          )}
-        </div>
-      </div>
+            <div className="topbar-status">
+              {(overdue > 0 || dueSoon > 0) && (
+                <button className="due-chip" onClick={() => setTab("months")} title="Go to Months">
+                  {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
+                  {overdue > 0 && dueSoon > 0 && " · "}
+                  {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
+                </button>
+              )}
+              {hasUpdate && (
+                <button className="update-badge" onClick={() => setTab("settings")} title={`Update available: v${updateInfo.latestVersion} — open Settings`}>
+                  ↑ v{updateInfo.latestVersion}
+                </button>
+              )}
+              <span className="app-version">v{APP_VERSION}</span>
+            </div>
+          </div>
+        )}
 
-      <nav className="tabs" data-tour="tabs">
-        <TabButton active={tab === "months"} onClick={() => setTab("months")} icon={<ListChecks size={16} />} label="Months" />
-        <TabButton active={tab === "card"} onClick={() => setTab("card")} icon={<CreditCard size={16} />} label="Card Spending" dataTour="tab-card" />
-        <TabButton active={tab === "bills"} onClick={() => setTab("bills")} icon={<Receipt size={16} />} label="Bill Templates" dataTour="tab-bills" />
-        <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" dataTour="tab-goals" />
-        <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" dataTour="tab-accounts" />
-        <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" />
-        <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" dataTour="tab-insights" />
-        <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" dataTour="tab-backups" />
-        <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
-      </nav>
-
-      {state.activity?.[tab] && (
-        <div className="tab-activity" title="Most recent entry or edit on this tab">
-          Last entry {formatActivityDate(state.activity[tab])}
-        </div>
-      )}
+        {state.activity?.[tab] && (
+          <div className="tab-activity" title="Most recent entry or edit on this tab">
+            Last entry {formatActivityDate(state.activity[tab])}
+          </div>
+        )}
 
       {tab === "months" && (
         <MonthsTab
@@ -999,6 +1091,8 @@ export default function App() {
           onInstallUpdate={handleInstallUpdate}
           onRestart={handleRestartApp}
           onStartTour={startTour}
+          layout={layout}
+          onLayoutChange={setLayout}
         />
       )}
 
@@ -1055,6 +1149,7 @@ export default function App() {
           )}
         </div>
       )}
+      </main>
 
       {tourActive && (
         <TourOverlay

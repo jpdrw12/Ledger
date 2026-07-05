@@ -3,7 +3,7 @@ import { Download, TrendingUp, Receipt, Target, Plus, Trash2 } from "lucide-reac
 import * as db from "../lib/db.js";
 import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
-import { Sparkline } from "./Shared.jsx";
+import { Sparkline, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
 function InsightsTab({ state, ledger, onChanged }) {
@@ -127,11 +127,8 @@ function InsightsTab({ state, ledger, onChanged }) {
         )}
       </div>
 
-      <h4 className="block-title">
-        <TrendingUp size={13} /> Forecast
-        <span className="block-hint">— projected from repeating income, auto-add bills, and recent average spending</span>
-      </h4>
-      <div className="insight-card">
+      <Collapsible title="Forecast" icon={<TrendingUp size={13} />}>
+        <p className="empty small" style={{ marginTop: 0 }}>Projected from repeating income, auto-add bills, and recent average spending.</p>
         {state.months.length === 0 ? (
           <p className="empty small">Add a month to project a forecast.</p>
         ) : (
@@ -162,7 +159,7 @@ function InsightsTab({ state, ledger, onChanged }) {
             )}
           </>
         )}
-      </div>
+      </Collapsible>
 
       <h4 className="block-title"><Receipt size={13} /> Spending by category</h4>
       <div className="insight-card">
@@ -198,10 +195,7 @@ function InsightsTab({ state, ledger, onChanged }) {
         )}
       </div>
 
-      <h4 className="block-title">
-        <Target size={13} /> Budgets {latestLabel ? `vs ${latestLabel}` : ""}
-      </h4>
-      <div className="insight-card">
+      <Collapsible title="Budgets" icon={<Target size={13} />} right={latestLabel ? `vs ${latestLabel}` : null}>
         {budgets.length === 0 && <p className="empty small">No budgets set. Add one below to track a category against a monthly target.</p>}
         {budgets.map((b) => {
           const pct = b.budget > 0 ? Math.min(100, (b.actual / b.budget) * 100) : 0;
@@ -248,7 +242,7 @@ function InsightsTab({ state, ledger, onChanged }) {
             <Plus size={13} /> Add budget
           </button>
         </div>
-      </div>
+      </Collapsible>
     </div>
   );
 }

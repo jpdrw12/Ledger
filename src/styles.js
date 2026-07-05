@@ -66,8 +66,64 @@ export const css = `
   :root[data-theme="dark"] .check,
   :root[data-theme="dark"] .chip { background: var(--control-bg); }
   :root[data-theme="dark"] .month-title-input:focus { background: var(--control-bg); }
-  .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; padding: 24px 20px 60px; }
+  .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; display:grid; grid-template-columns: 216px 1fr; }
+  .app.app-plain { display:block; padding:24px 20px 60px; }
+
+  /* Classic layout: the original stacked top bands + horizontal tabs. */
+  .app.layout-classic { display:block; padding:24px 20px 60px; }
+  .app.layout-classic .app-main { padding:0; min-width:0; }
+  .app.layout-classic .app-header .due-chip { margin-left:auto; }
+  .layout-classic .tabs { flex-direction:row; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--paper-line); margin-bottom:22px; }
+  .layout-classic .tab-btn { width:auto; border-radius:0; padding:9px 14px; border-bottom:2px solid transparent; }
+  .layout-classic .tab-btn:not(.active):hover { background:none; }
+  .layout-classic .tab-btn.active { background:none; color:var(--ink); border-bottom:2px solid var(--stamp); }
+  .layout-classic .tab-btn .tab-label { display:inline; }
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
+
+  /* Layout shell: sticky sidebar rail + scrolling main column. */
+  .sidebar { align-self:start; position:sticky; top:0; height:100vh; overflow-y:auto; display:flex; flex-direction:column; background:var(--card); border-right:1px solid var(--paper-line); padding:16px 10px; z-index:20; }
+  .brand { display:flex; align-items:center; gap:8px; padding:4px 4px 14px; }
+  .brand-name { font-family: Georgia, 'Iowan Old Style', serif; font-size:15px; line-height:1.2; flex:1; min-width:0; }
+  .sidebar-toggle { background:none; border:none; cursor:pointer; color:var(--ink-soft); padding:4px; border-radius:4px; display:flex; }
+  .sidebar-toggle:hover { background:var(--paper); color:var(--ink); }
+  .sidebar-balances { margin-top:auto; padding-top:14px; border-top:1px solid var(--paper-line); display:flex; flex-direction:column; gap:9px; }
+  .sb-balance { display:flex; align-items:center; gap:8px; }
+  .sb-badge { flex:0 0 30px; width:30px; height:30px; border-radius:6px; background:var(--paper); border:1px solid var(--paper-line); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:var(--ink); }
+  .sb-badge.card { color:var(--accent); border-color:var(--accent); }
+  .sb-balance-body { display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .sb-balance-name { font-size:11px; color:var(--ink-soft); display:flex; align-items:center; gap:5px; }
+  .sb-balance-amt { font-size:14px; }
+  .sb-balance-excl { font-size:10px; color:var(--ink-soft); }
+
+  .app-main { min-width:0; padding:22px 24px 60px; }
+  .topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; border-bottom:2px solid var(--ink); padding-bottom:14px; margin-bottom:14px; }
+  .topbar-total { display:flex; flex-direction:column; gap:1px; }
+  .topbar-total-label { font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
+  .topbar-total-amt { font-size:24px; font-weight:700; font-family: Georgia, 'Iowan Old Style', serif; }
+  .topbar-total-excl { font-size:11px; color:var(--ink-soft); }
+  .topbar-status { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+
+  /* Collapsed sidebar: icons only. Toggled by the button in the brand row. */
+  .app.sidebar-collapsed { grid-template-columns: 58px 1fr; }
+  .app.sidebar-collapsed .brand-name,
+  .app.sidebar-collapsed .brand-icon,
+  .app.sidebar-collapsed .tab-label,
+  .app.sidebar-collapsed .sb-balance-body { display:none; }
+  .app.sidebar-collapsed .brand { justify-content:center; padding-left:0; padding-right:0; }
+  .app.sidebar-collapsed .tab-btn { justify-content:center; gap:0; padding-left:0; padding-right:0; }
+  /* Collapsed rail is short (icons only), so let it overflow visibly — an
+     overflow-y:auto sidebar also clips x, which would cut off the tooltip. */
+  .app.sidebar-collapsed .sidebar { overflow: visible; }
+  .app.sidebar-collapsed .sb-balance { justify-content:center; position:relative; }
+  /* Custom tooltip for collapsed account badges — avoids the native title
+     tooltip, which leaves a grey artifact in the WebKitGTK webview. */
+  .app.sidebar-collapsed .sb-balance:hover::after {
+    content: attr(data-tip);
+    position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%);
+    background:var(--ink); color:var(--paper); font-size:11.5px; white-space:nowrap;
+    padding:5px 9px; border-radius:5px; z-index:100; pointer-events:none;
+    box-shadow:0 2px 8px rgba(0,0,0,0.25);
+  }
 
   .app-header { display:flex; gap:14px; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:16px; margin-bottom:16px; }
   .app-header h1 { font-family: Georgia, 'Iowan Old Style', serif; font-size:26px; margin:0 0 4px; letter-spacing:0.2px; }
@@ -101,7 +157,7 @@ export const css = `
   .update-progress-bar { flex:1; height:6px; background:var(--paper-line); border-radius:3px; overflow:hidden; }
   .update-progress-fill { width:40%; height:100%; background:var(--accent); border-radius:3px; animation:indeterminate 1.1s ease-in-out infinite; }
   @keyframes indeterminate { 0% { margin-left:-40%; } 100% { margin-left:100%; } }
-  .due-chip { margin-left:auto; align-self:center; background:var(--card); border:1px solid var(--paper-line); border-radius:14px; padding:6px 12px; font-size:12.5px; cursor:pointer; color:var(--ink); }
+  .due-chip { align-self:center; background:var(--card); border:1px solid var(--paper-line); border-radius:14px; padding:6px 12px; font-size:12.5px; cursor:pointer; color:var(--ink); }
   .due-chip:hover { border-color:var(--stamp); }
   .due-chip-over { color:var(--deficit); font-weight:600; }
   .due-chip-soon { color:var(--stamp); }
@@ -117,9 +173,10 @@ export const css = `
   .balance-chip.consolidated .deficit { color:#F2A38F; }
   .balance-chip-label { font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
 
-  .tabs { display:flex; gap:4px; margin-bottom:22px; border-bottom:1px solid var(--paper-line); flex-wrap:wrap; }
-  .tab-btn { display:flex; align-items:center; gap:6px; padding:9px 14px; background:none; border:none; cursor:pointer; font-size:13.5px; color:var(--ink-soft); border-bottom:2px solid transparent; font-family: ui-sans-serif, system-ui; }
-  .tab-btn.active { color:var(--ink); border-bottom-color: var(--stamp); font-weight:600; }
+  .tabs { display:flex; flex-direction:column; gap:2px; }
+  .tab-btn { display:flex; align-items:center; gap:9px; width:100%; text-align:left; padding:9px 10px; background:none; border:none; border-radius:5px; cursor:pointer; font-size:13.5px; color:var(--ink-soft); font-family: ui-sans-serif, system-ui; }
+  .tab-btn:not(.active):hover { background:var(--paper); }
+  .tab-btn.active { background:var(--accent); color:#fff; font-weight:600; }
 
   .section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
   .section-head h2 { font-family: Georgia, serif; font-size:19px; margin:0; }
@@ -257,6 +314,17 @@ export const css = `
   .history-table td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--paper-line); }
 
   .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:14px; margin-bottom:18px; }
+  .collapsible { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; margin-bottom:12px; }
+  .collapsible-head { display:flex; align-items:center; gap:8px; width:100%; background:none; border:none; cursor:pointer; padding:11px 14px; color:var(--ink); text-align:left; }
+  .collapsible-title { display:flex; align-items:center; gap:6px; font-size:12.5px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-soft); }
+  .collapsible.open .collapsible-title { color:var(--ink); }
+  .collapsible-right { margin-left:auto; font-size:12.5px; color:var(--ink-soft); }
+  .collapsible-body { padding:0 14px 14px; }
+  .month-summary { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .ms-cell { display:flex; flex-direction:column; gap:1px; flex:1 1 90px; background:var(--paper); border:1px solid var(--paper-line); border-radius:5px; padding:8px 12px; }
+  .ms-cell.ms-end { background:var(--card); border-color:var(--stamp); }
+  .ms-label { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }
+  .ms-val { font-size:15px; }
   .networth-row { display:flex; align-items:stretch; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
   .networth-card { display:flex; flex-direction:column; gap:4px; background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:10px 16px; min-width:120px; }
   .networth-card.networth-total { background:var(--accent); border-color:var(--accent); }

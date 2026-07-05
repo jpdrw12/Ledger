@@ -3,7 +3,7 @@ import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, Arrow
 import * as db from "../lib/db.js";
 import { money, computeDueDate, parseExpensesCsv, planTransfer } from "../lib/calc.js";
 import { importTextFile } from "../lib/backup.js";
-import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel } from "./Shared.jsx";
+import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -683,6 +683,15 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
 
       {isOpen && (
         <div className="stub-body">
+          <div className="month-summary">
+            <div className="ms-cell"><span className="ms-label">Income</span><span className="ms-val mono">{money(totalIncome + totalAdditions)}</span></div>
+            <div className="ms-cell"><span className="ms-label">Bills</span><span className="ms-val mono">{money(totalBills)}</span></div>
+            <div className="ms-cell"><span className="ms-label">Outstanding</span><span className={`ms-val mono ${outstandingBills > 0 ? "deficit" : ""}`}>{money(outstandingBills)}</span></div>
+            <div className="ms-cell"><span className="ms-label">Expenses</span><span className="ms-val mono">{money(totalExpenses)}</span></div>
+            <div className="ms-cell ms-end"><span className="ms-label">Ending</span><span className={`ms-val mono ${deficit ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut)}</span></div>
+          </div>
+
+          <Collapsible title="Per-account detail">
           <div className="per-account-row">
             {accounts.map((a) => {
               const unpaid = (month.billPayments || []).reduce(
@@ -702,6 +711,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               );
             })}
           </div>
+          </Collapsible>
 
           {dueDatesWontFill && (
             <p className="due-date-hint">
@@ -765,15 +775,6 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               <option key={c} value={c} />
             ))}
           </datalist>
-
-          <div className="ledger-row totals-row">
-            <span>Total income (Pay 1 + Pay 2)</span>
-            <span className="mono">{money(totalIncome)}</span>
-          </div>
-          <div className="ledger-row totals-row">
-            <span>Total alt income (all additions)</span>
-            <span className="mono">{money(totalAdditions)}</span>
-          </div>
 
           <MonthSection icon={<PiggyBank size={13} />} title="Savings contributions" hint="Use a negative amount to record a withdrawal.">
           <ScrollPanel>
@@ -857,7 +858,16 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           )}
           </MonthSection>
 
+          <Collapsible title="Full breakdown">
           <div className="sticky-totals">
+            <div className="ledger-row totals-row">
+              <span>Total income (Pay 1 + Pay 2)</span>
+              <span className="mono">{money(totalIncome)}</span>
+            </div>
+            <div className="ledger-row totals-row">
+              <span>Total alt income (all additions)</span>
+              <span className="mono">{money(totalAdditions)}</span>
+            </div>
             <div className="ledger-row totals-row">
               <span>Bills total</span>
               <span className="mono">{money(totalBills)}</span>
@@ -887,6 +897,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               <span className={`mono ${consolidatedCarryOut + outstandingBills < 0 ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut + outstandingBills)}</span>
             </div>
           </div>
+          </Collapsible>
         </div>
       )}
     </div>

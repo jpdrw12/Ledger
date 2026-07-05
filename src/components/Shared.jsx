@@ -105,6 +105,24 @@ export function ScrollPanel({ className = "scroll-panel", children, ...rest }) {
   );
 }
 
+// General-purpose collapsible card. Header = chevron + optional icon + title,
+// with an optional right-aligned slot (e.g. a summary/total). Used to declutter
+// Settings, Insights, Card, and the open-month breakdown behind one consistent
+// expand/collapse. `right` shows even while collapsed, so a summary stays glanceable.
+export function Collapsible({ title, icon, right, defaultOpen = false, className = "", children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className={`collapsible ${open ? "open" : ""} ${className}`.trim()}>
+      <button type="button" className="collapsible-head" onClick={() => setOpen((o) => !o)}>
+        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        <span className="collapsible-title">{icon}{icon ? " " : ""}{title}</span>
+        {right != null && <span className="collapsible-right">{right}</span>}
+      </button>
+      {open && <div className="collapsible-body">{children}</div>}
+    </div>
+  );
+}
+
 // Collapsible section with a header + optional total (used by Months & Card tabs).
 export function MonthSection({ icon, title, hint, total, totalClass, children }) {
   const [open, setOpen] = useState(false);
@@ -165,7 +183,7 @@ export function TabButton({ active, onClick, icon, label, dataTour }) {
   return (
     <button className={`tab-btn ${active ? "active" : ""}`} onClick={onClick} data-tour={dataTour}>
       {icon}
-      {label}
+      <span className="tab-label">{label}</span>
     </button>
   );
 }

@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.19.0]
+
+### Added
+- **Sidebar layout**: a redesigned shell with a left navigation rail, a compact
+  top bar anchored by the consolidated total, and per-account balances pinned to
+  the sidebar. The rail collapses to icons (with account badges + hover tooltips).
+- **Layout selector** in Settings → Appearance to switch between the new
+  **Sidebar** layout and the original **Classic** (stacked header + horizontal
+  tabs). Persists across launches.
+- A shared collapsible section used to declutter without hiding anything.
+
+### Changed
+- **Progressive disclosure** to reduce clutter while keeping every figure:
+  Insights (Forecast, Budgets) and Card (Monthly spend, Card budget, Per-card
+  totals) secondary cards collapse; an open month shows a compact summary bar
+  with per-account detail and the full totals tucked into collapsibles; Settings
+  is grouped into Preferences vs Help & About.
+
 ## [0.18.1]
 
 ### Added

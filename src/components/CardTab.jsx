@@ -3,7 +3,7 @@ import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download } from "lucide-
 import * as db from "../lib/db.js";
 import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
-import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput } from "./Shared.jsx";
+import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -152,8 +152,7 @@ function CardTab({ state, onChanged }) {
         })
       )}
 
-      <h4 className="block-title" style={{ marginTop: 20 }}><TrendingUp size={13} /> Monthly card spend</h4>
-      <div className="insight-card">
+      <Collapsible title="Monthly card spend" icon={<TrendingUp size={13} />}>
         <Sparkline series={trend} />
         <div className="forecast-table" style={{ marginTop: 10 }}>
           {trend.map((r) => (
@@ -164,7 +163,7 @@ function CardTab({ state, onChanged }) {
           ))}
           {trend.length === 0 && <p className="empty small">No months yet.</p>}
         </div>
-      </div>
+      </Collapsible>
 
       <h4 className="block-title"><Receipt size={13} /> Card spending by category</h4>
       <div className="insight-card">
@@ -200,8 +199,7 @@ function CardTab({ state, onChanged }) {
         )}
       </div>
 
-      <h4 className="block-title"><CreditCard size={13} /> Card budget {budgetMonth ? `— ${budgetMonth.monthLabel}` : ""}</h4>
-      <div className="insight-card">
+      <Collapsible title="Card budget" icon={<CreditCard size={13} />} right={budgetMonth ? budgetMonth.monthLabel : null}>
         <div className="backup-folder" style={{ marginTop: 0 }}>
           <span className="small-label" style={{ flex: 1 }}>Monthly allowance (total card spend)</span>
           <input
@@ -271,23 +269,20 @@ function CardTab({ state, onChanged }) {
             <Plus size={13} /> Add category budget
           </button>
         </div>
-      </div>
+      </Collapsible>
 
       {cardAccounts.length > 1 && (
-        <>
-          <h4 className="block-title"><CreditCard size={13} /> Per-card totals</h4>
-          <div className="insight-card">
-            {perCard.map((r) => {
-              const acc = cardAccounts.find((a) => a.id === r.accountId);
-              return (
-                <div className="ledger-row totals-row" key={r.accountId}>
-                  <span>{acc ? acc.name : "Card"}</span>
-                  <span className="mono">{money(r.total)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </>
+        <Collapsible title="Per-card totals" icon={<CreditCard size={13} />}>
+          {perCard.map((r) => {
+            const acc = cardAccounts.find((a) => a.id === r.accountId);
+            return (
+              <div className="ledger-row totals-row" key={r.accountId}>
+                <span>{acc ? acc.name : "Card"}</span>
+                <span className="mono">{money(r.total)}</span>
+              </div>
+            );
+          })}
+        </Collapsible>
       )}
 
       <datalist id="card-category-suggestions">

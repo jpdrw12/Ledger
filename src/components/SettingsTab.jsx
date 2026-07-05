@@ -45,11 +45,13 @@ function SettingsTab({
   retention, onRetentionChange,
   appVersion, updateInfo, hasUpdate, updateBusy, updatePhase, updateError,
   onCheckUpdate, onInstallUpdate, onRestart, onStartTour,
+  layout, onLayoutChange,
 }) {
   const { confirm, toast } = useToast();
   const [profiles, setProfiles] = useState(getProfiles);
   const [newProfileName, setNewProfileName] = useState("");
   const [showChangelog, setShowChangelog] = useState(false);
+  const [settingsGroup, setSettingsGroup] = useState("preferences"); // "preferences" | "help"
   const active = activeProfileDb();
 
   // "What's new" preview: notes for every version newer than the running one,
@@ -107,8 +109,14 @@ function SettingsTab({
     <div className="section">
       <div className="section-head">
         <h2>Settings</h2>
+        <div className="seg-group">
+          <button className={"seg-btn" + (settingsGroup === "preferences" ? " selected" : "")} onClick={() => setSettingsGroup("preferences")}>Preferences</button>
+          <button className={"seg-btn" + (settingsGroup === "help" ? " selected" : "")} onClick={() => setSettingsGroup("help")}>Help &amp; About</button>
+        </div>
       </div>
 
+      {settingsGroup === "help" && (
+      <>
       <h4 className="block-title"><Compass size={13} /> Getting started</h4>
       <div className="insight-card">
         <div className="backup-folder" style={{ marginTop: 0 }}>
@@ -205,9 +213,27 @@ function SettingsTab({
         )}
       </div>
 
+      <h4 className="block-title">About</h4>
+      <div className="insight-card">
+        <p className="empty small" style={{ marginTop: 0 }}>
+          Household Ledger is local-first — nothing leaves this computer unless you back it up.
+        </p>
+      </div>
+      </>
+      )}
+
+      {settingsGroup === "preferences" && (
+      <>
       <h4 className="block-title">Appearance</h4>
       <div className="insight-card">
         <div className="backup-folder">
+          <span className="small-label" style={{ flex: 1 }}>Layout</span>
+          <div className="seg-group">
+            <button className={"seg-btn" + (layout === "sidebar" ? " selected" : "")} onClick={() => onLayoutChange("sidebar")}>Sidebar</button>
+            <button className={"seg-btn" + (layout === "classic" ? " selected" : "")} onClick={() => onLayoutChange("classic")}>Classic</button>
+          </div>
+        </div>
+        <div className="backup-folder" style={{ marginTop: 10 }}>
           <span className="small-label" style={{ flex: 1 }}>Theme</span>
           <div className="seg-group">
             {THEMES.map(({ id, label, Icon }) => (
@@ -352,6 +378,8 @@ function SettingsTab({
           <span className="small-label">months active; older months move to the archive (not deleted).</span>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
