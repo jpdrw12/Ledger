@@ -5,6 +5,16 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.21.0]
+
+### Added
+- **Interest / dividends on savings goals**: a month's Savings section now has an
+  "Add interest / dividend" quick-add per goal. These entries raise the goal's
+  balance without drawing from any account (they're earned, not moved), so the
+  consolidated total and the "Savings contributions" total are unaffected. They
+  show with an "interest / dividend" pill and no account picker, and export to the
+  activity CSV as a "Goal interest" credit.
+
 ## [0.20.0]
 
 ### Added

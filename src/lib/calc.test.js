@@ -389,6 +389,35 @@ describe("computeGoalBalances", () => {
     );
     expect(totals.g1).toBe(400); // 500 + 200 - 300
   });
+
+  it("counts interest/dividend entries toward the goal balance", () => {
+    const totals = computeGoalBalances(
+      [{ id: "g1", startingBalance: 1000 }],
+      [makeMonth("m1", {
+        goalContributions: [
+          { goalId: "g1", amount: 200, accountId: "a" },
+          { goalId: "g1", amount: 5.25, accountId: null, kind: "interest" },
+        ],
+      })]
+    );
+    expect(totals.g1).toBe(1205.25); // 1000 + 200 contribution + 5.25 interest
+  });
+});
+
+describe("interest/dividend goal entries in the ledger", () => {
+  it("raises the goal balance without drawing down any account or the savings total", () => {
+    const month = makeMonth("m1", {
+      goalContributions: [
+        { goalId: "g1", amount: 100, accountId: "a" }, // real contribution: account outflow
+        { goalId: "g1", amount: 7.5, accountId: null, kind: "interest" }, // no account
+      ],
+    });
+    const ledger = computeLedger([month], [ACCT_A, ACCT_B]);
+    // Only the contribution leaves the account; interest touches nothing.
+    expect(ledger.m1.byAccount.a.outflow).toBe(100);
+    // "Savings contributions" total excludes interest.
+    expect(ledger.m1.totalGoals).toBe(100);
+  });
 });
 
 describe("goal withdrawal in the ledger", () => {

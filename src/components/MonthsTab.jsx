@@ -485,6 +485,11 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     await db.addGoalContribution(month.id, { goalId: goal.id, amount: 0, accountId: accounts[0]?.id });
     onChanged();
   };
+  const addGoalInterest = async (goal) => {
+    // Interest/dividend: raises the goal balance, no account involved.
+    await db.addGoalContribution(month.id, { goalId: goal.id, amount: 0, accountId: null, kind: "interest" });
+    onChanged();
+  };
   const updateGoalContribution = async (gc, patch) => {
     onPatch((s) => patchMonthRow(s, month.id, gc.id, patch, ["goalContributions"]));
     await db.updateGoalContribution(gc.id, { amount: gc.amount, accountId: gc.accountId, ...patch });
@@ -494,7 +499,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     const gc = (month.goalContributions || []).find((x) => x.id === id);
     const goal = goals.find((g) => g.id === gc?.goalId);
     await undoableDelete({
-      label: `Contribution to "${goal?.name || "goal"}"`,
+      label: `${gc?.kind === "interest" ? "Interest for" : "Contribution to"} "${goal?.name || "goal"}"`,
       doDelete: () => db.deleteGoalContribution(id),
       doRestore: () => db.restoreGoalContribution(month.id, gc),
       onChanged, toast,
@@ -779,7 +784,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             ))}
           </datalist>
 
-          <MonthSection icon={<PiggyBank size={13} />} title="Savings contributions" hint="Use a negative amount to record a withdrawal.">
+          <MonthSection icon={<PiggyBank size={13} />} title="Savings contributions" hint="Use a negative amount to record a withdrawal. Interest/dividends raise the goal balance without touching an account.">
           <ScrollPanel>
             {contributionGroups.map(([goalId, list]) => {
               const goal = goals.find((g) => g.id === goalId);
@@ -790,11 +795,19 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
                     <span className="mono small-label">balance: {money(goalBalances[goalId])}</span>
                   </div>
                   {list.map((gc) => {
-                    const isWithdrawal = Number(gc.amount) < 0;
+                    const isInterest = gc.kind === "interest";
+                    const isWithdrawal = !isInterest && Number(gc.amount) < 0;
                     return (
-                      <div className="ledger-row contribution-row" key={`${gc.id}-${gc.amount}-${gc.accountId}`}>
-                        <span className="row-name">{isWithdrawal && <span className="withdrawal-pill">withdrawal</span>}</span>
-                        <AccountSelect accounts={accounts} value={gc.accountId} onChange={(v) => updateGoalContribution(gc, { accountId: v })} />
+                      <div className="ledger-row contribution-row" key={`${gc.id}-${gc.amount}-${gc.accountId}-${gc.kind}`}>
+                        <span className="row-name">
+                          {isInterest && <span className="withdrawal-pill">interest / dividend</span>}
+                          {isWithdrawal && <span className="withdrawal-pill">withdrawal</span>}
+                        </span>
+                        {isInterest ? (
+                          <span className="small-label" style={{ opacity: 0.6 }}>no account</span>
+                        ) : (
+                          <AccountSelect accounts={accounts} value={gc.accountId} onChange={(v) => updateGoalContribution(gc, { accountId: v })} />
+                        )}
                         <input className="amount-input" type="number" defaultValue={gc.amount} onBlur={(ev) => updateGoalContribution(gc, { amount: parseNumberInput(ev, gc.amount) })} />
                         <button className="icon-btn" onClick={() => removeGoalContribution(gc.id)}>
                           <Trash2 size={13} />
@@ -815,6 +828,16 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
               </button>
             ))}
           </div>
+          {goals.length > 0 && (
+            <div className="quick-add">
+              <span>Add interest / dividend:</span>
+              {goals.map((g) => (
+                <button key={g.id} className="chip" onClick={() => addGoalInterest(g)}>
+                  {g.name}
+                </button>
+              ))}
+            </div>
+          )}
           </MonthSection>
 
           <MonthSection icon={<Landmark size={13} />} title="Debt payments">

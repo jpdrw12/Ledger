@@ -399,12 +399,14 @@ export async function deleteExpense(id) {
   await db.execute("DELETE FROM expenses WHERE id = $1", [id]);
 }
 
-export async function addGoalContribution(monthId, { goalId, amount, accountId }) {
+export async function addGoalContribution(monthId, { goalId, amount, accountId, kind }) {
   const db = await getDb();
   const id = uid();
+  // Interest/dividend entries carry no account (kind='interest'): they raise the
+  // goal balance without moving money out of any account.
   await db.execute(
-    "INSERT INTO goal_contributions (id, month_id, goal_id, amount, account_id) VALUES ($1, $2, $3, $4, $5)",
-    [id, monthId, goalId, amount || 0, accountId || null]
+    "INSERT INTO goal_contributions (id, month_id, goal_id, amount, account_id, kind) VALUES ($1, $2, $3, $4, $5, $6)",
+    [id, monthId, goalId, amount || 0, accountId || null, kind || "contribution"]
   );
   return id;
 }
@@ -574,8 +576,8 @@ export async function restoreTransfer(monthId, t) {
 export async function restoreGoalContribution(monthId, gc) {
   const db = await getDb();
   await db.execute(
-    "INSERT INTO goal_contributions (id, month_id, goal_id, amount, account_id) VALUES ($1, $2, $3, $4, $5)",
-    [gc.id, monthId, gc.goalId, gc.amount || 0, gc.accountId || null]
+    "INSERT INTO goal_contributions (id, month_id, goal_id, amount, account_id, kind) VALUES ($1, $2, $3, $4, $5, $6)",
+    [gc.id, monthId, gc.goalId, gc.amount || 0, gc.accountId || null, gc.kind || "contribution"]
   );
 }
 
@@ -780,7 +782,7 @@ export async function loadFullState() {
         .map((e) => ({ id: e.id, category: e.category, amount: e.amount, tag: e.tag, accountId: e.account_id })),
       goalContributions: goalContribRows
         .filter((g) => g.month_id === m.id)
-        .map((g) => ({ id: g.id, goalId: g.goal_id, amount: g.amount, accountId: g.account_id })),
+        .map((g) => ({ id: g.id, goalId: g.goal_id, amount: g.amount, accountId: g.account_id, kind: g.kind || "contribution" })),
       debtPayments: debtPaymentRows
         .filter((d) => d.month_id === m.id)
         .map((d) => ({ id: d.id, debtId: d.debt_id, amount: d.amount, accountId: d.account_id, applied: !!d.applied })),

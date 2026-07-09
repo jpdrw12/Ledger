@@ -58,7 +58,11 @@ export function computeLedger(months, accounts) {
     const notCard = (e) => !excludedIds.has(e.accountId);
     const totalExpensesPay1 = m.expensesPay1.filter(notCard).reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const totalExpensesPay2 = m.expensesPay2.filter(notCard).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const totalGoals = (m.goalContributions || []).reduce((s, g) => s + (Number(g.amount) || 0), 0);
+    // Interest/dividend entries (kind='interest') aren't money moved from an
+    // account, so they don't belong in the "Savings contributions" total.
+    const totalGoals = (m.goalContributions || [])
+      .filter((g) => g.kind !== "interest")
+      .reduce((s, g) => s + (Number(g.amount) || 0), 0);
     const totalDebtPayments = (m.debtPayments || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
     // Accounts flagged excludeFromTotal (e.g. a prepaid spending card) keep
     // their own tracked balance in byAccount but sit outside the consolidated
@@ -360,7 +364,13 @@ export function buildLedgerCsv(state, ledger) {
     });
     (m.goalContributions || []).forEach((gc) => {
       const goal = state.goals.find((g) => g.id === gc.goalId);
-      rows.push([m.monthLabel, "Goal", goal?.name || "Goal", accountName(gc.accountId), "", -(Number(gc.amount) || 0)]);
+      // Interest/dividends are earned by the goal (credit, no account); plain
+      // contributions move money out of an account into the goal (debit).
+      if (gc.kind === "interest") {
+        rows.push([m.monthLabel, "Goal interest", goal?.name || "Goal", "", "", Number(gc.amount) || 0]);
+      } else {
+        rows.push([m.monthLabel, "Goal", goal?.name || "Goal", accountName(gc.accountId), "", -(Number(gc.amount) || 0)]);
+      }
     });
     (m.debtPayments || []).forEach((d) => {
       const debt = state.debts.find((x) => x.id === d.debtId);
