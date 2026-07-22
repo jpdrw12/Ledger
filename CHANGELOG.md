@@ -5,6 +5,14 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.21.1]
+
+### Fixed
+- **White bar at the bottom of the window on Windows.** The `<body>` background
+  was only painted in dark theme, so in light mode a white strip of the browser
+  default showed through below the app on Windows/WebView2 at fractional DPI
+  scaling. Now `html`/`body` are painted the paper color in both themes.
+
 ## [0.21.0]
 
 ### Added

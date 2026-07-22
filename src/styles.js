@@ -1,6 +1,9 @@
 export const css = `
   * { box-sizing: border-box; }
-  body { margin: 0; }
+  /* Paint html/body the paper color in BOTH themes so no white strip shows
+     through below the app on Windows/WebView2 at fractional DPI scaling,
+     where sub-pixel rounding can leave the app just short of the viewport. */
+  html, body { margin: 0; min-height: 100%; background: var(--paper); }
   /* Theming has two independent axes: Light/Dark (data-theme) sets the
      lightness ramp, and the color (data-accent) sets --hue, which all the
      neutral surfaces below derive from via hsl(). Money colors (surplus/
@@ -51,7 +54,6 @@ export const css = `
   :root[data-accent="blue"]   { --hue:208; --accent:#2C6EA5; --accent-hover:#235984; --accent-ink:#fff; }
   :root[data-accent="purple"] { --hue:280; --accent:#6B4D9E; --accent-hover:#573E82; --accent-ink:#fff; }
 
-  :root[data-theme="dark"] body { background: var(--paper); }
   :root[data-theme="dark"] input,
   :root[data-theme="dark"] select,
   :root[data-theme="dark"] textarea { background: var(--control-bg); color: var(--ink); }
