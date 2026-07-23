@@ -1,9 +1,11 @@
 export const css = `
   * { box-sizing: border-box; }
-  /* Paint html/body the paper color in BOTH themes so no white strip shows
-     through below the app on Windows/WebView2 at fractional DPI scaling,
-     where sub-pixel rounding can leave the app just short of the viewport. */
-  html, body { margin: 0; min-height: 100%; background: var(--paper); }
+  /* Full-height chain so the app always fills the window with no gap at the
+     bottom (Windows/WebView2 at fractional DPI scaling can otherwise leave a
+     strip below a 100vh element). html/body carry a definite height, #root is
+     a paper-painted flex column, and .app flexes to fill it. */
+  html, body { margin: 0; height: 100%; background: var(--paper); }
+  #root { min-height: 100%; display: flex; flex-direction: column; background: var(--paper); }
   /* Theming has two independent axes: Light/Dark (data-theme) sets the
      lightness ramp, and the color (data-accent) sets --hue, which all the
      neutral surfaces below derive from via hsl(). Money colors (surplus/
@@ -68,7 +70,7 @@ export const css = `
   :root[data-theme="dark"] .check,
   :root[data-theme="dark"] .chip { background: var(--control-bg); }
   :root[data-theme="dark"] .month-title-input:focus { background: var(--control-bg); }
-  .app { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; display:grid; grid-template-columns: 216px 1fr; }
+  .app { flex: 1 0 auto; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; display:grid; grid-template-columns: 216px 1fr; }
   .app.app-plain { display:block; padding:24px 20px 60px; }
 
   /* Classic layout: the original stacked top bands + horizontal tabs. */

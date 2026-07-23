@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.23.1]
+
+### Fixed
+- **Windows: blank console window no longer opens** behind the app (added the
+  `windows_subsystem = "windows"` release attribute).
+- **Windows: the UI now fills the whole window** — a full-height flex chain
+  (`html`/`body`/`#root`/`.app`) removes the gap at the bottom that a `100vh`
+  layout could leave under fractional DPI scaling.
+
 ## [0.23.0]
 
 ### Added

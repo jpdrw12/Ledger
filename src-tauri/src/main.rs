@@ -1,3 +1,7 @@
+// Prevents an extra blank console window from opening alongside the app on
+// Windows release builds. No effect on macOS/Linux or in debug builds.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod backup;
 mod updater;
 
