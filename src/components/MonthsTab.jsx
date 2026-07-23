@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, Download, ArrowLeftRight, ArrowRight } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, computeDueDate, parseExpensesCsv, planTransfer } from "../lib/calc.js";
+import { money, computeDueDate, dueDayForSlot, parseExpensesCsv, planTransfer } from "../lib/calc.js";
 import { importTextFile, exportTextFile } from "../lib/backup.js";
 import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
@@ -421,7 +421,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
       billId: bill.id,
       amountPaid: bill.defaultAmount,
       accountId: accounts[0]?.id,
-      dueDate: computeDueDate(month.monthLabel, bill.dueDay),
+      dueDate: computeDueDate(month.monthLabel, dueDayForSlot(bill, slot)),
       slot,
     });
     onChanged();

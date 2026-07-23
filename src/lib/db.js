@@ -160,6 +160,7 @@ export async function getBills() {
     addToSlot1: r.add_to_slot1 === 1,
     addToSlot2: r.add_to_slot2 === 1,
     dueDay: r.due_day,
+    dueDay2: r.due_day2,
     paymentType: r.payment_type,
     autoAdd: r.auto_add === 1,
   }));
@@ -169,11 +170,11 @@ export async function upsertBill(bill) {
   const db = await getDb();
   const id = bill.id || uid();
   await db.execute(
-    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, payment_type, auto_add, add_to_slot1, add_to_slot2)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, due_day2, payment_type, auto_add, add_to_slot1, add_to_slot2)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT(id) DO UPDATE SET
-       name = $2, category = $3, default_amount = $4, default_slot = $5, due_day = $6, payment_type = $7, auto_add = $8, add_to_slot1 = $9, add_to_slot2 = $10`,
-    [id, bill.name, bill.category, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0, bill.addToSlot1 ? 1 : 0, bill.addToSlot2 ? 1 : 0]
+       name = $2, category = $3, default_amount = $4, default_slot = $5, due_day = $6, due_day2 = $7, payment_type = $8, auto_add = $9, add_to_slot1 = $10, add_to_slot2 = $11`,
+    [id, bill.name, bill.category, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.dueDay2 || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0, bill.addToSlot1 ? 1 : 0, bill.addToSlot2 ? 1 : 0]
   );
   return id;
 }
@@ -699,9 +700,9 @@ export async function restoreMonth(month) {
 export async function restoreBill(bill) {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, payment_type, auto_add, add_to_slot1, add_to_slot2)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-    [bill.id, bill.name, bill.category || null, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0, bill.addToSlot1 ? 1 : 0, bill.addToSlot2 ? 1 : 0]
+    `INSERT INTO bills (id, name, category, default_amount, default_slot, due_day, due_day2, payment_type, auto_add, add_to_slot1, add_to_slot2)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [bill.id, bill.name, bill.category || null, bill.defaultAmount || 0, bill.defaultSlot || 1, bill.dueDay || null, bill.dueDay2 || null, bill.paymentType || "manual", bill.autoAdd ? 1 : 0, bill.addToSlot1 ? 1 : 0, bill.addToSlot2 ? 1 : 0]
   );
 }
 

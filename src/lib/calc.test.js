@@ -9,6 +9,7 @@ import {
   money,
   nextMonthLabel,
   computeDueDate,
+  dueDayForSlot,
   spendingByCategory,
   monthlyExpenseTotals,
   spendByAccount,
@@ -684,6 +685,19 @@ describe("nextMonthLabel", () => {
 
   it("returns the label unchanged when it isn't a parseable Month Year", () => {
     expect(nextMonthLabel("House Move")).toBe("House Move");
+  });
+});
+
+describe("dueDayForSlot", () => {
+  it("uses dueDay for Pay 1 and dueDay2 for Pay 2", () => {
+    const bill = { dueDay: 1, dueDay2: 15 };
+    expect(dueDayForSlot(bill, 1)).toBe(1);
+    expect(dueDayForSlot(bill, 2)).toBe(15);
+  });
+
+  it("falls back to dueDay for Pay 2 when dueDay2 is unset", () => {
+    expect(dueDayForSlot({ dueDay: 5, dueDay2: null }, 2)).toBe(5);
+    expect(dueDayForSlot({ dueDay: 5 }, 2)).toBe(5);
   });
 });
 

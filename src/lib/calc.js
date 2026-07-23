@@ -588,6 +588,13 @@ export function nextMonthLabel(label) {
   return `${MONTHS[nextIdx]} ${nextYear}`;
 }
 
+// The due day a bill uses for a given pay slot. Pay 2 uses its own dueDay2,
+// falling back to the Pay 1 dueDay when unset (back-compat / single-day bills).
+export function dueDayForSlot(bill, slot) {
+  if (slot === 2) return bill.dueDay2 ?? bill.dueDay;
+  return bill.dueDay;
+}
+
 export function computeDueDate(monthLabel, dueDay) {
   if (!dueDay) return "";
   const [m, y] = (monthLabel || "").split(" ");

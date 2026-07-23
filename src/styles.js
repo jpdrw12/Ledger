@@ -305,7 +305,11 @@ export const css = `
   .chip:hover { border-color: var(--stamp); }
 
   .card-list { display:flex; flex-direction:column; gap:10px; }
-  .bill-card { display:grid; grid-template-columns:1fr 1fr 60px 90px 120px 100px 36px 28px; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }
+  .bill-card { display:grid; grid-template-columns:1fr 1fr 92px 90px 120px 100px 36px 28px; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }
+  .due-day-cell { display:flex; flex-direction:column; gap:4px; }
+  .due-day-slot { display:flex; align-items:center; gap:4px; }
+  .due-day-tag { font-size:10px; font-weight:600; color:var(--ink-soft); width:16px; flex:0 0 16px; }
+  .due-day-cell .day-input { width:56px; }
   .bill-card-header { background:none; border:none; font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:0 10px; }
   .bill-card select { padding:6px; border:1px solid var(--paper-line); border-radius:2px; background:var(--control-bg); font-size:12.5px; width:100%; }
   .slot-checks { display:flex; flex-direction:column; gap:2px; font-size:11.5px; color:var(--ink-soft); }

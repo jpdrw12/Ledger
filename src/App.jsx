@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight } from "lucide-react";
 import * as db from "./lib/db.js";
-import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
+import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton, ExpandContext } from "./components/Shared.jsx";
@@ -625,7 +625,7 @@ export default function App() {
         billId: bp.billId,
         amountPaid: bp.amountPaid,
         accountId: bp.accountId,
-        dueDate: bill ? computeDueDate(targetMonthLabel, bill.dueDay) : bp.dueDate,
+        dueDate: bill ? computeDueDate(targetMonthLabel, dueDayForSlot(bill, bp.slot)) : bp.dueDate,
         slot: bp.slot,
       });
     }
@@ -647,7 +647,7 @@ export default function App() {
           billId: bill.id,
           amountPaid: bill.defaultAmount,
           accountId: state.accounts[0]?.id,
-          dueDate: computeDueDate(label, bill.dueDay),
+          dueDate: computeDueDate(label, dueDayForSlot(bill, slot)),
           slot,
         });
       }

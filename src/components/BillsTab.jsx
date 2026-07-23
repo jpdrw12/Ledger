@@ -14,7 +14,7 @@ function BillsTab({ bills, onChanged, onPatch }) {
   const [expanded, setExpanded] = useState(() => new Set()); // groups start collapsed
 
   const addBill = async () => {
-    await db.upsertBill({ name: "New bill", category: "", defaultAmount: 0, addToSlot1: true, addToSlot2: false, dueDay: 1, paymentType: "manual" });
+    await db.upsertBill({ name: "New bill", category: "", defaultAmount: 0, addToSlot1: true, addToSlot2: false, dueDay: 1, dueDay2: 1, paymentType: "manual" });
     onChanged();
   };
 
@@ -52,7 +52,7 @@ function BillsTab({ bills, onChanged, onPatch }) {
     <div className="bill-card bill-card-header">
       <span>Name</span>
       <span>Category</span>
-      <span>Due day</span>
+      <span>Due day(s)</span>
       <span>Amount</span>
       <span>Pay slots</span>
       <span>Payment</span>
@@ -65,14 +65,34 @@ function BillsTab({ bills, onChanged, onPatch }) {
     <div className="bill-card" key={b.id}>
       <input className="text-input" defaultValue={b.name} onBlur={(e) => updateBill(b, { name: e.target.value })} />
       <input className="text-input" placeholder="Category" defaultValue={b.category} onBlur={(e) => updateBill(b, { category: e.target.value })} />
-      <input
-        className="day-input"
-        type="number"
-        min="1"
-        max="31"
-        defaultValue={b.dueDay || ""}
-        onBlur={(e) => updateBill(b, { dueDay: parseInt(e.target.value, 10) || null })}
-      />
+      <div className="due-day-cell">
+        {(b.addToSlot1 || (!b.addToSlot1 && !b.addToSlot2)) && (
+          <label className="due-day-slot">
+            {b.addToSlot2 && <span className="due-day-tag">P1</span>}
+            <input
+              className="day-input"
+              type="number"
+              min="1"
+              max="31"
+              defaultValue={b.dueDay || ""}
+              onBlur={(e) => updateBill(b, { dueDay: parseInt(e.target.value, 10) || null })}
+            />
+          </label>
+        )}
+        {b.addToSlot2 && (
+          <label className="due-day-slot">
+            <span className="due-day-tag">P2</span>
+            <input
+              className="day-input"
+              type="number"
+              min="1"
+              max="31"
+              defaultValue={(b.dueDay2 ?? b.dueDay) || ""}
+              onBlur={(e) => updateBill(b, { dueDay2: parseInt(e.target.value, 10) || null })}
+            />
+          </label>
+        )}
+      </div>
       <input
         className="amount-input"
         type="number"
@@ -117,7 +137,7 @@ function BillsTab({ bills, onChanged, onPatch }) {
         </div>
       </div>
       <p className="empty" style={{ marginBottom: 16 }}>
-        A bill can feed <strong>Pay 1</strong>, <strong>Pay 2</strong>, or both — when it feeds both, a separate payment is created in each pay period. Due day and autopay/manual carry into every month you quick-add this bill to. Which account it draws from is set per month. Bills marked <strong>Auto-add</strong> are included automatically when you click "Add next month".
+        A bill can feed <strong>Pay 1</strong>, <strong>Pay 2</strong>, or both — when it feeds both, a separate payment is created in each pay period — each with its own due day. Due day(s) and autopay/manual carry into every month you quick-add this bill to. Which account it draws from is set per month. Bills marked <strong>Auto-add</strong> are included automatically when you click "Add next month".
       </p>
 
       {bills.length === 0 ? (

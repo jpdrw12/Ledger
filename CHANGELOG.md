@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.23.0]
+
+### Added
+- **Per-pay-period due days for bills.** A bill that feeds both Pay 1 and Pay 2 can
+  now have a separate due day for each period (shown as P1/P2 in the Bill Templates
+  "Due day(s)" column). Existing bills keep their single day for both until edited.
+
 ## [0.22.0]
 
 ### Added
