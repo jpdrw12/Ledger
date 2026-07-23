@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, ArrowLeftRight, ArrowRight } from "lucide-react";
+import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, Download, ArrowLeftRight, ArrowRight } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, computeDueDate, parseExpensesCsv, planTransfer } from "../lib/calc.js";
-import { importTextFile } from "../lib/backup.js";
+import { importTextFile, exportTextFile } from "../lib/backup.js";
 import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
@@ -23,6 +23,7 @@ function MonthsTab({
   debts,
   existingTags,
   existingCategories,
+  existingNotes,
   openMonth,
   setOpenMonth,
   onChanged,
@@ -139,6 +140,7 @@ function MonthsTab({
             debts={debts}
             existingTags={existingTags}
             existingCategories={existingCategories}
+            existingNotes={existingNotes}
           />
         ))}
       </div>
@@ -403,7 +405,7 @@ function patchAddition(state, monthId, slot, addId, patch) {
   };
 }
 
-function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags, existingCategories, forceOpenPay1 }) {
+function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags, existingCategories, existingNotes, forceOpenPay1 }) {
   const { toast } = useToast();
   if (!computed) return null;
   const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
@@ -462,6 +464,17 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
       toast(`Imported ${rows.length} expense${rows.length === 1 ? "" : "s"} into ${month.monthLabel} (Pay 1).`, "success");
     } catch (e) {
       toast(`Import failed: ${e}`, "error");
+    }
+  };
+  const exportTemplate = async () => {
+    // A ready-to-fill template matching parseExpensesCsv's expected columns
+    // (Category, Amount, Tag), with a couple of example rows.
+    const csv = "Category,Amount,Tag\nGroceries,85.00,weekly\nGas,40.00,\n";
+    try {
+      const path = await exportTextFile("expenses-template.csv", csv);
+      if (path) toast(`Template saved to ${path}`, "success");
+    } catch (e) {
+      toast(`Export failed: ${e}`, "error");
     }
   };
   const updateExpense = async (e, patch) => {
@@ -618,7 +631,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
         />
         <ArrowRight size={13} className="transfer-arrow" />
         <EndpointSelect accounts={toAccounts} goals={toGoals} value={endpointValue(row.to.kind, row.to.id)} onChange={(v) => saveTransferRow(row, { to: parseEndpoint(v) })} />
-        <input className="text-input tag-input" placeholder="Note" defaultValue={row.note || ""} onBlur={(ev) => saveTransferRow(row, { note: ev.target.value })} />
+        <input className="text-input tag-input" placeholder="Note" list="transfer-note-suggestions" defaultValue={row.note || ""} onBlur={(ev) => saveTransferRow(row, { note: ev.target.value })} />
         <input className="amount-input" type="number" defaultValue={row.amount} onBlur={(ev) => saveTransferRow(row, { amount: parseNumberInput(ev, row.amount) })} />
         <button className="icon-btn" onClick={() => removeTransferRow(row)}>
           <Trash2 size={13} />
@@ -729,6 +742,9 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           <div className="month-toolbar">
             <button className="btn-secondary" onClick={importExpenses} title="Import expenses from a CSV (Category, Amount, Tag) into Pay 1">
               <Upload size={13} /> Import expenses CSV
+            </button>
+            <button className="btn-secondary" onClick={exportTemplate} title="Download a blank CSV formatted for the Import expenses button">
+              <Download size={13} /> Export template
             </button>
           </div>
 
@@ -883,6 +899,11 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           ) : (
             <p className="empty small">Add a second account or a second savings goal to move money between them.</p>
           )}
+          <datalist id="transfer-note-suggestions">
+            {(existingNotes || []).map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
           </MonthSection>
           </div>
 

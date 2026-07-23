@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.22.0]
+
+### Added
+- **Debt Spending tab.** Tick **Spendable** on a debt (Debts tab) and it becomes a
+  charge target here — log purchases month by month with categories, per-category
+  budgets, a monthly-spend trend, a spend-by-category breakdown, and CSV export.
+  Each charge raises that debt's balance (and the net-worth debt figure) and touches
+  no bank account. Mirrors the Card Spending tab.
+- **Export template** button beside "Import expenses CSV" — downloads a blank CSV
+  (`Category, Amount, Tag`) with example rows, formatted for the importer.
+- **Transfer note autocomplete** — the Note field on a month's transfers now suggests
+  notes you've used before.
+
+### Changed
+- **Simpler spending rows.** Removed the per-row **Tag** field from the Card Spending
+  and Debt Spending tabs (category + amount is enough there). Regular Months expenses
+  keep their tags; the card CSV keeps its Tag column.
+
 ## [0.21.1]
 
 ### Fixed

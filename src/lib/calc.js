@@ -417,6 +417,104 @@ export function buildCardCsv(state) {
   return rows.map((r) => r.map(esc).join(",")).join("\n");
 }
 
+// ---------------------------------------------------------------------
+// Debt spending — charges against "spendable" debts. Unlike card spending
+// (expense rows on months), a charge is a flat debt_charges row carrying its
+// own free-text monthLabel; each raises the debt's stored balance. These pure
+// helpers mirror the card ones but read the flat `charges` array. `include`/
+// `exclude` are Sets of debt ids.
+// ---------------------------------------------------------------------
+function debtChargeMatches(debtId, { include, exclude } = {}) {
+  if (include && !include.has(debtId)) return false;
+  if (exclude && exclude.has(debtId)) return false;
+  return true;
+}
+
+export function debtSpendingByCategory(charges, filter) {
+  const totals = {};
+  (charges || []).forEach((c) => {
+    if (!debtChargeMatches(c.debtId, filter)) return;
+    const key = (c.category || "").trim() || "Uncategorized";
+    totals[key] = (totals[key] || 0) + (Number(c.amount) || 0);
+  });
+  return Object.entries(totals)
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// Total charged per month label, in first-seen order (charges arrive in
+// created_at order) — the series behind the debt spend trend.
+export function debtMonthlyTotals(charges, filter) {
+  const order = [];
+  const totals = new Map();
+  (charges || []).forEach((c) => {
+    if (!debtChargeMatches(c.debtId, filter)) return;
+    const label = c.monthLabel || "";
+    if (!totals.has(label)) { totals.set(label, 0); order.push(label); }
+    totals.set(label, totals.get(label) + (Number(c.amount) || 0));
+  });
+  return order.map((label) => ({ id: label, label, value: totals.get(label) }));
+}
+
+// Total charged per debt (over the given debt ids), sorted high to low.
+export function debtSpendByDebt(charges, debtIds) {
+  const totals = {};
+  (debtIds || []).forEach((id) => (totals[id] = 0));
+  (charges || []).forEach((c) => {
+    if (totals[c.debtId] !== undefined) totals[c.debtId] += Number(c.amount) || 0;
+  });
+  return Object.entries(totals)
+    .map(([debtId, total]) => ({ debtId, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// Debt-budget report for a single month label: total allowance (the reserved ''
+// category row) and per-category targets vs what was actually charged that month
+// on spendable debts. Pure — no I/O. Mirrors cardBudgetReport.
+export function debtBudgetReport(charges, monthLabel, debtBudgets, debtIds) {
+  const scoped = monthLabel == null ? (charges || []) : (charges || []).filter((c) => c.monthLabel === monthLabel);
+  const spentByCat = {};
+  let spentTotal = 0;
+  debtSpendingByCategory(scoped, { include: debtIds }).forEach((c) => {
+    spentByCat[c.category] = c.total;
+    spentTotal += c.total;
+  });
+
+  const totalRow = (debtBudgets || []).find((b) => b.category === "");
+  const total = totalRow ? { budget: Number(totalRow.amount) || 0, spent: spentTotal } : null;
+  const categories = (debtBudgets || [])
+    .filter((b) => b.category !== "")
+    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[b.category] || 0 }))
+    .sort((a, b) => a.category.localeCompare(b.category));
+  return { total, categories };
+}
+
+// Debt-spending CSV: one row per charge, plus a per-month total line.
+export function buildDebtSpendingCsv(state) {
+  const debtName = (id) => (state.debts.find((d) => d.id === id) || {}).name || "";
+  const esc = (v) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = [["Month", "Category", "Debt", "Amount"]];
+
+  const byLabel = new Map();
+  (state.debtCharges || []).forEach((c) => {
+    if (!byLabel.has(c.monthLabel)) byLabel.set(c.monthLabel, []);
+    byLabel.get(c.monthLabel).push(c);
+  });
+  byLabel.forEach((charges, label) => {
+    let total = 0;
+    charges.forEach((c) => {
+      total += Number(c.amount) || 0;
+      rows.push([label, c.category || "Uncategorized", debtName(c.debtId), Number(c.amount) || 0]);
+    });
+    if (charges.length) rows.push([label, "Total", "", total]);
+  });
+
+  return rows.map((r) => r.map(esc).join(",")).join("\n");
+}
+
 // Minimal RFC-4180-ish CSV parser: handles quoted fields, escaped quotes,
 // and commas/newlines inside quotes. Returns an array of row arrays.
 export function parseCsv(text) {

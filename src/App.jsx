@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -16,6 +16,7 @@ import BillsTab from "./components/BillsTab.jsx";
 import GoalsTab from "./components/GoalsTab.jsx";
 import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
+import DebtSpendingTab from "./components/DebtSpendingTab.jsx";
 import InsightsTab from "./components/InsightsTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
 
@@ -30,7 +31,8 @@ const TAB_HELP = {
   bills: { title: "Bill Templates", body: "Define recurring bills once. Mark a bill auto-add and it drops into every new month at its due date." },
   goals: { title: "Savings Goals", body: "Set a target and track progress. Contribute to goals from any account, month by month." },
   accounts: { title: "Accounts", body: "Your bank accounts and cards. Uncheck 'count in the total' for a prepaid spending card you load from other accounts." },
-  debts: { title: "Debts", body: "Track balances and APR. Payments reduce principal; charge interest once a month with 'Apply monthly interest'." },
+  debts: { title: "Debts", body: "Track balances and APR. Payments reduce principal; charge interest once a month with 'Apply monthly interest'. Tick 'Spendable' to charge purchases to a debt from the Debt Spending tab." },
+  debtspending: { title: "Debt Spending", body: "Log purchases charged to your spendable debts, month by month. Each charge raises that debt's balance and touches no bank account. Tick 'Spendable' on a debt first." },
   insights: { title: "Insights", body: "Net worth, spending by category, budgets, and a forecast projected from your income and recent spending." },
   backups: { title: "Backups", body: "Back up your ledger locally or mirror it to a synced folder. Nothing leaves this computer unless you send it." },
   settings: { title: "Settings", body: "Appearance & layout, profiles, backups, updates, keyboard shortcuts, and the interactive guide." },
@@ -893,6 +895,13 @@ export default function App() {
         : [],
     [state]
   );
+  const existingNotes = useMemo(
+    () =>
+      state
+        ? Array.from(new Set(state.months.flatMap((m) => (m.transfers || []).map((t) => t.note)).filter((n) => n && n.trim()))).sort((a, b) => a.localeCompare(b))
+        : [],
+    [state]
+  );
 
   // Early returns live BELOW every hook (all useMemos above), so hook order
   // never changes between renders — an early return above a hook crashes with
@@ -958,6 +967,7 @@ export default function App() {
       <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" dataTour="tab-goals" />
       <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" dataTour="tab-accounts" />
       <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" dataTour="tab-debts" />
+      <TabButton active={tab === "debtspending"} onClick={() => setTab("debtspending")} icon={<ShoppingCart size={16} />} label="Debt Spending" dataTour="tab-debtspending" />
       <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" dataTour="tab-insights" />
       <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" dataTour="tab-backups" />
       <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
@@ -1122,6 +1132,7 @@ export default function App() {
           debts={state.debts}
           existingTags={existingTags}
           existingCategories={existingCategories}
+          existingNotes={existingNotes}
           openMonth={openMonth}
           setOpenMonth={setOpenMonth}
           onChanged={reload}
@@ -1139,6 +1150,7 @@ export default function App() {
       )}
       {tab === "card" && <CardTab state={state} onChanged={reload} />}
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} onPatch={patchState} />}
+      {tab === "debtspending" && <DebtSpendingTab state={state} onChanged={reload} />}
       {tab === "insights" && <InsightsTab state={state} ledger={ledger} onChanged={reload} />}
       {tab === "settings" && (
         <SettingsTab

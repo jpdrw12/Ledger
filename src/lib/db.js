@@ -222,9 +222,9 @@ export async function upsertDebt(debt) {
   const id = debt.id || uid();
   const order = debt.id ? 0 : await nextOrder(db, "debts"); // ignored on update
   await db.execute(
-    `INSERT INTO debts (id, name, apr, balance, sort_order) VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT(id) DO UPDATE SET name = $2, apr = $3, balance = $4`,
-    [id, debt.name, debt.apr || 0, debt.balance || 0, order]
+    `INSERT INTO debts (id, name, apr, balance, sort_order, spendable) VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT(id) DO UPDATE SET name = $2, apr = $3, balance = $4, spendable = $6`,
+    [id, debt.name, debt.apr || 0, debt.balance || 0, order, debt.spendable ? 1 : 0]
   );
   return id;
 }
@@ -470,6 +470,85 @@ export async function deleteCardBudget(category) {
 }
 
 // ---------------------------------------------------------------------
+// Debt spending charges — a charge raises debts.balance (like a purchase on a
+// credit card), mirroring applyMonthlyInterest. Charges use a free-text
+// month_label, decoupled from the months table, so month delete/restore never
+// corrupts a balance. add/edit/delete adjust the stored balance by the delta.
+// ---------------------------------------------------------------------
+export async function getDebtCharges() {
+  const db = await getDb();
+  return db.select("SELECT * FROM debt_charges ORDER BY created_at");
+}
+
+export async function addDebtCharge(debtId, { monthLabel, category, amount }) {
+  const db = await getDb();
+  const id = uid();
+  const amt = Number(amount) || 0;
+  await db.execute(
+    "INSERT INTO debt_charges (id, debt_id, month_label, category, amount) VALUES ($1, $2, $3, $4, $5)",
+    [id, debtId, monthLabel, category || null, amt]
+  );
+  await db.execute("UPDATE debts SET balance = ROUND((balance + $1) * 100) / 100 WHERE id = $2", [amt, debtId]);
+  return id;
+}
+
+export async function updateDebtCharge(id, { category, amount }) {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM debt_charges WHERE id = $1", [id]);
+  if (!rows.length) return;
+  const prev = rows[0];
+  const amt = Number(amount) || 0;
+  await db.execute(
+    "UPDATE debt_charges SET category = $1, amount = $2 WHERE id = $3",
+    [category ?? prev.category, amt, id]
+  );
+  const delta = amt - (Number(prev.amount) || 0);
+  if (delta !== 0) {
+    await db.execute("UPDATE debts SET balance = ROUND((balance + $1) * 100) / 100 WHERE id = $2", [delta, prev.debt_id]);
+  }
+}
+
+export async function deleteDebtCharge(id) {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM debt_charges WHERE id = $1", [id]);
+  if (!rows.length) return;
+  const charge = rows[0];
+  await db.execute("DELETE FROM debt_charges WHERE id = $1", [id]);
+  await db.execute("UPDATE debts SET balance = ROUND((balance - $1) * 100) / 100 WHERE id = $2", [Number(charge.amount) || 0, charge.debt_id]);
+}
+
+// Undo: re-insert a deleted charge with its original id and re-raise the balance.
+export async function restoreDebtCharge(charge) {
+  const db = await getDb();
+  const amt = Number(charge.amount) || 0;
+  await db.execute(
+    "INSERT INTO debt_charges (id, debt_id, month_label, category, amount) VALUES ($1, $2, $3, $4, $5)",
+    [charge.id, charge.debtId, charge.monthLabel, charge.category || null, amt]
+  );
+  await db.execute("UPDATE debts SET balance = ROUND((balance + $1) * 100) / 100 WHERE id = $2", [amt, charge.debtId]);
+}
+
+// Debt budgets: '' category = the total monthly allowance; others per-category.
+export async function getDebtBudgets() {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM debt_budgets ORDER BY category");
+  return rows.map((r) => ({ category: r.category, amount: r.amount }));
+}
+
+export async function upsertDebtBudget(category, amount) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO debt_budgets (category, amount) VALUES ($1, $2) ON CONFLICT(category) DO UPDATE SET amount = $2",
+    [category, amount || 0]
+  );
+}
+
+export async function deleteDebtBudget(category) {
+  const db = await getDb();
+  await db.execute("DELETE FROM debt_budgets WHERE category = $1", [category]);
+}
+
+// ---------------------------------------------------------------------
 // Month debt payments — tracks debt payments made within a month so they
 // count as account outflows. Interest calc / balance updates stay in DebtsTab.
 // ---------------------------------------------------------------------
@@ -638,7 +717,7 @@ export async function restoreGoal(goal) {
 export async function restoreDebt(debt, historyRows = []) {
   const db = await getDb();
   // Debt snapshots are raw rows (getDebts returns SELECT *), so snake_case.
-  await db.execute("INSERT INTO debts (id, name, apr, balance, sort_order) VALUES ($1, $2, $3, $4, $5)", [debt.id, debt.name, debt.apr || 0, debt.balance || 0, debt.sort_order || 0]);
+  await db.execute("INSERT INTO debts (id, name, apr, balance, sort_order, spendable) VALUES ($1, $2, $3, $4, $5, $6)", [debt.id, debt.name, debt.apr || 0, debt.balance || 0, debt.sort_order || 0, debt.spendable ? 1 : 0]);
   for (const h of historyRows) {
     await db.execute(
       `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance, created_at, month_debt_payment_id)
@@ -722,7 +801,7 @@ export async function wipeAllData() {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -731,6 +810,8 @@ export async function loadFullState() {
       getDebtHistory(),
       getCategoryBudgets(),
       getCardBudgets(),
+      getDebtCharges(),
+      getDebtBudgets(),
       getTabActivity(),
       db.select("SELECT * FROM months ORDER BY sequence"),
       db.select("SELECT * FROM pay_blocks"),
@@ -792,5 +873,9 @@ export async function loadFullState() {
     };
   });
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, activity };
+  const debtCharges = debtChargeRows.map((c) => ({
+    id: c.id, debtId: c.debt_id, monthLabel: c.month_label, category: c.category, amount: c.amount,
+  }));
+
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity };
 }

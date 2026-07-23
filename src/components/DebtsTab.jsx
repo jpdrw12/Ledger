@@ -92,6 +92,10 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
             <div className="debt-top">
               <DragHandle {...handleProps(i)} />
               <input className="text-input" defaultValue={debt.name} onBlur={(e) => updateDebt(debt, { name: e.target.value })} />
+              <label className="spendable-check" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--ink-soft)", whiteSpace: "nowrap", cursor: "pointer" }} title="Allow charging purchases to this debt on the Debt Spending tab">
+                <input type="checkbox" checked={!!debt.spendable} onChange={(e) => updateDebt(debt, { spendable: e.target.checked })} />
+                Spendable
+              </label>
               <button className="icon-btn" onClick={() => removeDebt(debt)}>
                 <Trash2 size={14} />
               </button>

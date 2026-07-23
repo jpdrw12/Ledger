@@ -132,7 +132,6 @@ function CardTab({ state, onChanged }) {
                 {exps.map((e) => (
                   <div className="ledger-row" key={`${e.id}-${e.amount}-${e.accountId}-${e.category}`}>
                     <input className="text-input" placeholder="Category (Groceries, Gas…)" list="card-category-suggestions" defaultValue={e.category} onBlur={(ev) => updateExpense(e, { category: ev.target.value })} />
-                    <input className="text-input tag-input" placeholder="Tag" defaultValue={e.tag || ""} onBlur={(ev) => updateExpense(e, { tag: ev.target.value })} />
                     {cardAccounts.length > 1 && (
                       <AccountSelect accounts={cardAccounts} value={e.accountId} onChange={(v) => updateExpense(e, { accountId: v })} />
                     )}

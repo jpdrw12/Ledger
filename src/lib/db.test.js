@@ -21,6 +21,11 @@ import {
   restoreAccount,
   getTabActivity,
   upsertDebt,
+  addDebtCharge,
+  updateDebtCharge,
+  deleteDebtCharge,
+  restoreDebtCharge,
+  getDebtCharges,
 } from "./db.js";
 
 let adapter;
@@ -214,5 +219,54 @@ describe("undo restores", () => {
     expect(get("SELECT name FROM accounts WHERE id='b'").name).toBe("Second");
     expect(get("SELECT account_id FROM expenses WHERE id='e1'").account_id).toBe("b");
     expect(get("SELECT account_id FROM expenses WHERE id='e2'").account_id).toBe("a"); // untouched
+  });
+});
+
+describe("debt spending charges", () => {
+  const bal = () => get("SELECT balance FROM debts WHERE id='d'").balance;
+
+  it("addDebtCharge raises the debt balance and stores the row", async () => {
+    const id = await addDebtCharge("d", { monthLabel: "June 2026", category: "Groceries", amount: 85 });
+    expect(bal()).toBeCloseTo(1085, 5); // seeded 1000 + 85
+    const row = get("SELECT * FROM debt_charges WHERE id=?", id);
+    expect(row.month_label).toBe("June 2026");
+    expect(row.category).toBe("Groceries");
+    expect(row.amount).toBe(85);
+  });
+
+  it("updateDebtCharge applies only the delta to the balance", async () => {
+    const id = await addDebtCharge("d", { monthLabel: "June 2026", category: "Gas", amount: 40 });
+    expect(bal()).toBeCloseTo(1040, 5);
+    await updateDebtCharge(id, { category: "Fuel", amount: 55 });
+    expect(bal()).toBeCloseTo(1055, 5); // +15 delta, not +55
+    expect(get("SELECT category FROM debt_charges WHERE id=?", id).category).toBe("Fuel");
+  });
+
+  it("deleteDebtCharge reverses the balance; restoreDebtCharge re-applies it", async () => {
+    const id = await addDebtCharge("d", { monthLabel: "June 2026", category: "Dining", amount: 30 });
+    expect(bal()).toBeCloseTo(1030, 5);
+    const snap = { id, debtId: "d", monthLabel: "June 2026", category: "Dining", amount: 30 };
+    await deleteDebtCharge(id);
+    expect(bal()).toBeCloseTo(1000, 5);
+    expect(await getDebtCharges()).toHaveLength(0);
+    await restoreDebtCharge(snap);
+    expect(bal()).toBeCloseTo(1030, 5);
+    expect(await getDebtCharges()).toHaveLength(1);
+  });
+
+  it("survives a month delete without corrupting the balance (charges are decoupled from months)", async () => {
+    await addDebtCharge("d", { monthLabel: "June 2026", category: "Groceries", amount: 100 });
+    expect(bal()).toBeCloseTo(1100, 5);
+    await deleteMonth("m");
+    // The month is gone but the charge and the raised balance persist.
+    expect(bal()).toBeCloseTo(1100, 5);
+    expect(await getDebtCharges()).toHaveLength(1);
+  });
+
+  it("loadFullState exposes debtCharges in camelCase", async () => {
+    await addDebtCharge("d", { monthLabel: "June 2026", category: "Groceries", amount: 12.5 });
+    const state = await loadFullState();
+    expect(state.debtCharges).toHaveLength(1);
+    expect(state.debtCharges[0]).toMatchObject({ debtId: "d", monthLabel: "June 2026", category: "Groceries", amount: 12.5 });
   });
 });

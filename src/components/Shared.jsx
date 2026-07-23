@@ -265,6 +265,20 @@ export function AccountSelect({ accounts, value, onChange }) {
   );
 }
 
+// Picks which spendable debt a charge is against (Debt Spending tab), shown
+// only when more than one debt is spendable. Mirrors AccountSelect.
+export function DebtSelect({ debts, value, onChange }) {
+  return (
+    <select className="account-select" value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      {debts.map((d) => (
+        <option key={d.id} value={d.id}>
+          {d.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // A transfer endpoint can be a bank account or a savings goal. We encode the
 // choice as a typed string ("acct:<id>" / "goal:<id>") so a single <select>
 // can offer both, grouped.

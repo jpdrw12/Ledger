@@ -21,6 +21,11 @@ import {
   billStatus,
   parseCsv,
   parseExpensesCsv,
+  debtSpendingByCategory,
+  debtMonthlyTotals,
+  debtSpendByDebt,
+  debtBudgetReport,
+  buildDebtSpendingCsv,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -698,5 +703,67 @@ describe("computeDueDate", () => {
 
   it("returns blank for a custom (unparseable) month label — documented degradation", () => {
     expect(computeDueDate("House Move", 15)).toBe("");
+  });
+});
+
+describe("debt spending helpers", () => {
+  const charges = [
+    { id: "c1", debtId: "d1", monthLabel: "June 2026", category: "Groceries", amount: 100 },
+    { id: "c2", debtId: "d1", monthLabel: "June 2026", category: "Gas", amount: 40 },
+    { id: "c3", debtId: "d2", monthLabel: "June 2026", category: "Groceries", amount: 25 },
+    { id: "c4", debtId: "d1", monthLabel: "July 2026", category: "Dining", amount: 60 },
+  ];
+  const d1Only = new Set(["d1"]);
+
+  it("debtSpendingByCategory sums by category for the included debts, high first", () => {
+    expect(debtSpendingByCategory(charges, { include: d1Only })).toEqual([
+      { category: "Groceries", total: 100 },
+      { category: "Dining", total: 60 },
+      { category: "Gas", total: 40 },
+    ]);
+    // No filter = all debts: Groceries 100 + 25.
+    expect(debtSpendingByCategory(charges)).toEqual([
+      { category: "Groceries", total: 125 },
+      { category: "Dining", total: 60 },
+      { category: "Gas", total: 40 },
+    ]);
+  });
+
+  it("debtMonthlyTotals totals per month label in first-seen order", () => {
+    expect(debtMonthlyTotals(charges, { include: d1Only })).toEqual([
+      { id: "June 2026", label: "June 2026", value: 140 }, // 100 + 40
+      { id: "July 2026", label: "July 2026", value: 60 },
+    ]);
+  });
+
+  it("debtSpendByDebt totals per debt, high first", () => {
+    expect(debtSpendByDebt(charges, ["d1", "d2"])).toEqual([
+      { debtId: "d1", total: 200 }, // 100 + 40 + 60
+      { debtId: "d2", total: 25 },
+    ]);
+  });
+
+  it("debtBudgetReport scopes to one month label with allowance + per-category", () => {
+    const budgets = [
+      { category: "", amount: 150 },       // total allowance
+      { category: "Groceries", amount: 80 },
+    ];
+    const report = debtBudgetReport(charges, "June 2026", budgets, d1Only);
+    expect(report.total).toEqual({ budget: 150, spent: 140 }); // d1 June: 100 + 40
+    expect(report.categories).toEqual([
+      { category: "Groceries", budget: 80, spent: 100 }, // over budget
+    ]);
+  });
+
+  it("buildDebtSpendingCsv emits a header, rows, and per-month totals", () => {
+    const state = {
+      debts: [{ id: "d1", name: "Visa" }, { id: "d2", name: "Mastercard" }],
+      debtCharges: charges,
+    };
+    const lines = buildDebtSpendingCsv(state).split("\n");
+    expect(lines[0]).toBe("Month,Category,Debt,Amount");
+    expect(lines).toContain("June 2026,Groceries,Visa,100");
+    expect(lines).toContain("June 2026,Total,,165"); // 100 + 40 + 25
+    expect(lines).toContain("July 2026,Total,,60");
   });
 });
