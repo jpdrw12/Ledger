@@ -1,11 +1,12 @@
 export const css = `
   * { box-sizing: border-box; }
-  /* Full-height chain so the app always fills the window with no gap at the
-     bottom (Windows/WebView2 at fractional DPI scaling can otherwise leave a
-     strip below a 100vh element). html/body carry a definite height, #root is
-     a paper-painted flex column, and .app flexes to fill it. */
+  /* App shell: #root is pinned to the viewport and scrolling happens INSIDE the
+     columns, never on the page. This avoids all vh units, which mis-measure
+     under the app's CSS zoom (UI scale != 100%) and Windows/WebView2 fractional
+     DPI scaling — the cause of the app under/over-shooting the window bottom. */
   html, body { margin: 0; height: 100%; background: var(--paper); }
-  #root { min-height: 100%; display: flex; flex-direction: column; background: var(--paper); }
+  body { overflow: hidden; }
+  #root { position: fixed; inset: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--paper); }
   /* Theming has two independent axes: Light/Dark (data-theme) sets the
      lightness ramp, and the color (data-accent) sets --hue, which all the
      neutral surfaces below derive from via hsl(). Money colors (surplus/
@@ -70,12 +71,14 @@ export const css = `
   :root[data-theme="dark"] .check,
   :root[data-theme="dark"] .chip { background: var(--control-bg); }
   :root[data-theme="dark"] .month-title-input:focus { background: var(--control-bg); }
-  .app { flex: 1 0 auto; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); min-height: 100vh; display:grid; grid-template-columns: 216px 1fr; }
-  .app.app-plain { display:block; padding:24px 20px 60px; }
+  .app { flex: 1; min-height: 0; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--paper); display:grid; grid-template-columns: 216px 1fr; }
+  /* Block layouts (loading/error/classic) have no column split, so the whole
+     .app scrolls instead of an inner column. */
+  .app.app-plain { display:block; overflow-y:auto; padding:24px 20px 60px; }
 
   /* Classic layout: the original stacked top bands + horizontal tabs. */
-  .app.layout-classic { display:block; padding:24px 20px 60px; }
-  .app.layout-classic .app-main { padding:0; min-width:0; }
+  .app.layout-classic { display:block; overflow-y:auto; padding:24px 20px 60px; }
+  .app.layout-classic .app-main { height:auto; overflow:visible; padding:0; min-width:0; }
   .app.layout-classic .app-header .due-chip { margin-left:auto; }
   .layout-classic .tabs { flex-direction:row; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--paper-line); margin-bottom:22px; }
   .layout-classic .tab-btn { width:auto; border-radius:0; padding:9px 14px; border-bottom:2px solid transparent; }
@@ -85,7 +88,7 @@ export const css = `
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
 
   /* Layout shell: sticky sidebar rail + scrolling main column. */
-  .sidebar { align-self:start; position:sticky; top:0; height:100vh; overflow-y:auto; display:flex; flex-direction:column; background:var(--card); border-right:1px solid var(--paper-line); padding:16px 10px; z-index:20; }
+  .sidebar { height:100%; overflow-y:auto; display:flex; flex-direction:column; background:var(--card); border-right:1px solid var(--paper-line); padding:16px 10px; z-index:20; }
   .brand { display:flex; align-items:center; gap:8px; padding:4px 4px 14px; }
   .brand-name { font-family: Georgia, 'Iowan Old Style', serif; font-size:15px; line-height:1.2; flex:1; min-width:0; }
   .sidebar-toggle { background:none; border:none; cursor:pointer; color:var(--ink-soft); padding:4px; border-radius:4px; display:flex; }
@@ -99,7 +102,7 @@ export const css = `
   .sb-balance-amt { font-size:14px; }
   .sb-balance-excl { font-size:10px; color:var(--ink-soft); }
 
-  .app-main { min-width:0; padding:22px 24px 60px; }
+  .app-main { height:100%; overflow-y:auto; min-width:0; padding:22px 24px 60px; }
   .topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; border-bottom:2px solid var(--ink); padding-bottom:14px; margin-bottom:14px; }
   .topbar-total { display:flex; flex-direction:column; gap:1px; }
   .topbar-total-label { font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); }

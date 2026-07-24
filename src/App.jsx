@@ -291,9 +291,13 @@ export default function App() {
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
       // Capture phase + preventDefault means this wins over any inner
       // scroller, so the whole page moves regardless of what's under the cursor.
+      // Scrolling lives inside the main column (or the .app for block layouts),
+      // not the window — pick whichever is actually scrollable.
       e.preventDefault();
       e.stopPropagation();
-      window.scrollBy({ top: raw * unit, left: 0, behavior: "auto" });
+      const main = document.querySelector(".app-main");
+      const scroller = main && main.scrollHeight > main.clientHeight ? main : document.querySelector(".app");
+      scroller?.scrollBy({ top: raw * unit, left: 0, behavior: "auto" });
     };
     window.addEventListener("wheel", onWheel, { passive: false, capture: true });
     return () => window.removeEventListener("wheel", onWheel, { capture: true });

@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.23.2]
+
+### Fixed
+- **The app now fills the window exactly at any UI scale.** At scales other than
+  100% (and under Windows fractional-DPI scaling) the layout could fall short of
+  the bottom or spill past it. Reworked the shell to a fixed viewport with the
+  content scrolling inside its columns, removing the `vh` units that mismeasured
+  under CSS zoom.
+
+### Docs
+- Refreshed the README to describe the current feature set and release flow.
+
 ## [0.23.1]
 
 ### Fixed
