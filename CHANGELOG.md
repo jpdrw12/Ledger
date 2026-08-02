@@ -5,6 +5,14 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.25.0]
+
+### Added
+- **Update popup.** Clicking the "↑ vX.Y.Z" badge in the header now opens a
+  popup with the changelog for every version newer than the one you're on,
+  plus an Install button — instead of just switching you to Settings. The
+  same Update section in Settings still works exactly as before.
+
 ## [0.24.0]
 
 ### Added
