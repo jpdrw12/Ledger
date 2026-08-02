@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.24.0]
+
+### Added
+- **New Report tab.** Generates a single styled document covering a month
+  range you pick: net worth (with a history + 6-month forecast chart),
+  income/bills/expenses/savings/debt payments by month, account balances,
+  spending by category (with a bar chart), card spending, debt spending,
+  budgets vs. actual, bill templates, savings goals, and debts. Matches your
+  current theme and accent color. "Save as PDF" opens the system print
+  dialog directly (pick Save as PDF / Microsoft Print to PDF there); "Save
+  as HTML" writes the same report to disk to keep or reopen later — either
+  way nothing leaves your computer. Debt payments logged on a month now show
+  up itemized even before they're "applied" from the Debts tab, which they
+  previously didn't.
+
 ## [0.23.2]
 
 ### Fixed

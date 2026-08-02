@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -18,6 +18,7 @@ import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
 import DebtSpendingTab from "./components/DebtSpendingTab.jsx";
 import InsightsTab from "./components/InsightsTab.jsx";
+import ReportTab from "./components/ReportTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
 
 // Injected by Vite's define from package.json (kept current by bump-version.sh).
@@ -34,6 +35,7 @@ const TAB_HELP = {
   debts: { title: "Debts", body: "Track balances and APR. Payments reduce principal; charge interest once a month with 'Apply monthly interest'. Tick 'Spendable' to charge purchases to a debt from the Debt Spending tab." },
   debtspending: { title: "Debt Spending", body: "Log purchases charged to your spendable debts, month by month. Each charge raises that debt's balance and touches no bank account. Tick 'Spendable' on a debt first." },
   insights: { title: "Insights", body: "Net worth, spending by category, budgets, and a forecast projected from your income and recent spending." },
+  report: { title: "Report", body: "Generate a single styled document covering a month range you pick — open it in any browser, or print it to PDF from there." },
   backups: { title: "Backups", body: "Back up your ledger locally or mirror it to a synced folder. Nothing leaves this computer unless you send it." },
   settings: { title: "Settings", body: "Appearance & layout, profiles, backups, updates, keyboard shortcuts, and the interactive guide." },
 };
@@ -973,6 +975,7 @@ export default function App() {
       <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" dataTour="tab-debts" />
       <TabButton active={tab === "debtspending"} onClick={() => setTab("debtspending")} icon={<ShoppingCart size={16} />} label="Debt Spending" dataTour="tab-debtspending" />
       <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" dataTour="tab-insights" />
+      <TabButton active={tab === "report"} onClick={() => setTab("report")} icon={<FileText size={16} />} label="Report" dataTour="tab-report" />
       <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" dataTour="tab-backups" />
       <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
     </>
@@ -1156,6 +1159,7 @@ export default function App() {
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} onPatch={patchState} />}
       {tab === "debtspending" && <DebtSpendingTab state={state} onChanged={reload} />}
       {tab === "insights" && <InsightsTab state={state} ledger={ledger} onChanged={reload} />}
+      {tab === "report" && <ReportTab state={state} ledger={ledger} theme={theme} accent={accent} appVersion={APP_VERSION} />}
       {tab === "settings" && (
         <SettingsTab
           theme={theme}

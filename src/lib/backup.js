@@ -15,6 +15,15 @@ export async function exportTextFile(defaultName, contents) {
   return path;
 }
 
+// Same as exportTextFile but for the standalone HTML report (see report.js) —
+// separate filter so the save dialog defaults to .html instead of .csv.
+export async function exportHtmlFile(defaultName, contents) {
+  const path = await save({ defaultPath: defaultName, filters: [{ name: "HTML", extensions: ["html"] }] });
+  if (!path) return null;
+  await invoke("write_text_file", { path, contents });
+  return path;
+}
+
 // Prompts for a CSV file and returns its text, or null if cancelled.
 export async function importTextFile() {
   const path = await open({ multiple: false, filters: [{ name: "CSV", extensions: ["csv"] }], title: "Choose a CSV to import" });
