@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.26.1]
+
+### Fixed
+- Report charts were on the wrong sections: Card spending and Debt spending
+  had no category-breakdown chart at all (only a per-card/per-debt total
+  comparison, and only once there were 2+ of them), while the Debts section
+  had a debt-balances chart it didn't need — a short balance table is
+  already fully readable without one. Card spending and Debt spending now
+  each get a category bar chart unconditionally, plus a per-card/per-debt
+  comparison chart once there's more than one; the Debts section chart is
+  gone.
+
 ## [0.26.0]
 
 ### Added

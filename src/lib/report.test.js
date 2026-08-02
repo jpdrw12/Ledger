@@ -60,10 +60,18 @@ describe("buildReportHtml", () => {
     // Debt charge category shows up in the debt-spending section.
     expect(html).toContain("Shopping");
 
-    // Charts: net worth, spending-by-category, bills, and debts all render.
-    // (There's only one card account in this fixture, so no per-card
-    // comparison chart — that's covered by its own test below.)
-    expect((html.match(/<svg/g) || []).length).toBeGreaterThanOrEqual(4);
+    // Charts: net worth, spending-by-category, bills, card-spending-by-
+    // category, and debt-spending-by-category all render for this fixture.
+    // (Only one card and one spendable debt here, so no per-card/per-debt
+    // comparison chart — those are covered by their own tests below. The
+    // Debts section itself has no chart — a short balance table doesn't
+    // need one the way a category breakdown does.)
+    expect((html.match(/<svg/g) || []).length).toBeGreaterThanOrEqual(5);
+    expect(html).toContain('aria-label="Card spending by category"');
+    expect(html).toContain('aria-label="Debt spending by category"');
+    expect(html).not.toContain('aria-label="Debt balances"');
+    expect(html).not.toContain('aria-label="Spending per card"');
+    expect(html).not.toContain('aria-label="Spending per debt"');
 
     // APR bug fix: apr is stored as a decimal fraction (0.2 = 20%), so the
     // report must show "20%", never the raw fraction as "0.2%".
@@ -75,27 +83,27 @@ describe("buildReportHtml", () => {
     expect(html).toContain("14.33");
   });
 
-  it("shows a per-card chart only when there's more than one card account", async () => {
+  it("shows per-card and per-debt comparison charts only when there's more than one of each", async () => {
     const checking = await upsertAccount({ name: "Checking", startingBalance: 500 });
     const card1 = await upsertAccount({ name: "Visa card", startingBalance: 0, excludeFromTotal: true });
     const card2 = await upsertAccount({ name: "Amex card", startingBalance: 0, excludeFromTotal: true });
+    const debt1 = await upsertDebt({ name: "Visa", apr: 0.2, balance: 100, spendable: true });
+    const debt2 = await upsertDebt({ name: "Amex", apr: 0.2, balance: 100, spendable: true });
     const label = "March 2026";
     const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
     await addExpense(m1, 1, { category: "Dining out", amount: 20, tag: "", accountId: card1 });
     await addExpense(m1, 1, { category: "Groceries", amount: 30, tag: "", accountId: card2 });
+    await addDebtCharge(debt1, { monthLabel: label, category: "Shopping", amount: 15 });
+    await addDebtCharge(debt2, { monthLabel: label, category: "Travel", amount: 25 });
 
     const state = await loadFullState();
     const ledger = computeLedger(state.months, state.accounts);
     const html = buildReportHtml(state, ledger, {});
 
-    expect(html).toContain("Visa card");
-    expect(html).toContain("Amex card");
-    // Net worth chart always renders; a second card account adds the
-    // per-card comparison chart too. (Both expenses here are on cards, so
-    // the non-card spending-by-category chart has nothing to draw and
-    // correctly doesn't render — this test only checks the card chart.)
-    expect((html.match(/<svg/g) || []).length).toBeGreaterThanOrEqual(2);
     expect(html).toContain('aria-label="Spending per card"');
+    expect(html).toContain('aria-label="Spending per debt"');
+    expect(html).toContain('aria-label="Card spending by category"');
+    expect(html).toContain('aria-label="Debt spending by category"');
   });
 
   it("scopes month-based sections to a narrower range without erroring", async () => {

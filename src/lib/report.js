@@ -347,14 +347,6 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     })),
     { emptyLabel: "No debts tracked." }
   );
-  const debtsChart = (state.debts || []).length
-    ? barChartSvg(
-        (state.debts || [])
-          .map((d) => ({ category: d.name, total: Number(d.balance) || 0 }))
-          .sort((a, b) => b.total - a.total),
-        { ariaLabel: "Debt balances" }
-      )
-    : "";
 
   const rangeLabels = new Set(rangeMonths.map((m) => m.monthLabel));
 
@@ -426,15 +418,19 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   const cardCategories = cardAccounts.length ? spendingByCategory(rangeMonths, { include: cardIds }) : [];
   const cardTotal = cardCategories.reduce((s, c) => s + c.total, 0);
+  const cardCategoriesChart = cardCategories.length
+    ? barChartSvg([...cardCategories].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Card spending by category" })
+    : "";
   const cardTotalsByAccount = cardAccounts.length ? spendByAccount(rangeMonths, cardAccounts.map((a) => a.id)) : [];
-  const cardsChart = cardAccounts.length
+  const cardsChart = cardAccounts.length > 1
     ? barChartSvg(
         cardTotalsByAccount.map((r) => ({ category: (cardAccounts.find((a) => a.id === r.accountId) || {}).name || "—", total: r.total })),
         { ariaLabel: "Spending per card" }
       )
     : "";
   const cardSection = cardAccounts.length
-    ? (cardAccounts.length > 1 ? cardsChart : "") +
+    ? cardsChart +
+      cardCategoriesChart +
       table(
         [
           { key: "category", label: "Category" },
@@ -446,12 +442,25 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   const debtChargesInRange = (state.debtCharges || []).filter((c) => rangeLabels.has(c.monthLabel));
   const debtSpendCats = debtSpendingByCategory(debtChargesInRange);
+  const debtSpendCatsChart = debtSpendCats.length
+    ? barChartSvg([...debtSpendCats].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Debt spending by category" })
+    : "";
   const spendableDebts = (state.debts || []).filter((d) => d.spendable);
   const debtSpendByDebtRows = spendableDebts.length
     ? debtSpendByDebt(debtChargesInRange, spendableDebts.map((d) => d.id))
     : [];
+  const debtSpendByDebtChart = spendableDebts.length > 1
+    ? barChartSvg(
+        debtSpendByDebtRows
+          .filter((r) => r.total > 0)
+          .map((r) => ({ category: (state.debts.find((d) => d.id === r.debtId) || {}).name || "—", total: r.total })),
+        { ariaLabel: "Spending per debt" }
+      )
+    : "";
   const debtSpendSection = spendableDebts.length
-    ? table(
+    ? debtSpendByDebtChart +
+      debtSpendCatsChart +
+      table(
         [{ key: "category", label: "Category" }, { key: "total", label: "Total", num: true, render: (r) => money(r.total) }],
         debtSpendCats.map((c) => ({ category: c.category, total: c.total })),
         { emptyLabel: "No debt charges logged in this range." }
@@ -563,7 +572,6 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   <section>
     <h2>Debts</h2>
-    ${debtsChart}
     ${debtsSection}
     <h3>Payments in range</h3>
     ${debtPaymentsSection}
