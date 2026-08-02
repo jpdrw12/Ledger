@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money } from "../lib/calc.js";
+import { money, estimateMonthlyInterest } from "../lib/calc.js";
 import { Field, parseNumberInput, useDragList, DragHandle, patchEntity } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
@@ -121,6 +121,12 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
                 onChange={(e) => setPaymentDrafts((p) => ({ ...p, [debt.id]: e.target.value }))}
               />
             </div>
+            {debt.balance > 0 && debt.apr > 0 && (
+              <p className="due-date-hint">
+                Est. interest at this balance: <strong>{money(estimateMonthlyInterest(debt.balance, debt.apr))}</strong>/month
+                {" "}({money(estimateMonthlyInterest(debt.balance, debt.apr) * 12)}/year) — what "Apply monthly interest" would charge right now.
+              </p>
+            )}
             <div className="debt-actions">
               <button className="btn-secondary" onClick={() => applyPayment(debt)}>
                 Apply payment

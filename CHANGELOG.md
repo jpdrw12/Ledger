@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.26.0]
+
+### Added
+- **Estimated interest on debt cards.** Each debt card on the Debts tab now
+  shows what "Apply monthly interest" would charge right now, given the
+  current balance and APR — both monthly and yearly. Also added the same
+  figure as a column in the Report's Debts table.
+- **More charts in the Report.** Bar charts for debt balances, bill default
+  amounts, and (when there's more than one card) spending per card — on top
+  of the existing net worth and category-spending charts.
+
+### Fixed
+- The Report's Debts table was showing raw APR as a percentage (e.g. an APR
+  of 0.299 rendered as "0.299%" instead of "29.9%").
+
 ## [0.25.0]
 
 ### Added

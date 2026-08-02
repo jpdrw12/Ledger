@@ -468,6 +468,15 @@ export function debtSpendByDebt(charges, debtIds) {
     .sort((a, b) => b.total - a.total);
 }
 
+// Preview of what "Apply monthly interest" (db.js's applyMonthlyInterest)
+// would charge right now, given the debt's current balance. Deliberately
+// mirrors that function's rounding exactly so the preview on the Debts tab
+// never disagrees with what actually gets charged. apr is a decimal
+// fraction (0.299, not 29.9).
+export function estimateMonthlyInterest(balance, apr) {
+  return Math.round((Number(balance) || 0) * ((Number(apr) || 0) / 12) * 100) / 100;
+}
+
 // Debt-budget report for a single month label: total allowance (the reserved ''
 // category row) and per-category targets vs what was actually charged that month
 // on spendable debts. Pure — no I/O. Mirrors cardBudgetReport.

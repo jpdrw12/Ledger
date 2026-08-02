@@ -25,6 +25,7 @@ import {
   debtSpendingByCategory,
   debtMonthlyTotals,
   debtSpendByDebt,
+  estimateMonthlyInterest,
   debtBudgetReport,
   buildDebtSpendingCsv,
 } from "./calc.js";
@@ -755,6 +756,18 @@ describe("debt spending helpers", () => {
       { debtId: "d1", total: 200 }, // 100 + 40 + 60
       { debtId: "d2", total: 25 },
     ]);
+  });
+
+  it("estimateMonthlyInterest matches db.js's applyMonthlyInterest formula", () => {
+    // balance * (apr/12), rounded to cents — same as db.js's applyMonthlyInterest.
+    expect(estimateMonthlyInterest(1000, 0.24)).toBe(20); // 1000 * 0.02
+    expect(estimateMonthlyInterest(2500, 0.299)).toBe(62.29); // 2500 * 0.0249166... -> 62.2916 -> 62.29
+    expect(estimateMonthlyInterest(0, 0.2)).toBe(0);
+    expect(estimateMonthlyInterest(500, 0)).toBe(0);
+    // Faithfully mirrors db.js's formula (no clamping) — the UI only ever
+    // renders this for balance > 0 && apr > 0, so a negative balance isn't a
+    // case that needs special-casing here, just accurate math.
+    expect(estimateMonthlyInterest(-100, 0.2)).toBe(-1.67);
   });
 
   it("debtBudgetReport scopes to one month label with allowance + per-category", () => {

@@ -12,10 +12,12 @@ import {
   computeGoalBalances,
   latestAccountBalances,
   spendingByCategory,
+  spendByAccount,
   netWorthSnapshot,
   budgetReport,
   debtSpendingByCategory,
   debtSpendByDebt,
+  estimateMonthlyInterest,
   projectLedger,
   monthlyEndingBalances,
   money,
@@ -108,6 +110,9 @@ function esc(v) {
     .replace(/"/g, "&quot;");
 }
 const amtClass = (n) => (Number(n) < 0 ? "neg" : "pos");
+// APR is stored as a decimal fraction (0.299, not 29.9) — one decimal place,
+// no trailing zeros.
+const pct = (frac) => `${Math.round((Number(frac) || 0) * 1000) / 10}%`;
 const table = (headers, rows, opts = {}) => {
   if (!rows.length) return `<p class="empty">${esc(opts.emptyLabel || "Nothing to show here.")}</p>`;
   const th = headers.map((h) => `<th class="${h.num ? "num" : ""}">${esc(h.label)}</th>`).join("");
@@ -301,6 +306,14 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     })),
     { emptyLabel: "No bill templates yet." }
   );
+  const billsChart = (state.bills || []).length
+    ? barChartSvg(
+        [...(state.bills || [])]
+          .map((b) => ({ category: b.name, total: Number(b.defaultAmount) || 0 }))
+          .sort((a, b) => b.total - a.total),
+        { ariaLabel: "Bill default amounts" }
+      )
+    : "";
 
   const goalsSection = table(
     [
@@ -320,13 +333,28 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   const debtsSection = table(
     [
       { key: "name", label: "Debt" },
-      { key: "apr", label: "APR", num: true, render: (r) => `${r.apr}%` },
+      { key: "apr", label: "APR", num: true, render: (r) => pct(r.apr) },
       { key: "balance", label: "Current balance", num: true, render: (r) => money(r.balance) },
+      { key: "estInterest", label: "Est. interest/mo", num: true, render: (r) => money(r.estInterest) },
       { key: "spendable", label: "Spendable" },
     ],
-    (state.debts || []).map((d) => ({ name: d.name, apr: d.apr || 0, balance: d.balance, spendable: d.spendable ? "Yes" : "No" })),
+    (state.debts || []).map((d) => ({
+      name: d.name,
+      apr: d.apr || 0,
+      balance: d.balance,
+      estInterest: estimateMonthlyInterest(d.balance, d.apr),
+      spendable: d.spendable ? "Yes" : "No",
+    })),
     { emptyLabel: "No debts tracked." }
   );
+  const debtsChart = (state.debts || []).length
+    ? barChartSvg(
+        (state.debts || [])
+          .map((d) => ({ category: d.name, total: Number(d.balance) || 0 }))
+          .sort((a, b) => b.total - a.total),
+        { ariaLabel: "Debt balances" }
+      )
+    : "";
 
   const rangeLabels = new Set(rangeMonths.map((m) => m.monthLabel));
 
@@ -398,8 +426,16 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   const cardCategories = cardAccounts.length ? spendingByCategory(rangeMonths, { include: cardIds }) : [];
   const cardTotal = cardCategories.reduce((s, c) => s + c.total, 0);
+  const cardTotalsByAccount = cardAccounts.length ? spendByAccount(rangeMonths, cardAccounts.map((a) => a.id)) : [];
+  const cardsChart = cardAccounts.length
+    ? barChartSvg(
+        cardTotalsByAccount.map((r) => ({ category: (cardAccounts.find((a) => a.id === r.accountId) || {}).name || "—", total: r.total })),
+        { ariaLabel: "Spending per card" }
+      )
+    : "";
   const cardSection = cardAccounts.length
-    ? table(
+    ? (cardAccounts.length > 1 ? cardsChart : "") +
+      table(
         [
           { key: "category", label: "Category" },
           { key: "total", label: "Total", num: true, render: (r) => money(r.total) },
@@ -516,6 +552,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   <section>
     <h2>Bill templates</h2>
+    ${billsChart}
     ${billsSection}
   </section>
 
@@ -526,6 +563,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   <section>
     <h2>Debts</h2>
+    ${debtsChart}
     ${debtsSection}
     <h3>Payments in range</h3>
     ${debtPaymentsSection}
