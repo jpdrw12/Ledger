@@ -449,6 +449,10 @@ export const css = `
   .modal-card { background:var(--card); border:1px solid var(--paper-line); border-radius:5px; padding:20px; max-width:440px; box-shadow:0 6px 24px rgba(0,0,0,0.3); }
   .modal-message { margin:0 0 16px; font-size:14px; color:var(--ink); line-height:1.5; }
   .modal-actions { display:flex; justify-content:flex-end; gap:10px; }
+  .update-modal-card { max-width:520px; max-height:80vh; overflow-y:auto; }
+  .update-modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:15px; }
+  .update-modal-close { background:none; border:none; cursor:pointer; color:var(--ink-soft); padding:2px; display:flex; }
+  .update-modal-close:hover { color:var(--ink); }
   .btn-danger { display:flex; align-items:center; gap:6px; background:var(--deficit); color:#fff; border:none; padding:8px 14px; border-radius:3px; cursor:pointer; font-size:13px; }
   .btn-danger:hover { background:#8f3322; }
   .block-hint { font-size:11px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-soft); }

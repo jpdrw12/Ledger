@@ -11,7 +11,8 @@ const SHORTCUTS = [
 import { closeDb } from "../lib/db.js";
 import { invoke } from "@tauri-apps/api/core";
 import { PROFILE_SLOTS, activeProfileDb, getProfiles, saveProfiles, addProfile, setActiveProfile, removeProfile } from "../lib/profiles.js";
-import { parseChangelog, notesSince } from "../lib/update.js";
+import { parseChangelog } from "../lib/update.js";
+import UpdatePanel from "./UpdatePanel.jsx";
 import changelogText from "../../CHANGELOG.md?raw";
 import { useToast } from "./Toast.jsx";
 
@@ -54,17 +55,8 @@ function SettingsTab({
   const [showChangelog, setShowChangelog] = useState(false);
   const active = activeProfileDb();
 
-  // "What's new" preview: notes for every version newer than the running one,
-  // parsed from the CHANGELOG.md fetched with the update check.
-  const whatsNew = hasUpdate ? notesSince(parseChangelog(updateInfo.changelogMd), appVersion) : "";
   // Full history from the bundled changelog (works offline).
   const changelogSections = parseChangelog(changelogText);
-
-  const phaseLabel =
-    updatePhase === "downloading" ? "Downloading update…"
-    : updatePhase === "installing" ? "Installing… you may be asked for your password"
-    : updatePhase === "restarting" ? "Update installed — restarting…"
-    : null;
 
   const renameProfile = (slot, name) => {
     const next = { ...profiles, [slot]: name.trim() || profiles[slot] };
@@ -167,29 +159,14 @@ function SettingsTab({
             <p className="empty small" style={{ marginTop: 4 }}>
               <strong>Update available: v{updateInfo.latestVersion}</strong>
             </p>
-            {whatsNew && (
-              <div className="changelog-preview">
-                <div className="small-label" style={{ marginBottom: 6 }}>What's new</div>
-                <pre className="changelog-body">{whatsNew}</pre>
-              </div>
-            )}
-            {phaseLabel ? (
-              <div className="update-progress">
-                <div className="update-progress-bar"><div className="update-progress-fill" /></div>
-                <span className="small-label">{phaseLabel}</span>
-                {updatePhase === "restarting" && (
-                  <button className="btn-secondary" onClick={onRestart}>
-                    <RefreshCw size={13} /> Restart now
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="backup-folder">
-                <button className="btn-primary" onClick={onInstallUpdate} disabled={updateBusy}>
-                  <Download size={13} /> Install v{updateInfo.latestVersion}
-                </button>
-              </div>
-            )}
+            <UpdatePanel
+              appVersion={appVersion}
+              updateInfo={updateInfo}
+              updateBusy={updateBusy}
+              updatePhase={updatePhase}
+              onInstallUpdate={onInstallUpdate}
+              onRestart={onRestart}
+            />
           </>
         )}
 

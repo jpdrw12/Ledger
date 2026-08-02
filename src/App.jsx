@@ -8,6 +8,7 @@ import { TabButton, ExpandContext } from "./components/Shared.jsx";
 import { activeProfileName, activeProfileDb, getProfiles, setActiveProfile, PROFILE_SLOTS, DEMO_DB } from "./lib/profiles.js";
 import { resetAndSeedDemo } from "./lib/demo.js";
 import TourOverlay, { TOUR_STEPS } from "./components/TourOverlay.jsx";
+import UpdateModal from "./components/UpdateModal.jsx";
 import { useToast } from "./components/Toast.jsx";
 import { checkForUpdate, installUpdate, restartApp, isNewer } from "./lib/update.js";
 import MonthsTab from "./components/MonthsTab.jsx";
@@ -183,6 +184,8 @@ export default function App() {
   const [updateError, setUpdateError] = useState(null);
   // Install phase for progress feedback: null | "downloading" | "installing" | "restarting".
   const [updatePhase, setUpdatePhase] = useState(null);
+  // Popup shown when the header "↑ vX.Y.Z" badge is clicked.
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   // Interactive guide: runs against a throwaway "Demo" profile (see startTour).
   const [tourActive, setTourActive] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -1038,7 +1041,7 @@ export default function App() {
                 <h1>
                   {activeProfileName()}'s Ledger <span className="app-version">v{APP_VERSION}</span>
                   {hasUpdate && (
-                    <button className="update-badge" onClick={() => setTab("settings")} title={`Update available: v${updateInfo.latestVersion} — open Settings`}>
+                    <button className="update-badge" onClick={() => setShowUpdateModal(true)} title={`Update available: v${updateInfo.latestVersion}`}>
                       ↑ v{updateInfo.latestVersion}
                     </button>
                   )}
@@ -1097,7 +1100,7 @@ export default function App() {
                 </button>
               )}
               {hasUpdate && (
-                <button className="update-badge" onClick={() => setTab("settings")} title={`Update available: v${updateInfo.latestVersion} — open Settings`}>
+                <button className="update-badge" onClick={() => setShowUpdateModal(true)} title={`Update available: v${updateInfo.latestVersion}`}>
                   ↑ v{updateInfo.latestVersion}
                 </button>
               )}
@@ -1258,6 +1261,18 @@ export default function App() {
           onBack={() => setTourStep((s) => Math.max(0, s - 1))}
           onJumpTo={(i) => setTourStep(i)}
           onExit={exitTour}
+        />
+      )}
+
+      {showUpdateModal && hasUpdate && (
+        <UpdateModal
+          appVersion={APP_VERSION}
+          updateInfo={updateInfo}
+          updateBusy={updateBusy}
+          updatePhase={updatePhase}
+          onInstallUpdate={handleInstallUpdate}
+          onRestart={handleRestartApp}
+          onClose={() => setShowUpdateModal(false)}
         />
       )}
 
