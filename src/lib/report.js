@@ -199,6 +199,56 @@ function barChartSvg(rows, { width = 680, barHeight = 20, gap = 9, labelWidth = 
   return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${esc(ariaLabel)}">${bars}</svg>`;
 }
 
+// "Jan 2026" -> "Jan '26" — short enough to fit as an x-axis tick without
+// the report table's full month labels overlapping each other.
+function shortMonthLabel(label) {
+  const [mon, year] = String(label).split(" ");
+  return year ? `${(mon || "").slice(0, 3)} '${year.slice(-2)}` : label;
+}
+
+// Grouped vertical bar chart: one cluster of colored bars per month, so
+// several figures (income/bills/expenses/...) can be compared side by side
+// across the range, month over month — a visual companion to the Months
+// table rather than a replacement for it.
+function groupedBarChartSvg(labels, series, { width = 680, height = 200, pad = 28, ariaLabel = "Comparison" } = {}) {
+  if (!labels.length || !series.length) return `<p class="empty small">Not enough data to chart.</p>`;
+  const allValues = series.flatMap((s) => s.values);
+  const max = Math.max(...allValues, 0);
+  const min = Math.min(...allValues, 0);
+  const span = max - min || 1;
+  const plotH = height - pad - 20; // leave room for x-axis labels
+  const zeroY = pad + plotH - ((0 - min) / span) * plotH;
+  const groupWidth = (width - 2 * pad) / labels.length;
+  const gap = 2;
+  const barWidth = Math.max(2, (groupWidth - gap * (series.length + 1)) / series.length);
+
+  let bars = "";
+  labels.forEach((label, gi) => {
+    const groupX = pad + gi * groupWidth;
+    series.forEach((s, si) => {
+      const v = s.values[gi] || 0;
+      const barH = (Math.abs(v) / span) * plotH;
+      const x = groupX + gap + si * (barWidth + gap);
+      const y = v >= 0 ? zeroY - barH : zeroY;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" fill="${s.color}"><title>${esc(s.label)} — ${esc(label)}: ${esc(money(v))}</title></rect>`;
+    });
+  });
+  const ticks = labels
+    .map((label, gi) => `<text x="${(pad + gi * groupWidth + groupWidth / 2).toFixed(1)}" y="${height - 4}" text-anchor="middle" font-size="9" fill="var(--ink-soft)">${esc(shortMonthLabel(label))}</text>`)
+    .join("");
+  const legend = series
+    .map((s) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="width:9px;height:9px;border-radius:2px;background:${s.color};display:inline-block;"></span>${esc(s.label)}</span>`)
+    .join("");
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${esc(ariaLabel)}">
+      <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${width - pad}" y2="${zeroY.toFixed(1)}" stroke="var(--line)" stroke-width="1" />
+      ${bars}
+      ${ticks}
+    </svg>
+    <div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${legend}</div>
+  `;
+}
+
 export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme = "light", accent = "green", profileName = "", appVersion = "" } = {}) {
   const months = state.months || [];
   const rangeMonths = sliceRange(months, fromMonthId, toMonthId);
@@ -247,6 +297,17 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   });
 
   // --- Sections ----------------------------------------------------------
+  const monthRows = rangeMonths
+    .filter((m) => ledger[m.id])
+    .map((m) => ({
+      monthLabel: m.monthLabel,
+      income: ledger[m.id].totalIncome + ledger[m.id].totalAdditions,
+      bills: ledger[m.id].totalBills,
+      expenses: ledger[m.id].totalExpensesPay1 + ledger[m.id].totalExpensesPay2,
+      savings: ledger[m.id].totalGoals,
+      debt: ledger[m.id].totalDebtPayments,
+      end: ledger[m.id].consolidatedCarryOut,
+    }));
   const monthsSection = table(
     [
       { key: "monthLabel", label: "Month" },
@@ -257,19 +318,22 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       { key: "debt", label: "Debt pmts", num: true, render: (r) => money(r.debt) },
       { key: "end", label: "Ending balance", num: true, render: (r) => money(r.end), cls: (r) => amtClass(r.end) },
     ],
-    rangeMonths
-      .filter((m) => ledger[m.id])
-      .map((m) => ({
-        monthLabel: m.monthLabel,
-        income: ledger[m.id].totalIncome + ledger[m.id].totalAdditions,
-        bills: ledger[m.id].totalBills,
-        expenses: ledger[m.id].totalExpensesPay1 + ledger[m.id].totalExpensesPay2,
-        savings: ledger[m.id].totalGoals,
-        debt: ledger[m.id].totalDebtPayments,
-        end: ledger[m.id].consolidatedCarryOut,
-      })),
+    monthRows,
     { emptyLabel: "No months in the selected range." }
   );
+  const monthsChart = monthRows.length
+    ? groupedBarChartSvg(
+        monthRows.map((r) => r.monthLabel),
+        [
+          { label: "Income", color: "var(--surplus)", values: monthRows.map((r) => r.income) },
+          { label: "Bills", color: "var(--accent)", values: monthRows.map((r) => r.bills) },
+          { label: "Expenses", color: "var(--deficit)", values: monthRows.map((r) => r.expenses) },
+          { label: "Savings", color: "var(--ink-soft)", values: monthRows.map((r) => r.savings) },
+          { label: "Debt payments", color: "color-mix(in srgb, var(--accent) 45%, var(--ink))", values: monthRows.map((r) => r.debt) },
+        ],
+        { ariaLabel: "Income, bills, expenses, savings, and debt payments by month" }
+      )
+    : "";
 
   const accountsSection = table(
     [
@@ -306,14 +370,6 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     })),
     { emptyLabel: "No bill templates yet." }
   );
-  const billsChart = (state.bills || []).length
-    ? barChartSvg(
-        [...(state.bills || [])]
-          .map((b) => ({ category: b.name, total: Number(b.defaultAmount) || 0 }))
-          .sort((a, b) => b.total - a.total),
-        { ariaLabel: "Bill default amounts" }
-      )
-    : "";
 
   const goalsSection = table(
     [
@@ -415,12 +471,20 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     [...nonCardCategories].sort((a, b) => b.total - a.total).slice(0, 10),
     { ariaLabel: "Spending by category" }
   );
+  const spendTrend = rangeMonths.length >= 2
+    ? rangeMonths.map((m) => ({ id: m.id, label: m.monthLabel, value: spendingByCategory([m], { exclude: cardIds }).reduce((s, c) => s + c.total, 0) }))
+    : [];
+  const spendTrendChart = spendTrend.length >= 2 ? lineChartSvg(spendTrend, new Set(), { ariaLabel: "Spending by month" }) : "";
 
   const cardCategories = cardAccounts.length ? spendingByCategory(rangeMonths, { include: cardIds }) : [];
   const cardTotal = cardCategories.reduce((s, c) => s + c.total, 0);
   const cardCategoriesChart = cardCategories.length
     ? barChartSvg([...cardCategories].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Card spending by category" })
     : "";
+  const cardTrend = cardAccounts.length && rangeMonths.length >= 2
+    ? rangeMonths.map((m) => ({ id: m.id, label: m.monthLabel, value: spendingByCategory([m], { include: cardIds }).reduce((s, c) => s + c.total, 0) }))
+    : [];
+  const cardTrendChart = cardTrend.length >= 2 ? lineChartSvg(cardTrend, new Set(), { ariaLabel: "Card spending by month" }) : "";
   const cardTotalsByAccount = cardAccounts.length ? spendByAccount(rangeMonths, cardAccounts.map((a) => a.id)) : [];
   const cardsChart = cardAccounts.length > 1
     ? barChartSvg(
@@ -429,7 +493,8 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       )
     : "";
   const cardSection = cardAccounts.length
-    ? cardsChart +
+    ? cardTrendChart +
+      cardsChart +
       cardCategoriesChart +
       table(
         [
@@ -446,6 +511,14 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     ? barChartSvg([...debtSpendCats].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Debt spending by category" })
     : "";
   const spendableDebts = (state.debts || []).filter((d) => d.spendable);
+  const debtTrend = spendableDebts.length && rangeMonths.length >= 2
+    ? rangeMonths.map((m) => ({
+        id: m.id,
+        label: m.monthLabel,
+        value: debtChargesInRange.filter((c) => c.monthLabel === m.monthLabel).reduce((s, c) => s + (Number(c.amount) || 0), 0),
+      }))
+    : [];
+  const debtTrendChart = debtTrend.length >= 2 ? lineChartSvg(debtTrend, new Set(), { ariaLabel: "Debt spending by month" }) : "";
   const debtSpendByDebtRows = spendableDebts.length
     ? debtSpendByDebt(debtChargesInRange, spendableDebts.map((d) => d.id))
     : [];
@@ -458,7 +531,8 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       )
     : "";
   const debtSpendSection = spendableDebts.length
-    ? debtSpendByDebtChart +
+    ? debtTrendChart +
+      debtSpendByDebtChart +
       debtSpendCatsChart +
       table(
         [{ key: "category", label: "Category" }, { key: "total", label: "Total", num: true, render: (r) => money(r.total) }],
@@ -530,6 +604,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   <section>
     <h2>Months</h2>
+    ${monthsChart}
     ${monthsSection}
   </section>
 
@@ -540,6 +615,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   <section>
     <h2>Spending by category</h2>
+    ${spendTrendChart}
     ${spendingChart}
     ${spendingSection}
   </section>
@@ -561,7 +637,6 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   <section>
     <h2>Bill templates</h2>
-    ${billsChart}
     ${billsSection}
   </section>
 

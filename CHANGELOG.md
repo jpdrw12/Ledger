@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.27.0]
+
+### Added
+- **Month-over-month trend lines in the Report.** Spending, card spending,
+  and debt spending each get a simple line chart of the monthly total
+  across the selected range, above their existing category breakdown —
+  answers "is this going up or down" alongside "where did it go."
+- **Grouped bar chart in the Months section.** Income, bills, expenses,
+  savings, and debt payments as a cluster of bars per month, so the whole
+  range's shape is visible at a glance instead of only reading the table.
+
+### Removed
+- The bill-default-amounts bar chart — wasn't earning its place next to the
+  bill templates table.
+
 ## [0.26.1]
 
 ### Fixed

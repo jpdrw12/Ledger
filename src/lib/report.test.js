@@ -60,15 +60,21 @@ describe("buildReportHtml", () => {
     // Debt charge category shows up in the debt-spending section.
     expect(html).toContain("Shopping");
 
-    // Charts: net worth, spending-by-category, bills, card-spending-by-
-    // category, and debt-spending-by-category all render for this fixture.
-    // (Only one card and one spendable debt here, so no per-card/per-debt
-    // comparison chart — those are covered by their own tests below. The
-    // Debts section itself has no chart — a short balance table doesn't
-    // need one the way a category breakdown does.)
-    expect((html.match(/<svg/g) || []).length).toBeGreaterThanOrEqual(5);
+    // Charts: net worth, the new months grouped-bar comparison, spending
+    // trend + category, card spending trend + category, and debt spending
+    // trend + category all render for this fixture (two real months, one
+    // card, one spendable debt — no per-card/per-debt comparison chart
+    // since that needs more than one of each; covered below. No bills
+    // chart — removed as not useful. No debt-balances chart — a short
+    // balance table doesn't need one the way a category breakdown does.)
+    expect((html.match(/<svg/g) || []).length).toBeGreaterThanOrEqual(8);
+    expect(html).toContain('aria-label="Income, bills, expenses, savings, and debt payments by month"');
+    expect(html).toContain('aria-label="Spending by month"');
+    expect(html).toContain('aria-label="Card spending by month"');
+    expect(html).toContain('aria-label="Debt spending by month"');
     expect(html).toContain('aria-label="Card spending by category"');
     expect(html).toContain('aria-label="Debt spending by category"');
+    expect(html).not.toContain('aria-label="Bill default amounts"');
     expect(html).not.toContain('aria-label="Debt balances"');
     expect(html).not.toContain('aria-label="Spending per card"');
     expect(html).not.toContain('aria-label="Spending per debt"');
@@ -81,6 +87,23 @@ describe("buildReportHtml", () => {
     // from 800 to 860 first (a spendable-debt charge increases what's
     // owed), so interest is estimated on 860: 860 * (0.2/12) = 14.33.
     expect(html).toContain("14.33");
+  });
+
+  it("skips trend-line charts when the range is a single month", async () => {
+    const { m1 } = await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, { fromMonthId: m1, toMonthId: m1 });
+
+    // Trend lines need at least two months to mean anything; a single-month
+    // range shouldn't render "need at least two months" placeholder text
+    // for them, it should just omit them.
+    expect(html).not.toContain('aria-label="Spending by month"');
+    expect(html).not.toContain('aria-label="Card spending by month"');
+    expect(html).not.toContain('aria-label="Debt spending by month"');
+    expect(html).not.toContain("Need at least two months");
+    // The category/comparison charts still render fine for one month.
+    expect(html).toContain('aria-label="Income, bills, expenses, savings, and debt payments by month"');
   });
 
   it("shows per-card and per-debt comparison charts only when there's more than one of each", async () => {
