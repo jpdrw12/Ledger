@@ -71,20 +71,36 @@ function CardTab({ state, onChanged }) {
         toast("No expense rows found in that file.", "error");
         return;
       }
-      // Same known limitation as the Months tab's expense import: everything
-      // lands on the first card account. Reassign individual rows after if
-      // you're tracking more than one card and need a specific split.
+      let imported = 0;
+      const failed = [];
       for (const r of rows) {
-        await db.addExpense(monthId, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId: cardAccounts[0].id });
+        let accountId = cardAccounts[0].id; // default when the Account column is blank/absent
+        if (r.account) {
+          const match = cardAccounts.find((a) => a.name.toLowerCase() === r.account.toLowerCase());
+          if (!match) {
+            failed.push(`Card "${r.account}" not found`);
+            continue;
+          }
+          accountId = match.id;
+        }
+        await db.addExpense(monthId, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId });
+        imported++;
       }
       onChanged();
-      toast(`Imported ${rows.length} card expense${rows.length === 1 ? "" : "s"} into ${monthLabel}.`, "success");
+      const summary = imported ? `Imported ${imported} card expense${imported === 1 ? "" : "s"} into ${monthLabel}.` : "Nothing imported.";
+      if (failed.length) {
+        toast(`${summary} ${failed.length} row${failed.length === 1 ? "" : "s"} skipped — first: ${failed[0]}`, imported ? "success" : "error");
+      } else {
+        toast(summary, "success");
+      }
     } catch (e) {
       toast(`Import failed: ${e}`, "error");
     }
   };
   const exportCardTemplate = async () => {
-    const csv = "Category,Amount,Tag\nCoffee,4.50,\nGas,40.00,\n";
+    const csv = cardAccounts.length > 1
+      ? `Category,Amount,Tag,Account\nCoffee,4.50,,${cardAccounts[0].name}\nGas,40.00,,${cardAccounts[1].name}\n`
+      : "Category,Amount,Tag\nCoffee,4.50,\nGas,40.00,\n";
     try {
       const path = await exportTextFile("card-expenses-template.csv", csv);
       if (path) toast(`Template saved to ${path}`, "success");
@@ -182,7 +198,7 @@ function CardTab({ state, onChanged }) {
                 <button className="btn-secondary" onClick={() => addCardExpense(m.id)}>
                   <Plus size={13} /> Add card expense
                 </button>
-                <button className="btn-secondary" onClick={() => importCardExpenses(m.id, m.monthLabel)} title="Import card expenses from a CSV (Category, Amount, Tag) — lands on your first card account">
+                <button className="btn-secondary" onClick={() => importCardExpenses(m.id, m.monthLabel)} title="Import card expenses from a CSV (Category, Amount, Tag, optional Account) — Account picks which card; blank lands on your first card">
                   <Upload size={13} /> Import CSV
                 </button>
               </div>

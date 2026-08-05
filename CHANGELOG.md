@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.29.0]
+
+### Added
+- **Account/Debt columns on the Card and Debt spending imports.** Both
+  previously always landed every imported row on your first card/debt,
+  requiring manual reassignment afterward if you track more than one. An
+  optional Account column (Card tab) or Debt column (Debt Spending tab)
+  now lets each row pick its target by name; still defaults to the first
+  one when left blank. An unrecognized name is skipped and reported rather
+  than silently misassigned. Template exports include the extra column
+  automatically once you have more than one card/debt.
+
 ## [0.28.0]
 
 ### Added

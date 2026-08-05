@@ -483,21 +483,29 @@ describe("parseExpensesCsv", () => {
   it("reads a Category/Amount/Tag header in any order, magnitudes for amounts", () => {
     const csv = "Amount,Category,Tag\n-120,Groceries,food\n-40,Gas,";
     expect(parseExpensesCsv(csv)).toEqual([
-      { category: "Groceries", amount: 120, tag: "food" },
-      { category: "Gas", amount: 40, tag: "" },
+      { category: "Groceries", amount: 120, tag: "food", account: "", debt: "" },
+      { category: "Gas", amount: 40, tag: "", account: "", debt: "" },
     ]);
   });
 
   it("falls back to column order when there's no header", () => {
     expect(parseExpensesCsv("Groceries,55\nGas,30")).toEqual([
-      { category: "Groceries", amount: 55, tag: "" },
-      { category: "Gas", amount: 30, tag: "" },
+      { category: "Groceries", amount: 55, tag: "", account: "", debt: "" },
+      { category: "Gas", amount: 30, tag: "", account: "", debt: "" },
     ]);
   });
 
   it("skips blank rows and ignores currency symbols/separators", () => {
     expect(parseExpensesCsv('Category,Amount\nGroceries,"$1,200.50"\n\n')).toEqual([
-      { category: "Groceries", amount: 1200.5, tag: "" },
+      { category: "Groceries", amount: 1200.5, tag: "", account: "", debt: "" },
+    ]);
+  });
+
+  it("reads optional Account and Debt columns for the Card/Debt spending imports", () => {
+    const csv = "Category,Amount,Account,Debt\nCoffee,4.50,Visa card,\nShopping,60,,Store Card\n";
+    expect(parseExpensesCsv(csv)).toEqual([
+      { category: "Coffee", amount: 4.5, tag: "", account: "Visa card", debt: "" },
+      { category: "Shopping", amount: 60, tag: "", account: "", debt: "Store Card" },
     ]);
   });
 });

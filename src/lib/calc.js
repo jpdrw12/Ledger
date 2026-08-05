@@ -625,25 +625,34 @@ export function parseActivityCsv(text) {
   return { rows: out, skipped };
 }
 
-// Parses expense rows from CSV text. Recognizes a Category/Amount/Tag header
-// (any order); otherwise assumes column order category, amount, tag. Amounts
-// are taken as magnitudes (so the negative amounts our export writes import
-// cleanly). Skips blank rows.
+// Parses expense-shaped rows from CSV text: Category, Amount, Tag, and two
+// optional target columns — Account (which card, for the Card tab's
+// import) and Debt (which debt, for the Debt Spending tab's import).
+// Recognizes a header in any order/subset; otherwise assumes column order
+// category, amount, tag (Account/Debt are header-only — there's no
+// positional fallback for them, since the original 3-column format has to
+// keep meaning exactly what it always has). Amounts are taken as
+// magnitudes (so the negative amounts our export writes import cleanly).
+// Skips blank rows.
 export function parseExpensesCsv(text) {
   const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
   if (!rows.length) return [];
   let catIdx = 0;
   let amtIdx = 1;
   let tagIdx = 2;
+  let acctIdx = -1;
+  let debtIdx = -1;
   let start = 0;
   const header = rows[0].map((h) => h.trim().toLowerCase());
-  if (header.some((h) => h === "category" || h === "amount" || h === "tag")) {
+  if (header.some((h) => ["category", "amount", "tag", "account", "debt"].includes(h))) {
     const ci = header.indexOf("category");
     const ai = header.indexOf("amount");
     const ti = header.indexOf("tag");
     if (ci >= 0) catIdx = ci;
     if (ai >= 0) amtIdx = ai;
     tagIdx = ti;
+    acctIdx = header.indexOf("account");
+    debtIdx = header.indexOf("debt");
     start = 1;
   }
   const out = [];
@@ -652,8 +661,10 @@ export function parseExpensesCsv(text) {
     const category = (r[catIdx] || "").trim();
     const amount = Math.abs(parseFloat((r[amtIdx] || "").replace(/[^0-9.\-]/g, "")) || 0);
     const tag = tagIdx >= 0 ? (r[tagIdx] || "").trim() : "";
+    const account = acctIdx >= 0 ? (r[acctIdx] || "").trim() : "";
+    const debt = debtIdx >= 0 ? (r[debtIdx] || "").trim() : "";
     if (!category && !amount) continue;
-    out.push({ category, amount, tag });
+    out.push({ category, amount, tag, account, debt });
   }
   return out;
 }
