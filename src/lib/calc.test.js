@@ -22,6 +22,8 @@ import {
   billStatus,
   parseCsv,
   parseExpensesCsv,
+  parseActivityCsv,
+  resolveActivityRow,
   debtSpendingByCategory,
   debtMonthlyTotals,
   debtSpendByDebt,
@@ -497,6 +499,97 @@ describe("parseExpensesCsv", () => {
     expect(parseExpensesCsv('Category,Amount\nGroceries,"$1,200.50"\n\n')).toEqual([
       { category: "Groceries", amount: 1200.5, tag: "" },
     ]);
+  });
+});
+
+describe("parseActivityCsv", () => {
+  it("falls back to the legacy Category,Amount,Tag layout with no Type column — everything is an expense", () => {
+    const { rows, skipped } = parseActivityCsv("Groceries,55\nGas,30");
+    expect(skipped).toEqual([]);
+    expect(rows).toEqual([
+      { type: "expense", category: "Groceries", amount: 55, tag: "", account: "", from: "", to: "", goal: "", debt: "", payPeriod: 1 },
+      { type: "expense", category: "Gas", amount: 30, tag: "", account: "", from: "", to: "", goal: "", debt: "", payPeriod: 1 },
+    ]);
+  });
+
+  it("reads a full header and routes each Type to the right shape", () => {
+    const csv =
+      "Type,Category,Amount,Account,From,To,Goal,Debt,Pay Period\n" +
+      "Expense,Groceries,85,Checking,,,,,2\n" +
+      "Transfer,,100,,Checking,Savings,,,\n" +
+      "Debt Payment,,200,Checking,,,,Visa,\n" +
+      "Savings,,75,Checking,,,Emergency Fund,,\n";
+    const { rows, skipped } = parseActivityCsv(csv);
+    expect(skipped).toEqual([]);
+    expect(rows.map((r) => r.type)).toEqual(["expense", "transfer", "debtPayment", "savings"]);
+    expect(rows[0]).toMatchObject({ category: "Groceries", amount: 85, account: "Checking", payPeriod: 2 });
+    expect(rows[1]).toMatchObject({ amount: 100, from: "Checking", to: "Savings" });
+    expect(rows[2]).toMatchObject({ amount: 200, account: "Checking", debt: "Visa" });
+    expect(rows[3]).toMatchObject({ amount: 75, account: "Checking", goal: "Emergency Fund" });
+  });
+
+  it("treats a blank Type as Expense (so old expense-only templates still work with the header)", () => {
+    const { rows } = parseActivityCsv("Type,Category,Amount\n,Groceries,50\n");
+    expect(rows).toEqual([
+      { type: "expense", category: "Groceries", amount: 50, tag: "", account: "", from: "", to: "", goal: "", debt: "", payPeriod: 1 },
+    ]);
+  });
+
+  it("reports unrecognized Type values as skipped instead of silently dropping them", () => {
+    const { rows, skipped } = parseActivityCsv("Type,Category,Amount\nRefund,Groceries,50\n");
+    expect(rows).toEqual([]);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].reason).toMatch(/Unrecognized Type/);
+  });
+});
+
+describe("resolveActivityRow", () => {
+  const accounts = [{ id: "a1", name: "Checking", excludeFromTotal: false }, { id: "a2", name: "Savings", excludeFromTotal: false }];
+  const goals = [{ id: "g1", name: "Emergency Fund" }];
+  const debts = [{ id: "d1", name: "Visa" }];
+  const ctx = { accounts, goals, debts };
+
+  it("expense: resolves a named account, or falls back to the first non-card account", () => {
+    const named = resolveActivityRow({ type: "expense", category: "Gas", amount: 40, tag: "", account: "checking", payPeriod: 1 }, ctx);
+    expect(named).toEqual({ ok: true, kind: "expense", payPeriod: 1, payload: { category: "Gas", amount: 40, tag: "", accountId: "a1" } });
+
+    const fallback = resolveActivityRow({ type: "expense", category: "Gas", amount: 40, tag: "", account: "", payPeriod: 1 }, ctx);
+    expect(fallback.payload.accountId).toBe("a1");
+  });
+
+  it("expense: reports an unknown account name instead of silently defaulting", () => {
+    const r = resolveActivityRow({ type: "expense", category: "Gas", amount: 40, tag: "", account: "Nope", payPeriod: 1 }, ctx);
+    expect(r).toEqual({ ok: false, reason: 'Account "Nope" not found' });
+  });
+
+  it("transfer: resolves From/To as either an account or a goal by name", () => {
+    const r = resolveActivityRow({ type: "transfer", amount: 100, from: "Checking", to: "Emergency Fund", tag: "" }, ctx);
+    expect(r).toEqual({
+      ok: true,
+      kind: "transfer",
+      payload: { fromAccountId: "a1", toAccountId: undefined, fromGoalId: undefined, toGoalId: "g1", amount: 100, note: "" },
+    });
+  });
+
+  it("transfer: fails when neither endpoint resolves", () => {
+    const r = resolveActivityRow({ type: "transfer", amount: 100, from: "", to: "", tag: "" }, ctx);
+    expect(r).toEqual({ ok: false, reason: "Transfer needs a From and/or To" });
+  });
+
+  it("debtPayment: requires a real debt name, resolves the funding account", () => {
+    const ok = resolveActivityRow({ type: "debtPayment", amount: 200, account: "Checking", debt: "Visa" }, ctx);
+    expect(ok).toEqual({ ok: true, kind: "debtPayment", payload: { debtId: "d1", amount: 200, accountId: "a1" } });
+
+    const missing = resolveActivityRow({ type: "debtPayment", amount: 200, account: "Checking", debt: "Mastercard" }, ctx);
+    expect(missing).toEqual({ ok: false, reason: 'Debt "Mastercard" not found' });
+  });
+
+  it("savings: requires a real goal name, resolves the funding account", () => {
+    const ok = resolveActivityRow({ type: "savings", amount: 75, account: "Checking", goal: "Emergency Fund" }, ctx);
+    expect(ok).toEqual({ ok: true, kind: "savings", payload: { goalId: "g1", amount: 75, accountId: "a1" } });
+
+    const missing = resolveActivityRow({ type: "savings", amount: 75, account: "Checking", goal: "Vacation" }, ctx);
+    expect(missing).toEqual({ ok: false, reason: 'Goal "Vacation" not found' });
   });
 });
 

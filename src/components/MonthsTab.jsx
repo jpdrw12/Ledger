@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, Download, ArrowLeftRight, ArrowRight } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, computeDueDate, dueDayForSlot, parseExpensesCsv, planTransfer } from "../lib/calc.js";
+import { money, computeDueDate, dueDayForSlot, parseActivityCsv, resolveActivityRow, planTransfer } from "../lib/calc.js";
 import { importTextFile, exportTextFile } from "../lib/backup.js";
 import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
@@ -448,30 +448,64 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     await db.addExpense(month.id, slot, { category: "", amount: 0, tag: "", accountId: defaultAccount?.id });
     onChanged();
   };
-  const importExpenses = async () => {
+  const importActivity = async () => {
     try {
       const text = await importTextFile();
       if (text == null) return;
-      const rows = parseExpensesCsv(text);
-      if (!rows.length) {
-        toast("No expense rows found in that file.", "error");
+      const { rows, skipped: parseSkipped } = parseActivityCsv(text);
+      if (!rows.length && !parseSkipped.length) {
+        toast("No rows found in that file.", "error");
         return;
       }
-      for (const r of rows) {
-        await db.addExpense(month.id, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId: accounts[0]?.id });
+      const counts = { expense: 0, transfer: 0, debtPayment: 0, savings: 0 };
+      const failed = [...parseSkipped];
+      for (const row of rows) {
+        const resolved = resolveActivityRow(row, { accounts, goals, debts });
+        if (!resolved.ok) {
+          failed.push({ reason: resolved.reason });
+          continue;
+        }
+        if (resolved.kind === "expense") {
+          await db.addExpense(month.id, resolved.payPeriod, resolved.payload);
+        } else if (resolved.kind === "transfer") {
+          await db.addTransfer(month.id, resolved.payload);
+        } else if (resolved.kind === "debtPayment") {
+          await db.addMonthDebtPayment(month.id, resolved.payload);
+        } else if (resolved.kind === "savings") {
+          await db.addGoalContribution(month.id, resolved.payload);
+        }
+        counts[resolved.kind]++;
       }
       onChanged();
-      toast(`Imported ${rows.length} expense${rows.length === 1 ? "" : "s"} into ${month.monthLabel} (Pay 1).`, "success");
+      const imported = counts.expense + counts.transfer + counts.debtPayment + counts.savings;
+      const parts = [];
+      if (counts.expense) parts.push(`${counts.expense} expense${counts.expense === 1 ? "" : "s"}`);
+      if (counts.transfer) parts.push(`${counts.transfer} transfer${counts.transfer === 1 ? "" : "s"}`);
+      if (counts.debtPayment) parts.push(`${counts.debtPayment} debt payment${counts.debtPayment === 1 ? "" : "s"}`);
+      if (counts.savings) parts.push(`${counts.savings} savings contribution${counts.savings === 1 ? "" : "s"}`);
+      const summary = imported ? `Imported ${parts.join(", ")} into ${month.monthLabel}.` : "Nothing imported.";
+      if (failed.length) {
+        toast(`${summary} ${failed.length} row${failed.length === 1 ? "" : "s"} skipped — first: ${failed[0].reason}`, imported ? "success" : "error");
+      } else {
+        toast(summary, "success");
+      }
     } catch (e) {
       toast(`Import failed: ${e}`, "error");
     }
   };
   const exportTemplate = async () => {
-    // A ready-to-fill template matching parseExpensesCsv's expected columns
-    // (Category, Amount, Tag), with a couple of example rows.
-    const csv = "Category,Amount,Tag\nGroceries,85.00,weekly\nGas,40.00,\n";
+    // A ready-to-fill template matching parseActivityCsv's expected columns,
+    // with one example row per Type. Type blank = Expense, so a person who
+    // only ever imports expenses can just delete the other three rows and
+    // the Type/other columns and it still works exactly as before.
+    const csv =
+      "Type,Category,Amount,Tag,Account,From,To,Goal,Debt,Pay Period\n" +
+      "Expense,Groceries,85.00,weekly,Checking,,,,,1\n" +
+      "Transfer,,100.00,,,Checking,Savings,,,\n" +
+      "Debt Payment,,200.00,,Checking,,,,Visa,\n" +
+      "Savings,,75.00,,Checking,,,Emergency Fund,,\n";
     try {
-      const path = await exportTextFile("expenses-template.csv", csv);
+      const path = await exportTextFile("activity-template.csv", csv);
       if (path) toast(`Template saved to ${path}`, "success");
     } catch (e) {
       toast(`Export failed: ${e}`, "error");
@@ -740,10 +774,10 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
           )}
 
           <div className="month-toolbar">
-            <button className="btn-secondary" onClick={importExpenses} title="Import expenses from a CSV (Category, Amount, Tag) into Pay 1">
-              <Upload size={13} /> Import expenses CSV
+            <button className="btn-secondary" onClick={importActivity} title="Import expenses, transfers, debt payments, and savings from a CSV into this month">
+              <Upload size={13} /> Import activity CSV
             </button>
-            <button className="btn-secondary" onClick={exportTemplate} title="Download a blank CSV formatted for the Import expenses button">
+            <button className="btn-secondary" onClick={exportTemplate} title="Download a blank CSV formatted for the Import activity button">
               <Download size={13} /> Export template
             </button>
           </div>

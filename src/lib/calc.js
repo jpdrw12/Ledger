@@ -547,6 +547,84 @@ export function parseCsv(text) {
   return rows;
 }
 
+const TYPE_ALIASES = {
+  "": "expense",
+  expense: "expense",
+  transfer: "transfer",
+  "debt payment": "debtPayment",
+  debtpayment: "debtPayment",
+  savings: "savings",
+  saving: "savings",
+};
+
+// Parses a "month activity" CSV that can mix four row kinds in one file,
+// picked by an optional Type column (blank = Expense, so every CSV in the
+// old Category/Amount/Tag-only format — including anything already
+// exported as a template — still imports exactly as before). Recognizes a
+// header row in any column order; without one, falls back to the original
+// positional Category, Amount, Tag layout (all rows treated as expenses).
+//
+// Returns raw string fields (account/goal/debt are names, not ids) — name
+// resolution against live state happens where this is called, since this
+// module has no database access. Unrecognized Type values are skipped and
+// reported back via the `skipped` array so the caller can tell the person
+// what didn't import instead of silently dropping rows.
+export function parseActivityCsv(text) {
+  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
+  if (!rows.length) return { rows: [], skipped: [] };
+
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const knownHeaders = ["type", "category", "amount", "tag", "account", "from", "to", "goal", "debt", "pay period", "payperiod"];
+  const hasHeader = header.some((h) => knownHeaders.includes(h));
+
+  const idx = {};
+  let start = 0;
+  if (hasHeader) {
+    knownHeaders.forEach((h) => {
+      const i = header.indexOf(h);
+      if (i >= 0) idx[h.replace(/\s+/g, "")] = i;
+    });
+    start = 1;
+  } else {
+    // Legacy positional fallback: Category, Amount, Tag — same as
+    // parseExpensesCsv, all rows are expenses.
+    idx.category = 0;
+    idx.amount = 1;
+    idx.tag = 2;
+  }
+
+  const field = (r, key) => (idx[key] !== undefined ? (r[idx[key]] || "").trim() : "");
+  const out = [];
+  const skipped = [];
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r.some((c) => c.trim() !== "")) continue;
+    const rawType = field(r, "type").toLowerCase();
+    const type = TYPE_ALIASES[rawType];
+    if (type === undefined) {
+      skipped.push({ line: i + 1, reason: `Unrecognized Type "${field(r, "type")}"` });
+      continue;
+    }
+    const amount = Math.abs(parseFloat(field(r, "amount").replace(/[^0-9.\-]/g, "")) || 0);
+    const category = field(r, "category");
+    if (type === "expense" && !category && !amount) continue; // blank row
+    const payPeriodRaw = field(r, "payperiod");
+    out.push({
+      type,
+      category,
+      amount,
+      tag: field(r, "tag"),
+      account: field(r, "account"),
+      from: field(r, "from"),
+      to: field(r, "to"),
+      goal: field(r, "goal"),
+      debt: field(r, "debt"),
+      payPeriod: payPeriodRaw === "2" ? 2 : 1,
+    });
+  }
+  return { rows: out, skipped };
+}
+
 // Parses expense rows from CSV text. Recognizes a Category/Amount/Tag header
 // (any order); otherwise assumes column order category, amount, tag. Amounts
 // are taken as magnitudes (so the negative amounts our export writes import
@@ -578,6 +656,55 @@ export function parseExpensesCsv(text) {
     out.push({ category, amount, tag });
   }
   return out;
+}
+
+// Resolves one parseActivityCsv() row's name-based fields (account/goal/
+// debt names) into ids against live state, and shapes the result into
+// exactly what db.js's addExpense/addTransfer/addMonthDebtPayment/
+// addGoalContribution need. Pure — no I/O — so it's unit-testable without a
+// database. Name matching is case-insensitive exact match.
+export function resolveActivityRow(row, { accounts, goals, debts }) {
+  const findAccount = (name) => accounts.find((a) => a.name.toLowerCase() === name.toLowerCase());
+  const findGoal = (name) => goals.find((g) => g.name.toLowerCase() === name.toLowerCase());
+  const findDebt = (name) => debts.find((d) => d.name.toLowerCase() === name.toLowerCase());
+  const defaultAccount = accounts.find((a) => !a.excludeFromTotal) || accounts[0];
+
+  if (row.type === "expense") {
+    const acc = row.account ? findAccount(row.account) : defaultAccount;
+    if (row.account && !acc) return { ok: false, reason: `Account "${row.account}" not found` };
+    return { ok: true, kind: "expense", payPeriod: row.payPeriod, payload: { category: row.category, amount: row.amount, tag: row.tag, accountId: acc?.id } };
+  }
+  if (row.type === "transfer") {
+    // Each endpoint is an account OR a goal by name; at least one real
+    // endpoint is required on some side for the transfer to mean anything.
+    const fromAcc = row.from ? findAccount(row.from) : null;
+    const fromGoal = row.from && !fromAcc ? findGoal(row.from) : null;
+    const toAcc = row.to ? findAccount(row.to) : null;
+    const toGoal = row.to && !toAcc ? findGoal(row.to) : null;
+    if (row.from && !fromAcc && !fromGoal) return { ok: false, reason: `"From" "${row.from}" not found as an account or goal` };
+    if (row.to && !toAcc && !toGoal) return { ok: false, reason: `"To" "${row.to}" not found as an account or goal` };
+    if (!fromAcc && !fromGoal && !toAcc && !toGoal) return { ok: false, reason: "Transfer needs a From and/or To" };
+    return {
+      ok: true,
+      kind: "transfer",
+      payload: { fromAccountId: fromAcc?.id, toAccountId: toAcc?.id, fromGoalId: fromGoal?.id, toGoalId: toGoal?.id, amount: row.amount, note: row.tag },
+    };
+  }
+  if (row.type === "debtPayment") {
+    const debt = findDebt(row.debt);
+    if (!debt) return { ok: false, reason: `Debt "${row.debt}" not found` };
+    const acc = row.account ? findAccount(row.account) : defaultAccount;
+    if (row.account && !acc) return { ok: false, reason: `Account "${row.account}" not found` };
+    return { ok: true, kind: "debtPayment", payload: { debtId: debt.id, amount: row.amount, accountId: acc?.id } };
+  }
+  if (row.type === "savings") {
+    const goal = findGoal(row.goal);
+    if (!goal) return { ok: false, reason: `Goal "${row.goal}" not found` };
+    const acc = row.account ? findAccount(row.account) : defaultAccount;
+    if (row.account && !acc) return { ok: false, reason: `Account "${row.account}" not found` };
+    return { ok: true, kind: "savings", payload: { goalId: goal.id, amount: row.amount, accountId: acc?.id } };
+  }
+  return { ok: false, reason: `Unknown type "${row.type}"` };
 }
 
 export const money = (n) => {

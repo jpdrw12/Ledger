@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.28.0]
+
+### Added
+- **Expanded activity import (Months tab).** The expense CSV import now also
+  handles transfers, debt payments, and savings contributions in the same
+  file, picked by an optional Type column. A blank Type still means
+  Expense, so every CSV or template you already have keeps working
+  unchanged. New columns: Account, From, To, Goal, Debt, Pay Period — only
+  fill in whichever apply to a given row's Type.
+- **Card spending import.** "Import CSV" next to "Add card expense" in each
+  month, same Category/Amount/Tag shape as the original expense import.
+  Lands on your first card account if you have more than one — reassign
+  individual rows after, same as expenses already work.
+- **Debt spending import.** "Import CSV" next to "Add charge" in each
+  month, Category/Amount. Lands on your first spendable debt if you have
+  more than one, same reassign-after caveat.
+
 ## [0.27.0]
 
 ### Added

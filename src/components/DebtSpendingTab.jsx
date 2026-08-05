@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from "react";
-import { Landmark, Plus, Trash2, TrendingUp, Receipt, Download, ShoppingCart } from "lucide-react";
+import { Landmark, Plus, Trash2, TrendingUp, Receipt, Download, Upload, ShoppingCart } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, debtBudgetReport, buildDebtSpendingCsv } from "../lib/calc.js";
-import { exportTextFile } from "../lib/backup.js";
+import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, debtBudgetReport, buildDebtSpendingCsv, parseExpensesCsv } from "../lib/calc.js";
+import { exportTextFile, importTextFile } from "../lib/backup.js";
 import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
@@ -66,6 +66,36 @@ function DebtSpendingTab({ state, onChanged }) {
     await db.addDebtCharge(spendableDebts[0].id, { monthLabel, category: "", amount: 0 });
     onChanged();
   };
+  const importDebtCharges = async (monthLabel) => {
+    try {
+      const text = await importTextFile();
+      if (text == null) return;
+      const rows = parseExpensesCsv(text); // Tag column, if present, is ignored — debt charges have no tag field.
+      if (!rows.length) {
+        toast("No charge rows found in that file.", "error");
+        return;
+      }
+      // Same known limitation as Card spending's import: everything lands on
+      // the first spendable debt. Reassign individual rows after if you're
+      // tracking more than one spendable debt and need a specific split.
+      for (const r of rows) {
+        await db.addDebtCharge(spendableDebts[0].id, { monthLabel, category: r.category, amount: r.amount });
+      }
+      onChanged();
+      toast(`Imported ${rows.length} debt charge${rows.length === 1 ? "" : "s"} into ${monthLabel}.`, "success");
+    } catch (e) {
+      toast(`Import failed: ${e}`, "error");
+    }
+  };
+  const exportDebtChargeTemplate = async () => {
+    const csv = "Category,Amount\nShopping,60.00\nDining out,25.00\n";
+    try {
+      const path = await exportTextFile("debt-charges-template.csv", csv);
+      if (path) toast(`Template saved to ${path}`, "success");
+    } catch (e) {
+      toast(`Export failed: ${e}`, "error");
+    }
+  };
   const updateCharge = async (c, patch) => {
     await db.updateDebtCharge(c.id, { category: c.category, amount: c.amount, ...patch });
     onChanged();
@@ -115,9 +145,14 @@ function DebtSpendingTab({ state, onChanged }) {
     <div className="section">
       <div className="section-head">
         <h2>Debt Spending</h2>
-        <button className="btn-primary" onClick={handleExport}>
-          <Download size={15} /> Export CSV
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-secondary" onClick={exportDebtChargeTemplate}>
+            <Download size={15} /> Import template
+          </button>
+          <button className="btn-primary" onClick={handleExport}>
+            <Download size={15} /> Export CSV
+          </button>
+        </div>
       </div>
       <p className="empty" style={{ marginBottom: 12 }}>
         Purchases charged to your spendable debt{spendableDebts.length > 1 ? "s" : ""}, tracked month by month. Each
@@ -156,9 +191,14 @@ function DebtSpendingTab({ state, onChanged }) {
                 ))}
                 {list.length === 0 && <p className="empty small scroll-panel-empty">No debt spending logged for this month.</p>}
               </ScrollPanel>
-              <button className="btn-secondary" onClick={() => addCharge(label)}>
-                <Plus size={13} /> Add charge
-              </button>
+              <div className="month-toolbar">
+                <button className="btn-secondary" onClick={() => addCharge(label)}>
+                  <Plus size={13} /> Add charge
+                </button>
+                <button className="btn-secondary" onClick={() => importDebtCharges(label)} title="Import charges from a CSV (Category, Amount) — lands on your first spendable debt">
+                  <Upload size={13} /> Import CSV
+                </button>
+              </div>
             </MonthSection>
           );
         })

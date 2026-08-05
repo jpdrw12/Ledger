@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from "react";
-import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download } from "lucide-react";
+import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download, Upload } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv } from "../lib/calc.js";
-import { exportTextFile } from "../lib/backup.js";
+import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv } from "../lib/calc.js";
+import { exportTextFile, importTextFile } from "../lib/backup.js";
 import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
@@ -62,6 +62,36 @@ function CardTab({ state, onChanged }) {
     await db.addExpense(monthId, 1, { category: "", amount: 0, tag: "", accountId: cardAccounts[0].id });
     onChanged();
   };
+  const importCardExpenses = async (monthId, monthLabel) => {
+    try {
+      const text = await importTextFile();
+      if (text == null) return;
+      const rows = parseExpensesCsv(text);
+      if (!rows.length) {
+        toast("No expense rows found in that file.", "error");
+        return;
+      }
+      // Same known limitation as the Months tab's expense import: everything
+      // lands on the first card account. Reassign individual rows after if
+      // you're tracking more than one card and need a specific split.
+      for (const r of rows) {
+        await db.addExpense(monthId, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId: cardAccounts[0].id });
+      }
+      onChanged();
+      toast(`Imported ${rows.length} card expense${rows.length === 1 ? "" : "s"} into ${monthLabel}.`, "success");
+    } catch (e) {
+      toast(`Import failed: ${e}`, "error");
+    }
+  };
+  const exportCardTemplate = async () => {
+    const csv = "Category,Amount,Tag\nCoffee,4.50,\nGas,40.00,\n";
+    try {
+      const path = await exportTextFile("card-expenses-template.csv", csv);
+      if (path) toast(`Template saved to ${path}`, "success");
+    } catch (e) {
+      toast(`Export failed: ${e}`, "error");
+    }
+  };
   const updateExpense = async (e, patch) => {
     await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, ...patch });
     onChanged();
@@ -111,9 +141,14 @@ function CardTab({ state, onChanged }) {
     <div className="section">
       <div className="section-head">
         <h2>Card Spending</h2>
-        <button className="btn-primary" onClick={handleExport}>
-          <Download size={15} /> Export CSV
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-secondary" onClick={exportCardTemplate}>
+            <Download size={15} /> Import template
+          </button>
+          <button className="btn-primary" onClick={handleExport}>
+            <Download size={15} /> Export CSV
+          </button>
+        </div>
       </div>
       <p className="empty" style={{ marginBottom: 16 }}>
         Spending on your card account{cardAccounts.length > 1 ? "s" : ""}, tracked month by month. This is separate from
@@ -143,9 +178,14 @@ function CardTab({ state, onChanged }) {
                 ))}
                 {exps.length === 0 && <p className="empty small scroll-panel-empty">No card spending logged for this month.</p>}
               </ScrollPanel>
-              <button className="btn-secondary" onClick={() => addCardExpense(m.id)}>
-                <Plus size={13} /> Add card expense
-              </button>
+              <div className="month-toolbar">
+                <button className="btn-secondary" onClick={() => addCardExpense(m.id)}>
+                  <Plus size={13} /> Add card expense
+                </button>
+                <button className="btn-secondary" onClick={() => importCardExpenses(m.id, m.monthLabel)} title="Import card expenses from a CSV (Category, Amount, Tag) — lands on your first card account">
+                  <Upload size={13} /> Import CSV
+                </button>
+              </div>
             </MonthSection>
           );
         })
