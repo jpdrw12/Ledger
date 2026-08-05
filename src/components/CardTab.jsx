@@ -158,8 +158,8 @@ function CardTab({ state, onChanged }) {
       <div className="section-head">
         <h2>Card Spending</h2>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={exportCardTemplate}>
-            <Download size={15} /> Import template
+          <button className="btn-secondary" onClick={exportCardTemplate} title="Download a blank CSV formatted for the Import CSV button">
+            <Download size={15} /> Export template
           </button>
           <button className="btn-primary" onClick={handleExport}>
             <Download size={15} /> Export CSV

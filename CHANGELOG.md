@@ -5,6 +5,17 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.29.1]
+
+### Fixed
+- The Card and Debt Spending tabs' template-download buttons were labeled
+  "Import template" next to "Export CSV" — both used the same download
+  icon, and "Import template" reads like it performs an import rather
+  than downloading a blank CSV to fill in and import later. Relabeled to
+  "Export template", matching the Months tab's wording for the same
+  button. (The buttons themselves already existed — v0.29.0 added them
+  alongside the Account/Debt columns.)
+
 ## [0.29.0]
 
 ### Added
