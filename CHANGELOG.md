@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.31.0]
+
+### Added
+- **Reorderable nav tabs.** Hold Alt and drag a tab (in either the sidebar
+  rail or the classic top nav — they share one order) to move it. The
+  order persists locally and survives future updates that add or remove
+  tabs, via a new reconcileTabOrder() that reconciles a saved order
+  against the current tab set.
+
 ## [0.30.0]
 
 ### Added

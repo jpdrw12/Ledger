@@ -201,6 +201,11 @@ export const css = `
   .tab-btn { display:flex; align-items:center; gap:9px; width:100%; text-align:left; padding:9px 10px; background:none; border:none; border-radius:5px; cursor:pointer; font-size:13.5px; color:var(--ink-soft); font-family: ui-sans-serif, system-ui; }
   .tab-btn:not(.active):hover { background:var(--paper); }
   .tab-btn.active { background:var(--accent); color:#fff; font-weight:600; }
+  .tabs.reorder-mode { outline: 1px dashed var(--stamp); outline-offset: 4px; border-radius: 6px; }
+  .tab-btn.reorderable { cursor: grab; }
+  .tab-btn.reorderable:active { cursor: grabbing; }
+  .tab-btn.dragging { opacity: 0.35; }
+  .tab-grip { color: var(--stamp); flex-shrink: 0; }
 
   .section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
   .section-head h2 { font-family: Georgia, serif; font-size:19px; margin:0; }

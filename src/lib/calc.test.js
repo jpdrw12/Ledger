@@ -25,6 +25,7 @@ import {
   parseActivityCsv,
   resolveActivityRow,
   buildCsvReferenceBlock,
+  reconcileTabOrder,
   debtSpendingByCategory,
   debtMonthlyTotals,
   debtSpendByDebt,
@@ -538,6 +539,33 @@ describe("buildCsvReferenceBlock", () => {
     );
     expect(buildCsvReferenceBlock([{ label: "debts", names: [] }])).toBe("");
     expect(buildCsvReferenceBlock([])).toBe("");
+  });
+});
+
+describe("reconcileTabOrder", () => {
+  const defaultOrder = ["months", "card", "bills", "goals"];
+
+  it("returns the saved order unchanged when it already matches the known set", () => {
+    expect(reconcileTabOrder(["goals", "months", "card", "bills"], defaultOrder)).toEqual(["goals", "months", "card", "bills"]);
+  });
+
+  it("drops ids no longer in the known set (a tab removed since the save)", () => {
+    expect(reconcileTabOrder(["oldtab", "months", "card", "bills", "goals"], defaultOrder)).toEqual(["months", "card", "bills", "goals"]);
+  });
+
+  it("appends ids missing from the saved order at their default position (a tab added since the save)", () => {
+    expect(reconcileTabOrder(["card", "months"], defaultOrder)).toEqual(["card", "months", "bills", "goals"]);
+  });
+
+  it("falls back to defaultOrder untouched for anything that isn't an array (malformed/missing localStorage)", () => {
+    expect(reconcileTabOrder(null, defaultOrder)).toEqual(defaultOrder);
+    expect(reconcileTabOrder(undefined, defaultOrder)).toEqual(defaultOrder);
+    expect(reconcileTabOrder("months,card", defaultOrder)).toEqual(defaultOrder);
+    expect(reconcileTabOrder({}, defaultOrder)).toEqual(defaultOrder);
+  });
+
+  it("ignores non-string entries and duplicates in the saved order", () => {
+    expect(reconcileTabOrder(["months", 42, "months", "card"], defaultOrder)).toEqual(["months", "card", "bills", "goals"]);
   });
 });
 

@@ -743,6 +743,27 @@ export function buildCsvReferenceBlock(sections) {
   return lines.length ? `\n${lines.join("\n")}\n` : "";
 }
 
+// Reconciles a saved nav-tab order (e.g. from localStorage, drag-reordered
+// by the person) against the current known set of tab ids: drops any id
+// that no longer exists (a tab removed since the save), and appends any id
+// missing from the saved order (a tab added since the save) at its default
+// position. A stale save from an older app version can never hide or lose
+// a tab across an update. `savedOrder` may be anything (untrusted input,
+// e.g. malformed localStorage/JSON) — anything that isn't an array of ids
+// falls back to defaultOrder untouched.
+export function reconcileTabOrder(savedOrder, defaultOrder) {
+  if (!Array.isArray(savedOrder)) return [...defaultOrder];
+  const known = new Set(defaultOrder);
+  const seen = new Set();
+  const cleaned = savedOrder.filter((id) => {
+    if (typeof id !== "string" || !known.has(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  const missing = defaultOrder.filter((id) => !seen.has(id));
+  return [...cleaned, ...missing];
+}
+
 export const money = (n) => {
   const v = Number(n) || 0;
   const sign = v < 0 ? "-" : "";

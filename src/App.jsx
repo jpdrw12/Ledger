@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical } from "lucide-react";
 import * as db from "./lib/db.js";
-import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money } from "./lib/calc.js";
+import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money, reconcileTabOrder } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton, ExpandContext } from "./components/Shared.jsx";
@@ -24,6 +24,36 @@ import SettingsTab from "./components/SettingsTab.jsx";
 
 // Injected by Vite's define from package.json (kept current by bump-version.sh).
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
+// The nav tabs, in their default order. Data-driven (rather than hardcoded
+// JSX) so the sidebar/classic nav can be reordered — see tabOrder state and
+// the reorder-mode drag handlers below. `icon` is a component reference,
+// not a rendered element, so it can be instantiated fresh per render.
+const TAB_DEFS = [
+  { id: "months", label: "Months", icon: ListChecks },
+  { id: "card", label: "Card Spending", icon: CreditCard, dataTour: "tab-card" },
+  { id: "bills", label: "Bill Templates", icon: Receipt, dataTour: "tab-bills" },
+  { id: "goals", label: "Savings Goals", icon: PiggyBank, dataTour: "tab-goals" },
+  { id: "accounts", label: "Accounts", icon: Wallet, dataTour: "tab-accounts" },
+  { id: "debts", label: "Debts", icon: Landmark, dataTour: "tab-debts" },
+  { id: "debtspending", label: "Debt Spending", icon: ShoppingCart, dataTour: "tab-debtspending" },
+  { id: "insights", label: "Insights", icon: TrendingUp, dataTour: "tab-insights" },
+  { id: "report", label: "Report", icon: FileText, dataTour: "tab-report" },
+  { id: "backups", label: "Backups", icon: HardDrive, dataTour: "tab-backups" },
+  { id: "settings", label: "Settings", icon: Settings },
+];
+const DEFAULT_TAB_ORDER = TAB_DEFS.map((t) => t.id);
+
+// Reads a saved tab order from localStorage; see reconcileTabOrder() in
+// calc.js for how it tolerates tabs added/removed since the save.
+function loadTabOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("ledger.tabOrder") || "null");
+    return reconcileTabOrder(saved, DEFAULT_TAB_ORDER);
+  } catch {
+    return DEFAULT_TAB_ORDER;
+  }
+}
 
 // Per-tab quick-reference help, shown by the "?" button. Concise; the full
 // walkthrough is the interactive guide in Settings.
@@ -214,6 +244,65 @@ export default function App() {
     setLayoutState(v);
     localStorage.setItem("ledger.layout", v);
   }, []);
+
+  // Sidebar/nav tab order — hold Alt and drag a tab to reorder. reorderMode
+  // tracks whether Alt is currently held (via window-level listeners, not
+  // per-button, so it stays in sync even if focus is elsewhere); dragTabId
+  // tracks which tab is mid-drag for the drop-target logic.
+  const [tabOrder, setTabOrderState] = useState(loadTabOrder);
+  const setTabOrder = useCallback((updater) => {
+    setTabOrderState((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      localStorage.setItem("ledger.tabOrder", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [dragTabId, setDragTabId] = useState(null);
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Alt") setReorderMode(true);
+    };
+    const onKeyUp = (e) => {
+      if (e.key === "Alt") setReorderMode(false);
+    };
+    // If Alt-tabbing away (or anything else that eats the keyup) leaves the
+    // window without ever seeing "Alt" released, don't get stuck in reorder
+    // mode — drop it as soon as focus leaves.
+    const onBlur = () => setReorderMode(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+  const handleTabDragStart = useCallback((id) => (e) => {
+    setDragTabId(id);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+  const handleTabDragOver = useCallback((id) => (e) => {
+    if (!dragTabId || dragTabId === id) return;
+    e.preventDefault(); // required to allow a drop
+  }, [dragTabId]);
+  const handleTabDrop = useCallback((id) => (e) => {
+    if (!dragTabId || dragTabId === id) return;
+    e.preventDefault();
+    setTabOrder((order) => {
+      const from = order.indexOf(dragTabId);
+      const to = order.indexOf(id);
+      if (from === -1 || to === -1) return order;
+      const next = [...order];
+      next.splice(from, 1);
+      next.splice(to, 0, dragTabId);
+      return next;
+    });
+    setDragTabId(null);
+  }, [dragTabId, setTabOrder]);
+  const handleTabDragEnd = useCallback(() => setDragTabId(null), []);
+
   const [expandSections, setExpandSectionsState] = useState(() => localStorage.getItem("ledger.expandSections") !== "0"); // default on
   const setExpandSections = useCallback((v) => {
     setExpandSectionsState(v);
@@ -967,20 +1056,32 @@ export default function App() {
     );
   }
 
-  // The 9 nav buttons — reused by both the sidebar rail and the classic top nav.
+  // The nav buttons — reused by both the sidebar rail and the classic top
+  // nav. Order comes from tabOrder (persisted, reorderable by holding Alt
+  // and dragging — see the handlers above); while reorderMode is active,
+  // clicking is disabled so a drag's mouseup doesn't also switch tabs.
+  const orderedTabs = tabOrder.map((id) => TAB_DEFS.find((t) => t.id === id)).filter(Boolean);
   const tabNav = (
     <>
-      <TabButton active={tab === "months"} onClick={() => setTab("months")} icon={<ListChecks size={16} />} label="Months" />
-      <TabButton active={tab === "card"} onClick={() => setTab("card")} icon={<CreditCard size={16} />} label="Card Spending" dataTour="tab-card" />
-      <TabButton active={tab === "bills"} onClick={() => setTab("bills")} icon={<Receipt size={16} />} label="Bill Templates" dataTour="tab-bills" />
-      <TabButton active={tab === "goals"} onClick={() => setTab("goals")} icon={<PiggyBank size={16} />} label="Savings Goals" dataTour="tab-goals" />
-      <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={<Wallet size={16} />} label="Accounts" dataTour="tab-accounts" />
-      <TabButton active={tab === "debts"} onClick={() => setTab("debts")} icon={<Landmark size={16} />} label="Debts" dataTour="tab-debts" />
-      <TabButton active={tab === "debtspending"} onClick={() => setTab("debtspending")} icon={<ShoppingCart size={16} />} label="Debt Spending" dataTour="tab-debtspending" />
-      <TabButton active={tab === "insights"} onClick={() => setTab("insights")} icon={<TrendingUp size={16} />} label="Insights" dataTour="tab-insights" />
-      <TabButton active={tab === "report"} onClick={() => setTab("report")} icon={<FileText size={16} />} label="Report" dataTour="tab-report" />
-      <TabButton active={tab === "backups"} onClick={() => setTab("backups")} icon={<HardDrive size={16} />} label="Backups" dataTour="tab-backups" />
-      <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<Settings size={16} />} label="Settings" />
+      {orderedTabs.map((t) => {
+        const Icon = t.icon;
+        return (
+          <TabButton
+            key={t.id}
+            active={tab === t.id}
+            onClick={() => setTab(t.id)}
+            icon={<Icon size={16} />}
+            label={t.label}
+            dataTour={t.dataTour}
+            reorderable={reorderMode}
+            dragging={dragTabId === t.id}
+            onDragStart={handleTabDragStart(t.id)}
+            onDragOver={handleTabDragOver(t.id)}
+            onDrop={handleTabDrop(t.id)}
+            onDragEnd={handleTabDragEnd}
+          />
+        );
+      })}
     </>
   );
 
@@ -1006,7 +1107,7 @@ export default function App() {
             {sidebarCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
           </button>
         </div>
-        <nav className="tabs" data-tour="tabs">{tabNav}</nav>
+        <nav className={`tabs ${reorderMode ? "reorder-mode" : ""}`} data-tour="tabs" title="Hold Alt and drag a tab to reorder">{tabNav}</nav>
         <div className="sidebar-balances" data-tour="accounts-panel">
           {state.accounts.map((a) => {
             const bal = balances[a.id] || 0;
@@ -1080,7 +1181,7 @@ export default function App() {
                 )}
               </div>
             </div>
-            <nav className="tabs" data-tour="tabs">{tabNav}</nav>
+            <nav className={`tabs ${reorderMode ? "reorder-mode" : ""}`} data-tour="tabs" title="Hold Alt and drag a tab to reorder">{tabNav}</nav>
           </>
         ) : (
           <div className="topbar">
