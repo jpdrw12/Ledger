@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.30.0]
+
+### Added
+- **Header-level "Import CSV" on Card Spending and Debt Spending.** Next to
+  each tab's Export template/Export CSV buttons — imports a CSV covering
+  any number of months at once via a new Month column (matched against
+  real months for Card spending; free text for Debt spending, same as that
+  tab's month labels already work). The per-month "Import CSV" buttons
+  from v0.28.0 are unchanged and still don't need a Month column.
+- **Reference block on every CSV template.** The Months, Card Spending, and
+  Debt Spending template exports now list available accounts/goals/debts/
+  months as `#`-prefixed comment lines after the example rows — visible in
+  the file, and safe to leave in since comment lines are never imported as
+  data (new: parseExpensesCsv and parseActivityCsv both skip any row
+  starting with `#`).
+- Card/Debt spending templates now always include every column (Account/
+  Debt was previously only added once you had more than one card/debt).
+
 ## [0.29.1]
 
 ### Fixed

@@ -24,6 +24,7 @@ import {
   parseExpensesCsv,
   parseActivityCsv,
   resolveActivityRow,
+  buildCsvReferenceBlock,
   debtSpendingByCategory,
   debtMonthlyTotals,
   debtSpendByDebt,
@@ -483,30 +484,60 @@ describe("parseExpensesCsv", () => {
   it("reads a Category/Amount/Tag header in any order, magnitudes for amounts", () => {
     const csv = "Amount,Category,Tag\n-120,Groceries,food\n-40,Gas,";
     expect(parseExpensesCsv(csv)).toEqual([
-      { category: "Groceries", amount: 120, tag: "food", account: "", debt: "" },
-      { category: "Gas", amount: 40, tag: "", account: "", debt: "" },
+      { category: "Groceries", amount: 120, tag: "food", account: "", debt: "", month: "" },
+      { category: "Gas", amount: 40, tag: "", account: "", debt: "", month: "" },
     ]);
   });
 
   it("falls back to column order when there's no header", () => {
     expect(parseExpensesCsv("Groceries,55\nGas,30")).toEqual([
-      { category: "Groceries", amount: 55, tag: "", account: "", debt: "" },
-      { category: "Gas", amount: 30, tag: "", account: "", debt: "" },
+      { category: "Groceries", amount: 55, tag: "", account: "", debt: "", month: "" },
+      { category: "Gas", amount: 30, tag: "", account: "", debt: "", month: "" },
     ]);
   });
 
   it("skips blank rows and ignores currency symbols/separators", () => {
     expect(parseExpensesCsv('Category,Amount\nGroceries,"$1,200.50"\n\n')).toEqual([
-      { category: "Groceries", amount: 1200.5, tag: "", account: "", debt: "" },
+      { category: "Groceries", amount: 1200.5, tag: "", account: "", debt: "", month: "" },
     ]);
   });
 
   it("reads optional Account and Debt columns for the Card/Debt spending imports", () => {
     const csv = "Category,Amount,Account,Debt\nCoffee,4.50,Visa card,\nShopping,60,,Store Card\n";
     expect(parseExpensesCsv(csv)).toEqual([
-      { category: "Coffee", amount: 4.5, tag: "", account: "Visa card", debt: "" },
-      { category: "Shopping", amount: 60, tag: "", account: "", debt: "Store Card" },
+      { category: "Coffee", amount: 4.5, tag: "", account: "Visa card", debt: "", month: "" },
+      { category: "Shopping", amount: 60, tag: "", account: "", debt: "Store Card", month: "" },
     ]);
+  });
+
+  it("reads an optional Month column for the header-level cross-month imports", () => {
+    const csv = "Category,Amount,Month\nCoffee,4.50,January 2026\n";
+    expect(parseExpensesCsv(csv)).toEqual([
+      { category: "Coffee", amount: 4.5, tag: "", account: "", debt: "", month: "January 2026" },
+    ]);
+  });
+
+  it("skips comment lines (first cell starts with #), so a reference block never imports as data", () => {
+    const csv = "Category,Amount\nCoffee,4.50\n\n# Available accounts: Checking, Visa card\n# Available months: January 2026\n";
+    expect(parseExpensesCsv(csv)).toEqual([{ category: "Coffee", amount: 4.5, tag: "", account: "", debt: "", month: "" }]);
+  });
+});
+
+describe("buildCsvReferenceBlock", () => {
+  it("formats each section as a single '# Available X: a, b, c' comment line", () => {
+    const block = buildCsvReferenceBlock([
+      { label: "accounts", names: ["Checking", "Visa card"] },
+      { label: "months", names: ["January 2026", "February 2026"] },
+    ]);
+    expect(block).toBe("\n# Available accounts: Checking, Visa card\n# Available months: January 2026, February 2026\n");
+  });
+
+  it("omits sections with no names, and returns '' when nothing has names", () => {
+    expect(buildCsvReferenceBlock([{ label: "accounts", names: ["Checking"] }, { label: "debts", names: [] }])).toBe(
+      "\n# Available accounts: Checking\n"
+    );
+    expect(buildCsvReferenceBlock([{ label: "debts", names: [] }])).toBe("");
+    expect(buildCsvReferenceBlock([])).toBe("");
   });
 });
 

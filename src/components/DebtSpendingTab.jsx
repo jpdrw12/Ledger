@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Landmark, Plus, Trash2, TrendingUp, Receipt, Download, Upload, ShoppingCart } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, debtBudgetReport, buildDebtSpendingCsv, parseExpensesCsv } from "../lib/calc.js";
+import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, debtBudgetReport, buildDebtSpendingCsv, parseExpensesCsv, buildCsvReferenceBlock } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
 import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
@@ -66,6 +66,29 @@ function DebtSpendingTab({ state, onChanged }) {
     await db.addDebtCharge(spendableDebts[0].id, { monthLabel, category: "", amount: 0 });
     onChanged();
   };
+
+  // Shared by both import buttons: resolves each row's Debt against
+  // spendable debts (defaulting to the first when blank) and inserts it
+  // under the given month label.
+  const importRowsIntoLabel = async (rows, monthLabel) => {
+    let imported = 0;
+    const failed = [];
+    for (const r of rows) {
+      let debtId = spendableDebts[0].id;
+      if (r.debt) {
+        const match = spendableDebts.find((d) => d.name.toLowerCase() === r.debt.toLowerCase());
+        if (!match) {
+          failed.push(`Debt "${r.debt}" not found`);
+          continue;
+        }
+        debtId = match.id;
+      }
+      await db.addDebtCharge(debtId, { monthLabel, category: r.category, amount: r.amount });
+      imported++;
+    }
+    return { imported, failed };
+  };
+
   const importDebtCharges = async (monthLabel) => {
     try {
       const text = await importTextFile();
@@ -75,21 +98,7 @@ function DebtSpendingTab({ state, onChanged }) {
         toast("No charge rows found in that file.", "error");
         return;
       }
-      let imported = 0;
-      const failed = [];
-      for (const r of rows) {
-        let debtId = spendableDebts[0].id; // default when the Debt column is blank/absent
-        if (r.debt) {
-          const match = spendableDebts.find((d) => d.name.toLowerCase() === r.debt.toLowerCase());
-          if (!match) {
-            failed.push(`Debt "${r.debt}" not found`);
-            continue;
-          }
-          debtId = match.id;
-        }
-        await db.addDebtCharge(debtId, { monthLabel, category: r.category, amount: r.amount });
-        imported++;
-      }
+      const { imported, failed } = await importRowsIntoLabel(rows, monthLabel);
       onChanged();
       const summary = imported ? `Imported ${imported} debt charge${imported === 1 ? "" : "s"} into ${monthLabel}.` : "Nothing imported.";
       if (failed.length) {
@@ -101,10 +110,60 @@ function DebtSpendingTab({ state, onChanged }) {
       toast(`Import failed: ${e}`, "error");
     }
   };
+
+  // Header-level import: one CSV can cover any number of month labels at
+  // once, using a Month column — free text here (debt charges aren't tied
+  // to real months, same as everywhere else in this tab). The per-month
+  // buttons above stay for a quick single-month CSV that doesn't need one.
+  const importDebtChargesAcrossMonths = async () => {
+    try {
+      const text = await importTextFile();
+      if (text == null) return;
+      const rows = parseExpensesCsv(text);
+      if (!rows.length) {
+        toast("No charge rows found in that file.", "error");
+        return;
+      }
+      let imported = 0;
+      const failed = [];
+      const byLabel = new Map();
+      for (const r of rows) {
+        const label = r.month.trim();
+        if (!label) {
+          failed.push("Row missing Month");
+          continue;
+        }
+        if (!byLabel.has(label)) byLabel.set(label, []);
+        byLabel.get(label).push(r);
+      }
+      for (const [label, labelRows] of byLabel) {
+        const result = await importRowsIntoLabel(labelRows, label);
+        imported += result.imported;
+        failed.push(...result.failed);
+      }
+      onChanged();
+      const summary = imported ? `Imported ${imported} debt charge${imported === 1 ? "" : "s"} across ${byLabel.size} month${byLabel.size === 1 ? "" : "s"}.` : "Nothing imported.";
+      if (failed.length) {
+        toast(`${summary} ${failed.length} row${failed.length === 1 ? "" : "s"} skipped — first: ${failed[0]}`, imported ? "success" : "error");
+      } else {
+        toast(summary, "success");
+      }
+    } catch (e) {
+      toast(`Import failed: ${e}`, "error");
+    }
+  };
+
   const exportDebtChargeTemplate = async () => {
-    const csv = spendableDebts.length > 1
-      ? `Category,Amount,Debt\nShopping,60.00,${spendableDebts[0].name}\nDining out,25.00,${spendableDebts[1].name}\n`
-      : "Category,Amount\nShopping,60.00\nDining out,25.00\n";
+    const csv =
+      "Category,Amount,Debt,Month\n" +
+      `Shopping,60.00,${spendableDebts[0].name},${sectionLabels[sectionLabels.length - 1] || ""}\n` +
+      `Dining out,25.00,,${sectionLabels[sectionLabels.length - 1] || ""}\n` +
+      "# Month is only used by the header 'Import CSV' button — the per-month Import CSV buttons ignore it.\n" +
+      "# Debt picks which spendable debt a row lands on; leave blank to use your first one.\n" +
+      buildCsvReferenceBlock([
+        { label: "debts", names: spendableDebts.map((d) => d.name) },
+        { label: "months", names: sectionLabels },
+      ]);
     try {
       const path = await exportTextFile("debt-charges-template.csv", csv);
       if (path) toast(`Template saved to ${path}`, "success");
@@ -162,8 +221,11 @@ function DebtSpendingTab({ state, onChanged }) {
       <div className="section-head">
         <h2>Debt Spending</h2>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={exportDebtChargeTemplate} title="Download a blank CSV formatted for the Import CSV button">
+          <button className="btn-secondary" onClick={exportDebtChargeTemplate} title="Download a blank CSV formatted for the Import CSV buttons">
             <Download size={15} /> Export template
+          </button>
+          <button className="btn-secondary" onClick={importDebtChargesAcrossMonths} title="Import debt charges from a CSV covering any number of months at once (needs a Month column) — use a month section's own Import CSV button for a single month">
+            <Upload size={15} /> Import CSV
           </button>
           <button className="btn-primary" onClick={handleExport}>
             <Download size={15} /> Export CSV

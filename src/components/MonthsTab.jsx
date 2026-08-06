@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, Download, ArrowLeftRight, ArrowRight } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, computeDueDate, dueDayForSlot, parseActivityCsv, resolveActivityRow, planTransfer } from "../lib/calc.js";
+import { money, computeDueDate, dueDayForSlot, parseActivityCsv, resolveActivityRow, buildCsvReferenceBlock, planTransfer } from "../lib/calc.js";
 import { importTextFile, exportTextFile } from "../lib/backup.js";
 import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, DateInput, parseNumberInput, MonthSection, ScrollPanel, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
@@ -503,7 +503,12 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
       "Expense,Groceries,85.00,weekly,Checking,,,,,1\n" +
       "Transfer,,100.00,,,Checking,Savings,,,\n" +
       "Debt Payment,,200.00,,Checking,,,,Visa,\n" +
-      "Savings,,75.00,,Checking,,,Emergency Fund,,\n";
+      "Savings,,75.00,,Checking,,,Emergency Fund,,\n" +
+      buildCsvReferenceBlock([
+        { label: "accounts", names: accounts.map((a) => a.name) },
+        { label: "goals", names: goals.map((g) => g.name) },
+        { label: "debts", names: debts.map((d) => d.name) },
+      ]);
     try {
       const path = await exportTextFile("activity-template.csv", csv);
       if (path) toast(`Template saved to ${path}`, "success");

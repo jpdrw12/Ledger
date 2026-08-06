@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download, Upload } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv } from "../lib/calc.js";
+import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
 import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
@@ -62,6 +62,29 @@ function CardTab({ state, onChanged }) {
     await db.addExpense(monthId, 1, { category: "", amount: 0, tag: "", accountId: cardAccounts[0].id });
     onChanged();
   };
+
+  // Shared by both import buttons: resolves each row's Account against card
+  // accounts (defaulting to the first card when blank) and inserts it into
+  // the given month. Returns how many imported and why any were skipped.
+  const importRowsIntoMonth = async (rows, monthId) => {
+    let imported = 0;
+    const failed = [];
+    for (const r of rows) {
+      let accountId = cardAccounts[0].id;
+      if (r.account) {
+        const match = cardAccounts.find((a) => a.name.toLowerCase() === r.account.toLowerCase());
+        if (!match) {
+          failed.push(`Card "${r.account}" not found`);
+          continue;
+        }
+        accountId = match.id;
+      }
+      await db.addExpense(monthId, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId });
+      imported++;
+    }
+    return { imported, failed };
+  };
+
   const importCardExpenses = async (monthId, monthLabel) => {
     try {
       const text = await importTextFile();
@@ -71,21 +94,7 @@ function CardTab({ state, onChanged }) {
         toast("No expense rows found in that file.", "error");
         return;
       }
-      let imported = 0;
-      const failed = [];
-      for (const r of rows) {
-        let accountId = cardAccounts[0].id; // default when the Account column is blank/absent
-        if (r.account) {
-          const match = cardAccounts.find((a) => a.name.toLowerCase() === r.account.toLowerCase());
-          if (!match) {
-            failed.push(`Card "${r.account}" not found`);
-            continue;
-          }
-          accountId = match.id;
-        }
-        await db.addExpense(monthId, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId });
-        imported++;
-      }
+      const { imported, failed } = await importRowsIntoMonth(rows, monthId);
       onChanged();
       const summary = imported ? `Imported ${imported} card expense${imported === 1 ? "" : "s"} into ${monthLabel}.` : "Nothing imported.";
       if (failed.length) {
@@ -97,10 +106,64 @@ function CardTab({ state, onChanged }) {
       toast(`Import failed: ${e}`, "error");
     }
   };
+
+  // Header-level import: one CSV can cover any number of months at once,
+  // using a Month column to route each row (matched against real months by
+  // label, case-insensitive). The per-month buttons above stay for a quick
+  // single-month CSV that doesn't need a Month column at all.
+  const importCardExpensesAcrossMonths = async () => {
+    try {
+      const text = await importTextFile();
+      if (text == null) return;
+      const rows = parseExpensesCsv(text);
+      if (!rows.length) {
+        toast("No expense rows found in that file.", "error");
+        return;
+      }
+      let imported = 0;
+      const failed = [];
+      const byMonth = new Map();
+      for (const r of rows) {
+        if (!r.month) {
+          failed.push("Row missing Month");
+          continue;
+        }
+        const month = state.months.find((m) => m.monthLabel.toLowerCase() === r.month.toLowerCase());
+        if (!month) {
+          failed.push(`Month "${r.month}" not found`);
+          continue;
+        }
+        if (!byMonth.has(month.id)) byMonth.set(month.id, []);
+        byMonth.get(month.id).push(r);
+      }
+      for (const [monthId, monthRows] of byMonth) {
+        const result = await importRowsIntoMonth(monthRows, monthId);
+        imported += result.imported;
+        failed.push(...result.failed);
+      }
+      onChanged();
+      const summary = imported ? `Imported ${imported} card expense${imported === 1 ? "" : "s"} across ${byMonth.size} month${byMonth.size === 1 ? "" : "s"}.` : "Nothing imported.";
+      if (failed.length) {
+        toast(`${summary} ${failed.length} row${failed.length === 1 ? "" : "s"} skipped — first: ${failed[0]}`, imported ? "success" : "error");
+      } else {
+        toast(summary, "success");
+      }
+    } catch (e) {
+      toast(`Import failed: ${e}`, "error");
+    }
+  };
+
   const exportCardTemplate = async () => {
-    const csv = cardAccounts.length > 1
-      ? `Category,Amount,Tag,Account\nCoffee,4.50,,${cardAccounts[0].name}\nGas,40.00,,${cardAccounts[1].name}\n`
-      : "Category,Amount,Tag\nCoffee,4.50,\nGas,40.00,\n";
+    const csv =
+      "Category,Amount,Tag,Account,Month\n" +
+      `Coffee,4.50,,${cardAccounts[0].name},${state.months[state.months.length - 1]?.monthLabel || ""}\n` +
+      `Gas,40.00,,,${state.months[state.months.length - 1]?.monthLabel || ""}\n` +
+      "# Month is only used by the header 'Import CSV' button — the per-month Import CSV buttons ignore it.\n" +
+      "# Account picks which card a row lands on; leave blank to use your first card.\n" +
+      buildCsvReferenceBlock([
+        { label: "cards", names: cardAccounts.map((a) => a.name) },
+        { label: "months", names: state.months.map((m) => m.monthLabel) },
+      ]);
     try {
       const path = await exportTextFile("card-expenses-template.csv", csv);
       if (path) toast(`Template saved to ${path}`, "success");
@@ -158,8 +221,11 @@ function CardTab({ state, onChanged }) {
       <div className="section-head">
         <h2>Card Spending</h2>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={exportCardTemplate} title="Download a blank CSV formatted for the Import CSV button">
+          <button className="btn-secondary" onClick={exportCardTemplate} title="Download a blank CSV formatted for the Import CSV buttons">
             <Download size={15} /> Export template
+          </button>
+          <button className="btn-secondary" onClick={importCardExpensesAcrossMonths} title="Import card expenses from a CSV covering any number of months at once (needs a Month column) — use a month section's own Import CSV button for a single month">
+            <Upload size={15} /> Import CSV
           </button>
           <button className="btn-primary" onClick={handleExport}>
             <Download size={15} /> Export CSV

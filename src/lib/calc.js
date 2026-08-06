@@ -563,6 +563,9 @@ const TYPE_ALIASES = {
 // exported as a template — still imports exactly as before). Recognizes a
 // header row in any column order; without one, falls back to the original
 // positional Category, Amount, Tag layout (all rows treated as expenses).
+// Skips blank rows and any row whose first cell starts with "#" (a
+// human-readable reference block appended after the template's example
+// rows can't accidentally import as data, even if it's never deleted).
 //
 // Returns raw string fields (account/goal/debt are names, not ids) — name
 // resolution against live state happens where this is called, since this
@@ -570,7 +573,7 @@ const TYPE_ALIASES = {
 // reported back via the `skipped` array so the caller can tell the person
 // what didn't import instead of silently dropping rows.
 export function parseActivityCsv(text) {
-  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
+  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== "") && !(r[0] || "").trim().startsWith("#"));
   if (!rows.length) return { rows: [], skipped: [] };
 
   const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -625,26 +628,32 @@ export function parseActivityCsv(text) {
   return { rows: out, skipped };
 }
 
-// Parses expense-shaped rows from CSV text: Category, Amount, Tag, and two
+// Parses expense-shaped rows from CSV text: Category, Amount, Tag, and
 // optional target columns — Account (which card, for the Card tab's
-// import) and Debt (which debt, for the Debt Spending tab's import).
-// Recognizes a header in any order/subset; otherwise assumes column order
-// category, amount, tag (Account/Debt are header-only — there's no
-// positional fallback for them, since the original 3-column format has to
-// keep meaning exactly what it always has). Amounts are taken as
-// magnitudes (so the negative amounts our export writes import cleanly).
-// Skips blank rows.
+// import), Debt (which debt, for the Debt Spending tab's import), and
+// Month (for the header-level "import across months" buttons on those two
+// tabs; ignored by the per-month import buttons, which already know which
+// month they're targeting). Recognizes a header in any order/subset;
+// otherwise assumes column order category, amount, tag (Account/Debt/Month
+// are header-only — there's no positional fallback for them, since the
+// original 3-column format has to keep meaning exactly what it always
+// has). Amounts are taken as magnitudes (so the negative amounts our
+// export writes import cleanly). Skips blank rows and any row whose first
+// cell starts with "#" — lets a template append a human-readable reference
+// list (available accounts, etc.) that can't accidentally get imported as
+// data even if it's never deleted.
 export function parseExpensesCsv(text) {
-  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
+  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== "") && !(r[0] || "").trim().startsWith("#"));
   if (!rows.length) return [];
   let catIdx = 0;
   let amtIdx = 1;
   let tagIdx = 2;
   let acctIdx = -1;
   let debtIdx = -1;
+  let monthIdx = -1;
   let start = 0;
   const header = rows[0].map((h) => h.trim().toLowerCase());
-  if (header.some((h) => ["category", "amount", "tag", "account", "debt"].includes(h))) {
+  if (header.some((h) => ["category", "amount", "tag", "account", "debt", "month"].includes(h))) {
     const ci = header.indexOf("category");
     const ai = header.indexOf("amount");
     const ti = header.indexOf("tag");
@@ -653,6 +662,7 @@ export function parseExpensesCsv(text) {
     tagIdx = ti;
     acctIdx = header.indexOf("account");
     debtIdx = header.indexOf("debt");
+    monthIdx = header.indexOf("month");
     start = 1;
   }
   const out = [];
@@ -663,8 +673,9 @@ export function parseExpensesCsv(text) {
     const tag = tagIdx >= 0 ? (r[tagIdx] || "").trim() : "";
     const account = acctIdx >= 0 ? (r[acctIdx] || "").trim() : "";
     const debt = debtIdx >= 0 ? (r[debtIdx] || "").trim() : "";
+    const month = monthIdx >= 0 ? (r[monthIdx] || "").trim() : "";
     if (!category && !amount) continue;
-    out.push({ category, amount, tag, account, debt });
+    out.push({ category, amount, tag, account, debt, month });
   }
   return out;
 }
@@ -716,6 +727,20 @@ export function resolveActivityRow(row, { accounts, goals, debts }) {
     return { ok: true, kind: "savings", payload: { goalId: goal.id, amount: row.amount, accountId: acc?.id } };
   }
   return { ok: false, reason: `Unknown type "${row.type}"` };
+}
+
+// Builds a "# Available X: a, b, c" reference block to append after a CSV
+// template's example rows, so the person can see exactly what names are
+// valid for a name-lookup column (Account, Debt, Goal, Month, ...) without
+// leaving the file. Comment lines (see parseExpensesCsv/parseActivityCsv)
+// are always safe to import even if never deleted — they're never mistaken
+// for data. `sections` is a list of { label, names }; sections with no
+// names are omitted.
+export function buildCsvReferenceBlock(sections) {
+  const lines = (sections || [])
+    .filter((s) => s.names && s.names.length)
+    .map((s) => `# Available ${s.label}: ${s.names.join(", ")}`);
+  return lines.length ? `\n${lines.join("\n")}\n` : "";
 }
 
 export const money = (n) => {
