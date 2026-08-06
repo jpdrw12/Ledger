@@ -4,7 +4,7 @@ import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money, reconcileTabOrder } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
-import { TabButton, ExpandContext } from "./components/Shared.jsx";
+import { TabButton, ExpandContext, useDragList } from "./components/Shared.jsx";
 import { activeProfileName, activeProfileDb, getProfiles, setActiveProfile, PROFILE_SLOTS, DEMO_DB } from "./lib/profiles.js";
 import { resetAndSeedDemo } from "./lib/demo.js";
 import TourOverlay, { TOUR_STEPS } from "./components/TourOverlay.jsx";
@@ -247,8 +247,12 @@ export default function App() {
 
   // Sidebar/nav tab order — hold Alt and drag a tab to reorder. reorderMode
   // tracks whether Alt is currently held (via window-level listeners, not
-  // per-button, so it stays in sync even if focus is elsewhere); dragTabId
-  // tracks which tab is mid-drag for the drop-target logic.
+  // per-button, so it stays in sync even if focus is elsewhere). The actual
+  // drag mechanics reuse useDragList (pointer-based: mousedown/mousemove/
+  // mouseup) rather than native HTML5 drag-and-drop — the latter is
+  // unreliable in Tauri's webview (see useDragList's comment in Shared.jsx)
+  // and produced exactly that here: drops silently not committing and a
+  // glitchy drag-over ghost.
   const [tabOrder, setTabOrderState] = useState(loadTabOrder);
   const setTabOrder = useCallback((updater) => {
     setTabOrderState((prev) => {
@@ -258,7 +262,6 @@ export default function App() {
     });
   }, []);
   const [reorderMode, setReorderMode] = useState(false);
-  const [dragTabId, setDragTabId] = useState(null);
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === "Alt") setReorderMode(true);
@@ -279,29 +282,8 @@ export default function App() {
       window.removeEventListener("blur", onBlur);
     };
   }, []);
-  const handleTabDragStart = useCallback((id) => (e) => {
-    setDragTabId(id);
-    e.dataTransfer.effectAllowed = "move";
-  }, []);
-  const handleTabDragOver = useCallback((id) => (e) => {
-    if (!dragTabId || dragTabId === id) return;
-    e.preventDefault(); // required to allow a drop
-  }, [dragTabId]);
-  const handleTabDrop = useCallback((id) => (e) => {
-    if (!dragTabId || dragTabId === id) return;
-    e.preventDefault();
-    setTabOrder((order) => {
-      const from = order.indexOf(dragTabId);
-      const to = order.indexOf(id);
-      if (from === -1 || to === -1) return order;
-      const next = [...order];
-      next.splice(from, 1);
-      next.splice(to, 0, dragTabId);
-      return next;
-    });
-    setDragTabId(null);
-  }, [dragTabId, setTabOrder]);
-  const handleTabDragEnd = useCallback(() => setDragTabId(null), []);
+  const { itemProps: tabItemProps, handleProps: tabHandleProps } = useDragList(tabOrder, setTabOrder);
+
 
   const [expandSections, setExpandSectionsState] = useState(() => localStorage.getItem("ledger.expandSections") !== "0"); // default on
   const setExpandSections = useCallback((v) => {
@@ -1058,12 +1040,12 @@ export default function App() {
 
   // The nav buttons — reused by both the sidebar rail and the classic top
   // nav. Order comes from tabOrder (persisted, reorderable by holding Alt
-  // and dragging — see the handlers above); while reorderMode is active,
+  // and dragging — see useDragList above); while reorderMode is active,
   // clicking is disabled so a drag's mouseup doesn't also switch tabs.
   const orderedTabs = tabOrder.map((id) => TAB_DEFS.find((t) => t.id === id)).filter(Boolean);
   const tabNav = (
     <>
-      {orderedTabs.map((t) => {
+      {orderedTabs.map((t, i) => {
         const Icon = t.icon;
         return (
           <TabButton
@@ -1074,11 +1056,8 @@ export default function App() {
             label={t.label}
             dataTour={t.dataTour}
             reorderable={reorderMode}
-            dragging={dragTabId === t.id}
-            onDragStart={handleTabDragStart(t.id)}
-            onDragOver={handleTabDragOver(t.id)}
-            onDrop={handleTabDrop(t.id)}
-            onDragEnd={handleTabDragEnd}
+            dragItemProps={tabItemProps(i)}
+            dragHandleProps={reorderMode ? tabHandleProps(i) : undefined}
           />
         );
       })}

@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.31.1]
+
+### Fixed
+- Reorderable nav tabs (v0.31.0) used native HTML5 drag-and-drop, which is
+  unreliable in Tauri's webview — drops silently didn't commit, and
+  hovering over a tab produced a glitchy drag-over ghost. This was already
+  a known issue in this codebase (see useDragList's comment in
+  Shared.jsx, used for reordering goals/debts/accounts) that the tab
+  reorder work should have reused from the start instead of reinventing
+  with native DnD. Switched to that same pointer-based approach
+  (mousedown/mousemove/mouseup); Alt-hold-to-enable behavior is unchanged.
+
 ## [0.31.0]
 
 ### Added

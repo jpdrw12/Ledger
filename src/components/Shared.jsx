@@ -186,17 +186,15 @@ export function Sparkline({ series, projectedIds }) {
   );
 }
 
-export function TabButton({ active, onClick, icon, label, dataTour, reorderable, dragging, onDragStart, onDragOver, onDrop, onDragEnd }) {
+export function TabButton({ active, onClick, icon, label, dataTour, reorderable, dragItemProps, dragHandleProps }) {
+  const { className: dragClassName, ...restItemProps } = dragItemProps || {};
   return (
     <button
-      className={`tab-btn ${active ? "active" : ""} ${reorderable ? "reorderable" : ""} ${dragging ? "dragging" : ""}`.trim()}
+      className={`tab-btn ${active ? "active" : ""} ${reorderable ? "reorderable" : ""} ${dragClassName || ""}`.trim()}
       onClick={reorderable ? undefined : onClick}
       data-tour={dataTour}
-      draggable={reorderable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
+      {...restItemProps}
+      {...(dragHandleProps || {})}
     >
       {reorderable && <GripVertical size={12} className="tab-grip" />}
       {icon}

@@ -205,6 +205,7 @@ export const css = `
   .tab-btn.reorderable { cursor: grab; }
   .tab-btn.reorderable:active { cursor: grabbing; }
   .tab-btn.dragging { opacity: 0.35; }
+  .tab-btn.drag-over { box-shadow: inset 0 0 0 1.5px var(--accent); }
   .tab-grip { color: var(--stamp); flex-shrink: 0; }
 
   .section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
