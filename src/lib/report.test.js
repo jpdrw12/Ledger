@@ -201,6 +201,29 @@ describe("buildReportHtml", () => {
     expect(pendingCount).toBe(1);
   });
 
+  it("counts a Debts-tab payment (logged straight to debt_history, no month_debt_payments row) in the Months table's Debt pmts column", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const debt = await upsertDebt({ name: "Visa", apr: 0.24, balance: 1000, spendable: false });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+
+    // A month_debt_payments-backed payment (Months tab) ...
+    const paidId = await addMonthDebtPayment(m1, { debtId: debt, amount: 200, accountId: checking });
+    await applyMonthDebtPayment(paidId, { debtId: debt, amount: 200, monthLabel: label, currentBalance: 1000 });
+    // ... and a Debts-tab "Apply payment", which writes directly to
+    // debt_history with no month_debt_payment_id — computeLedger() never
+    // sees this one, so the report has to add it in separately.
+    await logDebtHistory({ debtId: debt, monthLabel: label, previousBalance: 800, amountPaid: 150, interest: 0, newBalance: 650 });
+
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    expect(ledger[m1].totalDebtPayments).toBe(200); // sanity: ledger alone only sees the logged one
+
+    const html = buildReportHtml(state, ledger, {});
+    // The Months table's "Debt pmts" cell should reflect both: 200 + 150.
+    expect(html).toContain("350.00");
+  });
+
   it("scopes month-based sections to a narrower range without erroring", async () => {
     const { m2, label2 } = await seedTwoMonths();
     const state = await loadFullState();

@@ -318,6 +318,17 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   const allMonthLabels = new Set(months.map((m) => m.monthLabel));
   const inDebtRange = (label) => rangeLabels.has(label) || !allMonthLabels.has(label);
   const debtChargesInRange = (state.debtCharges || []).filter((c) => inDebtRange(c.monthLabel));
+  // Payments applied straight from the Debts tab ("Apply payment") write a
+  // debt_history row with no month_debt_payment_id and a free-text
+  // month_label — never a month_debt_payments row, so computeLedger()'s
+  // totalDebtPayments (which only sums those) never sees them. A row WITH
+  // month_debt_payment_id is the applied record of a payment logged via the
+  // Months tab, already counted in totalDebtPayments — counting it again
+  // here would double it. interest-only rows (amount_paid 0) don't belong
+  // in "debt payments" either.
+  const debtHistoryPaymentsInRange = (state.debtHistory || []).filter(
+    (h) => !h.month_debt_payment_id && Number(h.amount_paid) > 0 && inDebtRange(h.month_label)
+  );
   let totalIncome = 0, totalBills = 0, totalExpenses = 0, totalSavings = 0, totalDebtPmts = 0;
   rangeMonths.forEach((m) => {
     const l = ledger[m.id];
@@ -328,6 +339,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     totalSavings += l.totalGoals;
     totalDebtPmts += l.totalDebtPayments;
   });
+  totalDebtPmts += debtHistoryPaymentsInRange.reduce((s, h) => s + (Number(h.amount_paid) || 0), 0);
   const totalDebtSpend = debtChargesInRange.reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
   // --- Sections ----------------------------------------------------------
@@ -339,7 +351,9 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       bills: ledger[m.id].totalBills,
       expenses: ledger[m.id].totalExpensesPay1 + ledger[m.id].totalExpensesPay2,
       savings: ledger[m.id].totalGoals,
-      debt: ledger[m.id].totalDebtPayments,
+      debt:
+        ledger[m.id].totalDebtPayments +
+        debtHistoryPaymentsInRange.filter((h) => h.month_label === m.monthLabel).reduce((s, h) => s + (Number(h.amount_paid) || 0), 0),
       debtSpend: debtChargesInRange.filter((c) => c.monthLabel === m.monthLabel).reduce((s, c) => s + (Number(c.amount) || 0), 0),
       end: ledger[m.id].consolidatedCarryOut,
     }));
