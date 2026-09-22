@@ -1,25 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { FileText, Download, Printer } from "lucide-react";
+import { FileText, Download, Printer, CheckSquare, Square } from "lucide-react";
 import { netWorthSnapshot, money } from "../lib/calc.js";
-import { buildReportHtml } from "../lib/report.js";
+import { buildReportHtml, REPORT_SECTIONS } from "../lib/report.js";
 import { exportHtmlFile } from "../lib/backup.js";
 import { printHtmlDocument } from "../lib/printHtml.js";
 import { activeProfileName } from "../lib/profiles.js";
 import { useToast } from "./Toast.jsx";
 
-const SECTIONS = [
-  "Net worth — summary, and a chart of history plus a 6-month forecast",
-  "Range activity summary (income, bills, expenses, savings, debt payments)",
-  "Months (per-month breakdown, ending balance)",
-  "Accounts (balance at start/end of range)",
-  "Spending by category, with a bar chart",
-  "Card spending",
-  "Debt spending",
-  "Budgets vs. actual",
-  "Bill templates",
-  "Savings goals",
-  "Debts — current balances, payments logged in range, and applied history",
-];
+const ALL_SECTION_KEYS = REPORT_SECTIONS.map((s) => s.key);
 
 // One document, styled to match the app's current theme/accent, covering a
 // month range the person picks. "Save as PDF" prints it through a hidden
@@ -32,6 +20,19 @@ function ReportTab({ state, ledger, theme, accent, appVersion }) {
   const [fromId, setFromId] = useState(() => months[0]?.id || "");
   const [toId, setToId] = useState(() => months[months.length - 1]?.id || "");
   const [busy, setBusy] = useState(null); // null | "pdf" | "html"
+  // Every section on by default — the full report, same as before this
+  // picker existed. Unchecking any narrows every export (HTML and PDF) to
+  // just the remaining tabs.
+  const [enabledSections, setEnabledSections] = useState(() => new Set(ALL_SECTION_KEYS));
+  const toggleSection = (key) =>
+    setEnabledSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const allSelected = enabledSections.size === ALL_SECTION_KEYS.length;
+  const noneSelected = enabledSections.size === 0;
 
   // Keep the pickers valid if the month list changes underneath them (e.g.
   // a month was deleted while this tab was open).
@@ -58,6 +59,7 @@ function ReportTab({ state, ledger, theme, accent, appVersion }) {
       accent,
       profileName: activeProfileName(),
       appVersion,
+      sections: enabledSections,
     });
 
   const generatePdf = async () => {
@@ -90,10 +92,10 @@ function ReportTab({ state, ledger, theme, accent, appVersion }) {
       <div className="section-head">
         <h2>Report</h2>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={generateHtml} disabled={!!busy || invalidRange}>
+          <button className="btn-secondary" onClick={generateHtml} disabled={!!busy || invalidRange || noneSelected}>
             <Download size={15} /> {busy === "html" ? "Saving…" : "Save as HTML"}
           </button>
-          <button className="btn-primary" onClick={generatePdf} disabled={!!busy || invalidRange}>
+          <button className="btn-primary" onClick={generatePdf} disabled={!!busy || invalidRange || noneSelected}>
             <Printer size={15} /> {busy === "pdf" ? "Opening…" : "Save as PDF"}
           </button>
         </div>
@@ -157,13 +159,40 @@ function ReportTab({ state, ledger, theme, accent, appVersion }) {
         </>
       )}
 
-      <h4 className="block-title"><FileText size={13} /> What's included</h4>
+      <div className="section-head" style={{ marginBottom: 0 }}>
+        <h4 className="block-title" style={{ marginBottom: 0 }}><FileText size={13} /> What's included</h4>
+        <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setEnabledSections(new Set(allSelected ? [] : ALL_SECTION_KEYS))}>
+          {allSelected ? "Deselect all" : "Select all"}
+        </button>
+      </div>
       <div className="insight-card">
-        <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {SECTIONS.map((s) => (
-            <li key={s} style={{ marginBottom: 4, fontSize: 12.5 }}>{s}</li>
-          ))}
+        <p className="empty small" style={{ marginTop: 0 }}>
+          Uncheck a tab to leave it out — export just Card spending, just Debts, or any combination, instead of
+          the full report. Both "Save as HTML" and "Save as PDF" respect this.
+        </p>
+        <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+          {REPORT_SECTIONS.map((s) => {
+            const checked = enabledSections.has(s.key);
+            return (
+              <li key={s.key} style={{ marginBottom: 6 }}>
+                <button
+                  type="button"
+                  className="link-btn"
+                  style={{ display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", width: "100%", fontSize: 12.5 }}
+                  onClick={() => toggleSection(s.key)}
+                >
+                  {checked ? <CheckSquare size={14} style={{ flexShrink: 0, marginTop: 1 }} /> : <Square size={14} style={{ flexShrink: 0, marginTop: 1, color: "var(--ink-soft)" }} />}
+                  <span style={{ color: checked ? "var(--ink)" : "var(--ink-soft)" }}>{s.label}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
+        {noneSelected && (
+          <p className="empty small" style={{ color: "var(--deficit)", marginBottom: 0 }}>
+            Select at least one section to export.
+          </p>
+        )}
         <p className="empty small" style={{ marginBottom: 0 }}>
           Accounts, bills, goals, and debts are always shown in full (current setup); everything else is scoped to
           the selected month range. Styled to match your current theme and accent color. The net-worth forecast

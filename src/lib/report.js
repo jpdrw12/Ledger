@@ -20,6 +20,8 @@ import {
   estimateMonthlyInterest,
   projectLedger,
   monthlyEndingBalances,
+  groupCategoryRows,
+  mergeCategoryTotals,
   money,
 } from "./calc.js";
 
@@ -98,6 +100,18 @@ function themeStyle(theme, accentName) {
     .section-divider { display: flex; align-items: center; gap: 10px; margin: 8px 0 22px; color: var(--ink-soft);
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; }
     .section-divider::before, .section-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+    .report-group, .report-chart { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; padding: 0 12px 10px; }
+    .report-group summary, .report-chart summary { cursor: pointer; padding: 9px 0; font-weight: 600; font-size: 12.5px;
+      display: flex; justify-content: space-between; gap: 10px; list-style: none; }
+    .report-group summary::-webkit-details-marker, .report-chart summary::-webkit-details-marker { display: none; }
+    .report-group summary::before, .report-chart summary::before { content: "▸"; color: var(--ink-soft); margin-right: 7px; font-size: 10px; }
+    .report-group[open] summary::before, .report-chart[open] summary::before { content: "▾"; }
+    .report-group-total { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-weight: 600; }
+    .report-group table { margin-top: -2px; }
+    .report-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+    .print-btn { background: var(--accent); color: var(--accent-ink); border: none; border-radius: 5px;
+      padding: 8px 16px; font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .print-btn:hover { opacity: 0.9; }
     footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; }
     @media (max-width: 640px) {
       body { padding: 18px 14px 40px; font-size: 13px; }
@@ -118,6 +132,12 @@ function themeStyle(theme, accentName) {
       a { color: inherit; text-decoration: none; }
       .table-scroll { overflow-x: visible; }
       .table-scroll table { min-width: 0; }
+      .report-toolbar { display: none; }
+      /* A chart or category group collapsed in the browser still prints in
+         full — collapsing is a browsing convenience, not a way to leave
+         something out of the PDF. */
+      details:not([open]) > *:not(summary) { display: block !important; }
+      .report-group summary::before, .report-chart summary::before { display: none; }
     }
   `;
 }
@@ -128,6 +148,12 @@ function esc(v) {
     .replace(/"/g, "&quot;");
 }
 const amtClass = (n) => (Number(n) < 0 ? "neg" : "pos");
+// Wraps a chart's markup in a collapsible <details>, same "open by default
+// so print/PDF shows everything, click a summary to collapse in a browser"
+// pattern categoryTableHtml's groups already use (see .report-group in
+// themeStyle). `label` becomes the clickable summary text — every chart
+// function already takes an ariaLabel that doubles as a reasonable one.
+const collapsibleChart = (label, innerHtml) => `<details open class="report-chart"><summary>${esc(label)}</summary>${innerHtml}</details>`;
 // APR is stored as a decimal fraction (0.299, not 29.9) — one decimal place,
 // no trailing zeros.
 const pct = (frac) => `${Math.round((Number(frac) || 0) * 1000) / 10}%`;
@@ -145,6 +171,43 @@ const table = (headers, rows, opts = {}) => {
   return `<div class="table-scroll"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
 };
 
+// A category/total breakdown ({category, total}[]), organized into the same
+// collapsible category groups the Categories tab manages (see
+// groupCategoryRows in calc.js) — mirrors GroupedCategoryList (Shared.jsx),
+// the equivalent in-app component, but as plain HTML <details> since the
+// report has no React runtime. `<details open>` so a PDF/print of the report
+// shows everything expanded; clicking a group's summary in a browser still
+// collapses it. Falls back to a single flat table when no groups exist for
+// this source, unchanged from before this existed.
+function categoryTableHtml(categories, groups, members, { emptyLabel = "Nothing to show here.", showTotal = true } = {}) {
+  if (!categories.length) return `<p class="empty">${esc(emptyLabel)}</p>`;
+  const total = categories.reduce((s, c) => s + c.total, 0);
+  const catTable = (rows) =>
+    table(
+      [
+        { key: "category", label: "Category" },
+        { key: "total", label: "Total", num: true, render: (r) => money(r.total) },
+      ],
+      rows.map((c) => ({ category: c.category, total: c.total }))
+    );
+  // showTotal: false when the caller already appends its own more specific
+  // total line right after (e.g. Card spending's "Total across N cards").
+  const totalLine = showTotal ? `<p style="text-align:right;font-weight:700;margin-top:6px;">Total: ${money(total)}</p>` : "";
+
+  if (!(groups || []).length) return catTable(categories) + totalLine;
+
+  const { groups: groupedRows, ungrouped } = groupCategoryRows(categories, groups, members);
+  const subtotal = (rows) => rows.reduce((s, c) => s + c.total, 0);
+  const groupBlock = (name, rows) => `
+    <details open class="report-group">
+      <summary>${esc(name)} <span class="report-group-total">${esc(money(subtotal(rows)))}</span></summary>
+      ${rows.length ? catTable(rows) : `<p class="empty small">No spending here.</p>`}
+    </details>`;
+  const blocks = groupedRows.map((g) => groupBlock(g.name, g.rows)).join("");
+  const ungroupedBlock = ungrouped.length ? groupBlock("Ungrouped", ungrouped) : "";
+  return blocks + ungroupedBlock + totalLine;
+}
+
 // Slices `months` (already sequence-ordered) to the inclusive [fromId, toId]
 // range. Falls back to the full list when an id is missing or not found —
 // callers always get a valid (possibly empty) array back.
@@ -157,20 +220,56 @@ function sliceRange(months, fromId, toId) {
   return months.slice(start, end + 1);
 }
 
+// Least-squares line through {x, y} points — used to draw a straight trend
+// line over a chart's actual (jagged) data, so the overall direction reads
+// at a glance instead of having to eyeball a noisy series. Returns null for
+// fewer than 2 points or a degenerate (all-same-x) input.
+function linearRegression(points) {
+  const n = points.length;
+  if (n < 2) return null;
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  points.forEach((p) => {
+    sumX += p.x; sumY += p.y; sumXY += p.x * p.y; sumXX += p.x * p.x;
+  });
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0) return null;
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  return { slope, intercept };
+}
+
 // Line chart with an optional dashed "forecast" tail — same visual language
 // as the in-app Sparkline component (Shared.jsx), redrawn here as a plain
 // SVG string since the report has no React runtime. Colors use the CSS
 // custom properties from themeStyle() above, since this is inline HTML the
 // SVG inherits them like any other element.
-function lineChartSvg(series, projectedIds, { width = 680, height = 150, pad = 12, ariaLabel = "Trend" } = {}) {
+//
+// No preserveAspectRatio="none" here (unlike an earlier version of this
+// function) — "none" stretches/compresses the whole coordinate system,
+// text included, to exactly fill whatever width the container ends up
+// being, which is what made chart text look squished whenever the
+// rendered width didn't happen to match the 680 viewBox exactly (e.g. a
+// narrower browser window or the mobile print layout). The default
+// "xMidYMid meet" behavior barChartSvg/groupedBarChartSvg already use
+// scales uniformly instead, so text never distorts.
+//
+// topPad/bottomPad leave room for a value label above each point and a
+// short x-axis label below it — every point gets both (not just the
+// first/last), since a printed/PDF'd report can't rely on the <title>
+// hover tooltips to read intermediate values the way the live in-app
+// Sparkline can. Labels alternate a few px of vertical offset by index
+// parity so tightly-packed points (many months in 680px) land in two
+// staggered rows instead of overlapping into unreadable text.
+function lineChartSvg(series, projectedIds, { width = 680, height = 190, pad = 12, topPad = 24, bottomPad = 46, ariaLabel = "Trend" } = {}) {
   if (!series || series.length < 2) return `<p class="empty small">Need at least two months to chart a trend.</p>`;
   const proj = projectedIds || new Set();
   const values = series.map((s) => s.value);
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const span = max - min || 1;
+  const plotBottom = height - bottomPad;
   const x = (i) => pad + (i * (width - 2 * pad)) / (series.length - 1);
-  const y = (v) => height - pad - ((v - min) / span) * (height - 2 * pad);
+  const y = (v) => plotBottom - ((v - min) / span) * (plotBottom - topPad);
   const zeroY = y(0);
   const firstProj = series.findIndex((s) => proj.has(s.id));
   const pt = (s, i) => `${x(i)},${y(s.value)}`;
@@ -182,19 +281,56 @@ function lineChartSvg(series, projectedIds, { width = 680, height = 150, pad = 1
       return `<circle cx="${x(i)}" cy="${y(s.value)}" r="3" fill="${color}"><title>${esc(s.label)}: ${esc(money(s.value))}</title></circle>`;
     })
     .join("");
-  return `
-    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none" role="img" aria-label="${esc(ariaLabel)}">
-      <line x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}" stroke="var(--line)" stroke-width="1" />
-      ${firstProj > 0 ? `<line x1="${x(firstProj - 1)}" y1="${pad}" x2="${x(firstProj - 1)}" y2="${height - pad}" stroke="var(--line)" stroke-dasharray="3 3" />` : ""}
+  const valueLabels = series
+    .map((s, i) => `<text x="${x(i).toFixed(1)}" y="${(y(s.value) - (i % 2 === 0 ? 8 : 16)).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="var(--ink)">${esc(money(s.value))}</text>`)
+    .join("");
+  const ticks = series
+    .map((s, i) => `<text x="${x(i).toFixed(1)}" y="${(plotBottom + (i % 2 === 0 ? 14 : 24)).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--ink-soft)">${esc(shortMonthLabel(s.label))}</text>`)
+    .join("");
+
+  // A straight least-squares line over the actual (non-forecast) points, so
+  // the overall direction — trending up or down — reads at a glance instead
+  // of having to eyeball a jagged month-to-month line. Deliberately fit only
+  // to the real data even when a forecast tail is present: the forecast is
+  // already itself a projection, and overlaying a second trend through it
+  // would just be visual noise on top of visual noise.
+  const realCount = firstProj === -1 ? series.length : firstProj;
+  const trend = realCount >= 2 ? linearRegression(series.slice(0, realCount).map((s, i) => ({ x: i, y: s.value }))) : null;
+  const trendColor = "color-mix(in srgb, var(--accent) 45%, var(--ink))";
+  const trendLine = trend
+    ? `<line x1="${x(0).toFixed(1)}" y1="${y(trend.intercept).toFixed(1)}" x2="${x(realCount - 1).toFixed(1)}" y2="${y(trend.slope * (realCount - 1) + trend.intercept).toFixed(1)}" stroke="${trendColor}" stroke-width="1.5" stroke-dasharray="1 5" stroke-linecap="round" />`
+    : "";
+  const legend = trend
+    ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;display:flex;gap:14px;">
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:var(--accent);display:inline-block;"></span>Actual</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:${trendColor};display:inline-block;"></span>Trend</span>
+        ${firstProj > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:var(--ink-soft);display:inline-block;"></span>Forecast</span>` : ""}
+      </div>`
+    : "";
+  return collapsibleChart(ariaLabel, `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${esc(ariaLabel)}">
+      <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${width - pad}" y2="${zeroY.toFixed(1)}" stroke="var(--ink-soft)" stroke-width="1.25" stroke-dasharray="4 3" />
+      <text x="2" y="${(zeroY - 3).toFixed(1)}" font-size="9" fill="var(--ink-soft)">$0</text>
+      ${firstProj > 0 ? `<line x1="${x(firstProj - 1).toFixed(1)}" y1="${topPad}" x2="${x(firstProj - 1).toFixed(1)}" y2="${plotBottom}" stroke="var(--line)" stroke-dasharray="3 3" />` : ""}
+      ${trendLine}
       <polyline points="${realLine}" fill="none" stroke="var(--accent)" stroke-width="2" />
       ${projLine ? `<polyline points="${projLine}" fill="none" stroke="var(--ink-soft)" stroke-width="2" stroke-dasharray="5 4" />` : ""}
       ${dots}
+      ${valueLabels}
+      ${ticks}
     </svg>
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-top:2px;">
-      <span>${esc(series[0].label)}: ${esc(money(series[0].value))}</span>
-      <span>${esc(series[series.length - 1].label)}: ${esc(money(series[series.length - 1].value))}${firstProj > -1 ? " (projected)" : ""}</span>
-    </div>
-  `;
+    ${legend}
+  `);
+}
+
+// Cuts a label to at most `max` characters with a trailing "…" — a long
+// merchant/category name (e.g. a card statement's raw description) would
+// otherwise run past the label column into the bar/axis and read as
+// squished, overlapping text. The full name is still available via the
+// row's own <title> tooltip.
+function truncateLabel(s, max = 26) {
+  const str = String(s);
+  return str.length > max ? `${str.slice(0, max - 1)}…` : str;
 }
 
 // Horizontal bar chart for category breakdowns — plain SVG, no libraries.
@@ -208,13 +344,13 @@ function barChartSvg(rows, { width = 680, barHeight = 20, gap = 9, labelWidth = 
       const rowY = i * (barHeight + gap);
       const w = Math.max(2, (r.total / max) * chartWidth);
       return `
-        <text x="${labelWidth - 8}" y="${rowY + barHeight * 0.72}" text-anchor="end" font-size="11" fill="var(--ink)">${esc(r.category)}</text>
+        <text x="${labelWidth - 8}" y="${rowY + barHeight * 0.72}" text-anchor="end" font-size="11" fill="var(--ink)">${esc(truncateLabel(r.category))}<title>${esc(r.category)}</title></text>
         <rect x="${labelWidth}" y="${rowY}" width="${w}" height="${barHeight}" rx="3" fill="var(--accent)" />
         <text x="${labelWidth + w + 6}" y="${rowY + barHeight * 0.72}" font-size="11" fill="var(--ink-soft)">${esc(money(r.total))}</text>
       `;
     })
     .join("");
-  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${esc(ariaLabel)}">${bars}</svg>`;
+  return collapsibleChart(ariaLabel, `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${esc(ariaLabel)}">${bars}</svg>`);
 }
 
 // "Jan 2026" -> "Jan '26" — short enough to fit as an x-axis tick without
@@ -228,14 +364,17 @@ function shortMonthLabel(label) {
 // several figures (income/bills/expenses/...) can be compared side by side
 // across the range, month over month — a visual companion to the Months
 // table rather than a replacement for it.
-function groupedBarChartSvg(labels, series, { width = 680, height = 200, pad = 28, ariaLabel = "Comparison" } = {}) {
+function groupedBarChartSvg(labels, series, { width = 680, height = 240, pad = 28, topPad = 48, bottomPad = 26, ariaLabel = "Comparison" } = {}) {
   if (!labels.length || !series.length) return `<p class="empty small">Not enough data to chart.</p>`;
   const allValues = series.flatMap((s) => s.values);
   const max = Math.max(...allValues, 0);
   const min = Math.min(...allValues, 0);
   const span = max - min || 1;
-  const plotH = height - pad - 20; // leave room for x-axis labels
-  const zeroY = pad + plotH - ((0 - min) / span) * plotH;
+  // topPad/bottomPad give the rotated value labels (see below) and the
+  // x-axis month labels room to sit above/below the tallest bar without
+  // running off the top of the chart or into the legend below it.
+  const plotH = height - topPad - bottomPad;
+  const zeroY = topPad + plotH - ((0 - min) / span) * plotH;
   const groupWidth = (width - 2 * pad) / labels.length;
   const gap = 2;
   const barWidth = Math.max(2, (groupWidth - gap * (series.length + 1)) / series.length);
@@ -249,6 +388,22 @@ function groupedBarChartSvg(labels, series, { width = 680, height = 200, pad = 2
       const x = groupX + gap + si * (barWidth + gap);
       const y = v >= 0 ? zeroY - barH : zeroY;
       bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" fill="${s.color}"><title>${esc(s.label)} — ${esc(label)}: ${esc(money(v))}</title></rect>`;
+      // Skip the label on a bar too thin to hold one legibly — with
+      // near-zero-value bars, the label's anchor point sits right at the
+      // zero line (which is also where the x-axis month row starts, since
+      // these series are non-negative magnitudes), so it would render on
+      // top of the month label below rather than "value too small to show."
+      // The exact amount is still in the bar's own <title> tooltip.
+      if (v !== 0 && barH >= 11) {
+        // Rotated -90° so a value still fits next to a narrow bar (several
+        // series clustered per month) instead of being dropped — anchor
+        // "start"/"end" here is the pre-rotation direction the text grows
+        // in, which rotate(-90) turns into "away from the bar" (up for a
+        // positive bar, down for a negative one) either way.
+        const lx = (x + barWidth / 2).toFixed(1);
+        const ly = (v >= 0 ? y - 6 : y + barH + 6).toFixed(1);
+        bars += `<text x="${lx}" y="${ly}" font-size="7" fill="var(--ink-soft)" text-anchor="${v >= 0 ? "start" : "end"}" transform="rotate(-90 ${lx} ${ly})">${esc(money(v))}</text>`;
+      }
     });
   });
   const ticks = labels
@@ -257,17 +412,41 @@ function groupedBarChartSvg(labels, series, { width = 680, height = 200, pad = 2
   const legend = series
     .map((s) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="width:9px;height:9px;border-radius:2px;background:${s.color};display:inline-block;"></span>${esc(s.label)}</span>`)
     .join("");
-  return `
+  return collapsibleChart(ariaLabel, `
     <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${esc(ariaLabel)}">
       <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${width - pad}" y2="${zeroY.toFixed(1)}" stroke="var(--line)" stroke-width="1" />
       ${bars}
       ${ticks}
     </svg>
     <div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${legend}</div>
-  `;
+  `);
 }
 
-export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme = "light", accent = "green", profileName = "", appVersion = "" } = {}) {
+// Canonical list of report sections — single source of truth for both what
+// buildReportHtml() can build (the `sections` option below) and what the
+// Report tab's "What's included" list / section-picker checkboxes show, so
+// the two can't drift out of sync with each other.
+export const REPORT_SECTIONS = [
+  { key: "networth", label: "Net worth — summary, chart of history plus a 6-month forecast, and range activity totals" },
+  { key: "months", label: "Months (per-month breakdown, ending balance)" },
+  { key: "accounts", label: "Accounts (balance at start/end of range)" },
+  { key: "spending", label: "Spending by category, with a bar chart" },
+  { key: "card", label: "Card spending" },
+  { key: "debtspending", label: "Debt spending" },
+  { key: "budgets", label: "Budgets vs. actual" },
+  { key: "bills", label: "Bill templates" },
+  { key: "goals", label: "Savings goals" },
+  { key: "debts", label: "Debts — current balances, payments logged in range, and applied history" },
+  { key: "combined", label: "Combined categories — expenses, card spending, and debt spending totaled together, at the very bottom" },
+];
+
+// `sections`, when given, is an iterable of REPORT_SECTIONS keys — only
+// those sections are built, letting the Report tab offer "just these tabs"
+// exports alongside the full report. Omitted (the default), every section
+// is included — the full report, unchanged from before this option existed.
+export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme = "light", accent = "green", profileName = "", appVersion = "", sections } = {}) {
+  const include = sections ? new Set(sections) : null;
+  const on = (key) => !include || include.has(key);
   const months = state.months || [];
   const rangeMonths = sliceRange(months, fromMonthId, toMonthId);
   const toIdx = rangeMonths.length ? months.findIndex((m) => m.id === rangeMonths[rangeMonths.length - 1].id) : -1;
@@ -508,22 +687,17 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     { emptyLabel: "No debt payments or interest logged in this range." }
   );
 
+  // Expenses and card spending are the same category namespace ("expenses"
+  // source) as the Categories tab's "Expense & Card categories" groups —
+  // both breakdowns below use those same groups.
+  const expenseCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const expenseCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
+  const debtCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
+  const debtCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
+
   const nonCardCategories = spendingByCategory(rangeMonths, { exclude: cardIds });
-  const spendingTotal = nonCardCategories.reduce((s, c) => s + c.total, 0);
-  const spendingSection = table(
-    [
-      { key: "category", label: "Category" },
-      { key: "total", label: "Total", num: true, render: (r) => money(r.total) },
-    ],
-    nonCardCategories.length
-      ? [...nonCardCategories.map((c) => ({ category: c.category, total: c.total })), { category: "Total", total: spendingTotal, isTotal: true }]
-      : [],
-    { emptyLabel: "No expenses logged in this range." }
-  );
-  const spendingChart = barChartSvg(
-    [...nonCardCategories].sort((a, b) => b.total - a.total).slice(0, 10),
-    { ariaLabel: "Spending by category" }
-  );
+  const spendingSection = categoryTableHtml(nonCardCategories, expenseCategoryGroups, expenseCategoryGroupMembers, { emptyLabel: "No expenses logged in this range." });
+  const spendingChart = barChartSvg([...nonCardCategories].sort((a, b) => b.total - a.total), { ariaLabel: "Spending by category" });
   const spendTrend = rangeMonths.length >= 2
     ? rangeMonths.map((m) => ({ id: m.id, label: m.monthLabel, value: spendingByCategory([m], { exclude: cardIds }).reduce((s, c) => s + c.total, 0) }))
     : [];
@@ -532,7 +706,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   const cardCategories = cardAccounts.length ? spendingByCategory(rangeMonths, { include: cardIds }, state.bills) : [];
   const cardTotal = cardCategories.reduce((s, c) => s + c.total, 0);
   const cardCategoriesChart = cardCategories.length
-    ? barChartSvg([...cardCategories].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Card spending by category" })
+    ? barChartSvg([...cardCategories].sort((a, b) => b.total - a.total), { ariaLabel: "Card spending by category" })
     : "";
   const cardTrend = cardAccounts.length && rangeMonths.length >= 2
     ? rangeMonths.map((m) => ({ id: m.id, label: m.monthLabel, value: spendingByCategory([m], { include: cardIds }, state.bills).reduce((s, c) => s + c.total, 0) }))
@@ -549,18 +723,13 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     ? cardTrendChart +
       (cardsChart ? `<h3>By card</h3>${cardsChart}` : "") +
       (cardCategoriesChart ? `<h3>By category</h3>${cardCategoriesChart}` : "") +
-      table(
-        [
-          { key: "category", label: "Category" },
-          { key: "total", label: "Total", num: true, render: (r) => money(r.total) },
-        ],
-        cardCategories.map((c) => ({ category: c.category, total: c.total }))
-      ) + `<p style="text-align:right;font-weight:700;margin-top:-2px;">Total across ${cardAccounts.length} card${cardAccounts.length === 1 ? "" : "s"}: ${money(cardTotal)}</p>`
+      categoryTableHtml(cardCategories, expenseCategoryGroups, expenseCategoryGroupMembers, { emptyLabel: "No card spending in this range.", showTotal: false }) +
+      `<p style="text-align:right;font-weight:700;margin-top:-2px;">Total across ${cardAccounts.length} card${cardAccounts.length === 1 ? "" : "s"}: ${money(cardTotal)}</p>`
     : `<p class="empty">No spending-card accounts set up.</p>`;
 
   const debtSpendCats = debtSpendingByCategory(debtChargesInRange);
   const debtSpendCatsChart = debtSpendCats.length
-    ? barChartSvg([...debtSpendCats].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Debt spending by category" })
+    ? barChartSvg([...debtSpendCats].sort((a, b) => b.total - a.total), { ariaLabel: "Debt spending by category" })
     : "";
   const spendableDebts = (state.debts || []).filter((d) => d.spendable);
   const debtTrend = spendableDebts.length && rangeMonths.length >= 2
@@ -586,11 +755,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     ? debtTrendChart +
       (debtSpendByDebtChart ? `<h3>By debt</h3>${debtSpendByDebtChart}` : "") +
       (debtSpendCatsChart ? `<h3>By category</h3>${debtSpendCatsChart}` : "") +
-      table(
-        [{ key: "category", label: "Category" }, { key: "total", label: "Total", num: true, render: (r) => money(r.total) }],
-        debtSpendCats.map((c) => ({ category: c.category, total: c.total })),
-        { emptyLabel: "No debt charges logged in this range." }
-      ) +
+      categoryTableHtml(debtSpendCats, debtCategoryGroups, debtCategoryGroupMembers, { emptyLabel: "No debt charges logged in this range.", showTotal: false }) +
       table(
         [{ key: "debt", label: "Debt" }, { key: "total", label: "Charged", num: true, render: (r) => money(r.total) }],
         debtSpendByDebtRows
@@ -612,25 +777,33 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       )
     : `<p class="empty">No category budgets set. (Budgets compare against the most recent month in the selected range.)</p>`;
 
+  // Everything spent or charged this range, in one place — regular
+  // expenses, card spending, and debt spending combined by category name.
+  // Grouped using both sources' Categories-tab groups together (a category
+  // grouped under either namespace shows grouped here; the same category
+  // name grouped differently in each namespace is a rare edge case — the
+  // debt-side grouping wins for it, simply because its members are merged
+  // in last below).
+  const combinedCategories = mergeCategoryTotals(nonCardCategories, cardCategories, debtSpendCats);
+  const combinedTotal = combinedCategories.reduce((s, c) => s + c.total, 0);
+  const combinedGroups = [...expenseCategoryGroups, ...debtCategoryGroups];
+  const combinedGroupMembers = [...expenseCategoryGroupMembers, ...debtCategoryGroupMembers];
+  const combinedChart = combinedCategories.length ? barChartSvg([...combinedCategories].sort((a, b) => b.total - a.total), { ariaLabel: "Combined spending by category" }) : "";
+  const combinedSection = combinedCategories.length
+    ? combinedChart + categoryTableHtml(combinedCategories, combinedGroups, combinedGroupMembers, { showTotal: false }) +
+      `<p style="text-align:right;font-weight:700;margin-top:6px;">Total across expenses, card spending, and debt spending: ${money(combinedTotal)}</p>`
+    : `<p class="empty">Nothing logged in this range.</p>`;
+
   const generated = new Date();
   const genStr = generated.toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" });
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>${esc(profileName ? `${profileName} — Ledger Report` : "Ledger Report")}</title>
-<style>${themeStyle(theme, accent)}</style>
-</head>
-<body>
-  <div class="cover">
-    <div>
-      <h1>${esc(profileName ? `${profileName}'s Ledger` : "Household Ledger")} — Report</h1>
-      <span class="range-badge">${esc(rangeLabel)}</span>
-    </div>
-    <div class="meta">Generated ${esc(genStr)}${appVersion ? `<br/>Household Ledger v${esc(appVersion)}` : ""}</div>
-  </div>
-
+  // Range-scoped sections (top) and "current setup" sections (bottom, always
+  // full-history regardless of range) are built separately so the divider
+  // between them only appears when there's something selected on both sides
+  // — a "just these tabs" export of e.g. only Card spending shouldn't show
+  // a lone "Your current setup" heading with nothing under it.
+  const rangeBlocks = [];
+  if (on("networth")) rangeBlocks.push(`
   <section>
     <h2>Net worth (as of end of range)</h2>
     <div class="cards">
@@ -650,60 +823,95 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       <div class="card"><div class="label">Debt payments</div><div class="value">${money(totalDebtPmts)}</div></div>
       <div class="card"><div class="label">Debt spending</div><div class="value neg">${money(totalDebtSpend)}</div></div>
     </div>
-  </section>
-
+  </section>`);
+  if (on("months")) rangeBlocks.push(`
   <section>
     <h2>Months</h2>
     ${monthsChart}
     ${monthsSection}
-  </section>
-
+  </section>`);
+  if (on("accounts")) rangeBlocks.push(`
   <section>
     <h2>Accounts</h2>
     ${accountsSection}
-  </section>
-
+  </section>`);
+  if (on("spending")) rangeBlocks.push(`
   <section>
     <h2>Spending by category</h2>
     ${spendTrendChart}
     ${spendingChart}
     ${spendingSection}
-  </section>
-
+  </section>`);
+  if (on("card")) rangeBlocks.push(`
   <section>
     <h2>Card spending</h2>
     ${cardSection}
-  </section>
-
+  </section>`);
+  if (on("debtspending")) rangeBlocks.push(`
   <section>
     <h2>Debt spending</h2>
     ${debtSpendSection}
-  </section>
-
+  </section>`);
+  if (on("budgets")) rangeBlocks.push(`
   <section>
     <h2>Budgets vs. actual</h2>
     ${budgetSection}
-  </section>
+  </section>`);
 
-  <div class="section-divider">Your current setup</div>
-
+  const setupBlocks = [];
+  if (on("bills")) setupBlocks.push(`
   <section>
     <h2>Bill templates</h2>
     ${billsSection}
-  </section>
-
+  </section>`);
+  if (on("goals")) setupBlocks.push(`
   <section>
     <h2>Savings goals</h2>
     ${goalsSection}
-  </section>
-
+  </section>`);
+  if (on("debts")) setupBlocks.push(`
   <section>
     <h2>Debts</h2>
     ${debtsSection}
     <h3>Payments in range</h3>
     <p class="empty small">Interest and applied payments — what actually moved each debt's balance — plus anything logged but not yet applied.</p>
     ${debtPaymentsSection}
-  </section>
+  </section>`);
+
+  const divider = rangeBlocks.length && setupBlocks.length ? `\n\n  <div class="section-divider">Your current setup</div>` : "";
+
+  // Always the very last section, regardless of range vs. setup — a
+  // combined view across expenses/card/debt spending, not scoped to either
+  // half above.
+  const combinedBlock = on("combined")
+    ? `
+  <section>
+    <h2>Combined categories (expenses, card spending, and debt spending)</h2>
+    ${combinedSection}
+  </section>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>${esc(profileName ? `${profileName} — Ledger Report` : "Ledger Report")}</title>
+<style>${themeStyle(theme, accent)}</style>
+</head>
+<body>
+  <div class="report-toolbar">
+    <button type="button" class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+  <div class="cover">
+    <div>
+      <h1>${esc(profileName ? `${profileName}'s Ledger` : "Household Ledger")} — Report</h1>
+      <span class="range-badge">${esc(rangeLabel)}</span>
+    </div>
+    <div class="meta">Generated ${esc(genStr)}${appVersion ? `<br/>Household Ledger v${esc(appVersion)}` : ""}</div>
+  </div>
+  ${rangeBlocks.join("\n")}${divider}
+  ${setupBlocks.join("\n")}
+  ${combinedBlock}
 
   <footer>
     Generated locally by Household Ledger — this file lives on your computer and was not uploaded anywhere.

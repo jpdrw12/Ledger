@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { makeTestDb } from "./testdb.js";
-import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, updateBillPayment, addGoalContribution, addDebtCharge, addMonthDebtPayment, applyMonthDebtPayment, applyMonthlyInterest, logDebtHistory } from "./db.js";
+import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, updateBillPayment, addGoalContribution, addDebtCharge, addMonthDebtPayment, applyMonthDebtPayment, applyMonthlyInterest, logDebtHistory, addCategoryGroup, setCategoryGroup } from "./db.js";
 import { computeLedger, computeDueDate } from "./calc.js";
-import { buildReportHtml } from "./report.js";
+import { buildReportHtml, REPORT_SECTIONS } from "./report.js";
 
 let adapter;
 
@@ -235,6 +235,234 @@ describe("buildReportHtml", () => {
     // Accounts/bills/goals/debts stay full-history regardless of range.
     expect(html).toContain("Checking");
     expect(html).toContain("Rent");
+  });
+
+  it("omits every section but the ones named in `sections`, dropping the divider when there's nothing on one side of it", async () => {
+    await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+
+    const html = buildReportHtml(state, ledger, { sections: ["card"] });
+
+    expect(html).toContain("<h2>Card spending");
+    expect(html).not.toContain("<h2>Net worth");
+    expect(html).not.toContain("<h2>Months");
+    expect(html).not.toContain("<h2>Accounts");
+    expect(html).not.toContain("<h2>Spending by category");
+    expect(html).not.toContain("<h2>Debt spending");
+    expect(html).not.toContain("<h2>Budgets");
+    expect(html).not.toContain("<h2>Bill templates");
+    expect(html).not.toContain("<h2>Savings goals");
+    expect(html).not.toContain("<h2>Debts");
+    expect(html).not.toContain("Your current setup"); // nothing in the "setup" half either
+  });
+
+  it("includes both range and setup sections (and the divider) when `sections` spans both halves", async () => {
+    await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+
+    const html = buildReportHtml(state, ledger, { sections: ["months", "bills"] });
+
+    expect(html).toContain("<h2>Months");
+    expect(html).toContain("<h2>Bill templates");
+    expect(html).toContain("Your current setup");
+    expect(html).not.toContain("<h2>Card spending");
+  });
+
+  it("organizes the spending-by-category breakdown into the Categories tab's groups, when any exist for that source", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+    await addExpense(m1, 1, { category: "Groceries", amount: 60, accountId: checking });
+    await addExpense(m1, 1, { category: "Dining out", amount: 25, accountId: checking });
+    await addExpense(m1, 1, { category: "Gas", amount: 40, accountId: checking });
+
+    const foodGroup = await addCategoryGroup("expenses", "Food");
+    await setCategoryGroup("expenses", "Groceries", foodGroup);
+    await setCategoryGroup("expenses", "Dining out", foodGroup);
+    // "Gas" is left ungrouped on purpose.
+
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain('<details open class="report-group">');
+    expect(html).toContain("<summary>Food ");
+    expect(html).toContain('<span class="report-group-total">$85.00</span>'); // Groceries 60 + Dining out 25
+    expect(html).toContain("<summary>Ungrouped ");
+    expect(html).toContain("Groceries");
+    expect(html).toContain("Gas");
+  });
+
+  it("falls back to a single flat table (no <details> groups) when no groups exist for that source", async () => {
+    const { label1 } = await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+
+    const html = buildReportHtml(state, ledger, { fromMonthId: state.months[0].id, toMonthId: state.months[0].id });
+
+    expect(html).not.toContain('class="report-group"');
+    expect(html).toContain(label1);
+  });
+
+  it("charts every category, not just the top 10", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 5000 });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+    for (let i = 1; i <= 14; i++) {
+      await addExpense(m1, 1, { category: `Category ${i}`, amount: i, accountId: checking });
+    }
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    for (let i = 1; i <= 14; i++) expect(html).toContain(`Category ${i}`);
+  });
+
+  it("labels every point on a trend line, not just the first and last", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const labels = ["January 2026", "February 2026", "March 2026", "April 2026"];
+    for (let i = 0; i < labels.length; i++) {
+      const m = await addMonth({ monthLabel: labels[i], sequence: i + 1, defaultAccountId: checking });
+      await addExpense(m, 1, { category: "Groceries", amount: 50 + i * 10, accountId: checking });
+    }
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    // Each month gets its own short x-axis label under the "Spending by
+    // month" trend line — not just the range's first/last month.
+    expect(html).toContain(">Jan '26<");
+    expect(html).toContain(">Feb '26<");
+    expect(html).toContain(">Mar '26<");
+    expect(html).toContain(">Apr '26<");
+
+    // Every point also gets its own dollar-value label — a printed/PDF'd
+    // report has no hover tooltips to fall back on.
+    expect(html).toContain(">$50.00<");
+    expect(html).toContain(">$60.00<");
+    expect(html).toContain(">$70.00<");
+    expect(html).toContain(">$80.00<");
+  });
+
+  it("wraps every chart in a collapsible <details>, forced open again in print so a collapsed chart still shows up in the PDF", async () => {
+    const { label1 } = await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain('<details open class="report-chart">');
+    expect(html).toContain('<summary>Spending by category</summary>');
+    expect(html).toContain("details:not([open]) > *:not(summary) { display: block !important; }");
+    expect(html).toContain(label1);
+  });
+
+  it("includes a Print button at the top of the page that's hidden again when actually printing", async () => {
+    await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain('<button type="button" class="print-btn" onclick="window.print()">Print / Save as PDF</button>');
+    expect(html.indexOf("print-btn")).toBeLessThan(html.indexOf('class="cover"')); // top of the page, before the cover
+    expect(html).toContain(".report-toolbar { display: none; }");
+  });
+
+  it("draws a straight least-squares trend line over a line chart's actual points, with a legend", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const labels = ["January 2026", "February 2026", "March 2026"];
+    for (let i = 0; i < labels.length; i++) {
+      const m = await addMonth({ monthLabel: labels[i], sequence: i + 1, defaultAccountId: checking });
+      await addExpense(m, 1, { category: "Groceries", amount: 50 + i * 10, accountId: checking });
+    }
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain('stroke-dasharray="1 5"'); // the trend line's own dash pattern
+    expect(html).toContain(">Actual<");
+    expect(html).toContain(">Trend<");
+  });
+
+  it("skips a value label on a bar too thin to hold one, instead of overlapping the month row below it (Months chart)", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+    await updatePayBlock((await loadFullState()).months[0].pay1.payBlockId, { income: 5000, incomeAccountId: checking });
+    // A tiny expense next to a large income — the tiny bar's height rounds
+    // down near zero, which is exactly the case that used to put its label
+    // right on top of the x-axis month label.
+    await addExpense(m1, 1, { category: "Coffee", amount: 0.5, accountId: checking });
+
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    // The big income bar still gets its own rotated value label...
+    expect(html).toMatch(/text-anchor="start" transform="rotate\(-90[^>]*>\$5,000\.00</);
+    // ...but the near-invisible $0.50 expense bar doesn't get a floating
+    // label of its own (still inspectable via the bar's own tooltip) —
+    // no rotated <text> anywhere contains "$0.50".
+    expect(html).not.toMatch(/transform="rotate\(-90[^>]*>\$0\.50</);
+    expect(html).toContain("Expenses — January 2026: $0.50");
+  });
+
+  it("does not distort chart text with preserveAspectRatio=\"none\" (the cause of squished-looking chart labels)", async () => {
+    await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).not.toContain('preserveAspectRatio="none"');
+  });
+
+  it("draws a labeled $0 reference line on the net worth trend chart", async () => {
+    await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain(">$0<");
+    expect(html).toContain('stroke-dasharray="4 3"');
+  });
+
+  it("adds a combined categories section at the very end, totaling expenses + card + debt spending together", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const card = await upsertAccount({ name: "Visa card", startingBalance: 0, excludeFromTotal: true });
+    const debt = await upsertDebt({ name: "Visa", apr: 0.2, balance: 500, spendable: true });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+    await addExpense(m1, 1, { category: "Groceries", amount: 60, accountId: checking });
+    await addExpense(m1, 1, { category: "Groceries", amount: 25, accountId: card });
+    await addDebtCharge(debt, { monthLabel: label, category: "Groceries", amount: 15 });
+
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain("<h2>Combined categories");
+    expect(html).toContain("Total across expenses, card spending, and debt spending: $100.00");
+    // The combined section is the last thing before the footer.
+    expect(html.indexOf("<h2>Combined categories")).toBeGreaterThan(html.indexOf("<h2>Debts"));
+    expect(html.indexOf("<footer>")).toBeGreaterThan(html.indexOf("<h2>Combined categories"));
+  });
+
+  it("includes every section (and the divider) when `sections` is omitted, same as before the option existed", async () => {
+    const { label1 } = await seedTwoMonths();
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(REPORT_SECTIONS.map((s) => s.key)).toEqual([
+      "networth", "months", "accounts", "spending", "card", "debtspending", "budgets", "bills", "goals", "debts", "combined",
+    ]);
+    ["<h2>Net worth", "<h2>Months", "<h2>Accounts", "<h2>Spending by category", "<h2>Card spending", "<h2>Debt spending", "<h2>Budgets", "<h2>Bill templates", "<h2>Savings goals", "<h2>Debts", "<h2>Combined categories"].forEach((h) =>
+      expect(html).toContain(h)
+    );
+    expect(html).toContain("Your current setup");
+    expect(html).toContain(label1);
   });
 
   it("counts a bill paid from a card account as card spending (previously invisible everywhere)", async () => {
