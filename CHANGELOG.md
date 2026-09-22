@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.35.0]
+
+### Added
+- **Report: paid-bills breakdown.** The Bills section now shows what was
+  actually paid this range — a per-month trend chart, "by bill" and "by
+  category" breakdowns (grouped through the Categories tab's own "Bill
+  categories" groups) — above the existing recurring-templates table.
+- **Report: export section presets.** Quick-pick chips (Everything,
+  Spending overview, Bills & debts, Net worth & accounts) set the section
+  checklist in one click. "+ Save current as preset" names and persists
+  your own combination as a chip, with a × to delete it.
+
 ## [0.34.0]
 
 ### Added
