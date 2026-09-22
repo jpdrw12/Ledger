@@ -399,6 +399,7 @@ export const css = `
   .budget-history-dots { display:inline-flex; gap:3px; }
   .budget-history-dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--surplus); }
   .budget-history-dot.over { background:var(--deficit); }
+  .pace-alert-banner { background:color-mix(in srgb, var(--deficit) 12%, var(--card)); border:1px solid color-mix(in srgb, var(--deficit) 35%, transparent); border-radius:10px; padding:12px 14px; margin-bottom:16px; }
   .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .budget-grid { border-collapse:collapse; font-size:12px; }
   .budget-grid th, .budget-grid td { padding:5px 8px; border:1px solid var(--paper-line); text-align:center; white-space:nowrap; }

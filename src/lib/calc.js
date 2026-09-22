@@ -448,6 +448,34 @@ export function budgetOverUnderHistory(snapshots, category, budget, count = 6) {
   });
 }
 
+// Flags budgeted categories that are on pace to blow past their target
+// before the month ends — projecting the rest of the month from the
+// day-of-month spend rate (actual / dayOfMonth * daysInMonth). Only
+// meaningful for the real, current calendar month (a past month is already
+// final; a future one has no spend yet), so this returns [] unless
+// `monthLabel` parses to whatever `now` actually is. Also skips the first
+// couple of days, where one early purchase would wildly overproject. Pure —
+// no I/O; `now` is injectable so this stays testable without mocking Date.
+export function budgetPaceAlerts(rows, monthLabel, { now = new Date(), threshold = 1.1 } = {}) {
+  const [m, y] = (monthLabel || "").split(" ");
+  const idx = MONTHS.indexOf(m);
+  const year = Number(y);
+  if (idx === -1 || !year) return [];
+  if (now.getFullYear() !== year || now.getMonth() !== idx) return [];
+  const dayOfMonth = now.getDate();
+  if (dayOfMonth < 3) return [];
+  const daysInMonth = new Date(year, idx + 1, 0).getDate();
+
+  return (rows || [])
+    .filter((r) => r.budget > 0)
+    .map((r) => {
+      const projected = (r.actual / dayOfMonth) * daysInMonth;
+      return { category: r.category, budget: r.budget, actual: r.actual, projected, overBy: projected - r.budget };
+    })
+    .filter((r) => r.projected > r.budget * threshold)
+    .sort((a, b) => b.overBy - a.overBy);
+}
+
 // The target a planning-grid cell shows/edits for one category+month: a
 // per-month override if one exists (category_budget_months), else the
 // single global target (category_budgets/card_budgets/debt_budgets) —

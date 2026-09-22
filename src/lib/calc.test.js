@@ -17,6 +17,7 @@ import {
   debtCategorySnapshotsByLabel,
   recentCategoryAverage,
   budgetOverUnderHistory,
+  budgetPaceAlerts,
   effectiveBudget,
   monthlyExpenseTotals,
   spendByAccount,
@@ -1045,6 +1046,46 @@ describe("budgetOverUnderHistory", () => {
       { label: "Apr", actual: 250, over: true },
       { label: "May", actual: 180, over: false },
     ]);
+  });
+});
+
+describe("budgetPaceAlerts", () => {
+  // 15 days into a 30-day June: half the month elapsed.
+  const midJune = new Date(2026, 5, 15);
+  const rows = [
+    { category: "Groceries", budget: 400, actual: 300 }, // projects to 600 -> over
+    { category: "Gas", budget: 200, actual: 90 }, // projects to 180 -> under
+    { category: "Fun money", budget: 100, actual: 55 }, // projects to 110, within 10% threshold -> not flagged
+  ];
+
+  it("flags categories whose day-of-month pace projects past budget by more than the threshold", () => {
+    const alerts = budgetPaceAlerts(rows, "June 2026", { now: midJune });
+    expect(alerts).toEqual([
+      { category: "Groceries", budget: 400, actual: 300, projected: 600, overBy: 200 },
+    ]);
+  });
+
+  it("returns [] when the month label isn't the real current calendar month", () => {
+    expect(budgetPaceAlerts(rows, "July 2026", { now: midJune })).toEqual([]);
+    expect(budgetPaceAlerts(rows, "Not A Month", { now: midJune })).toEqual([]);
+  });
+
+  it("returns [] in the first couple of days of the month (too little signal)", () => {
+    expect(budgetPaceAlerts(rows, "June 2026", { now: new Date(2026, 5, 2) })).toEqual([]);
+  });
+
+  it("ignores rows with no budget set", () => {
+    const noBudget = [{ category: "Misc", budget: 0, actual: 500 }];
+    expect(budgetPaceAlerts(noBudget, "June 2026", { now: midJune })).toEqual([]);
+  });
+
+  it("sorts multiple alerts by how far over pace they are, worst first", () => {
+    const rows2 = [
+      { category: "A", budget: 100, actual: 80 }, // projects 160, +60 over
+      { category: "B", budget: 100, actual: 200 }, // projects 400, +300 over
+    ];
+    const alerts = budgetPaceAlerts(rows2, "June 2026", { now: midJune });
+    expect(alerts.map((a) => a.category)).toEqual(["B", "A"]);
   });
 });
 

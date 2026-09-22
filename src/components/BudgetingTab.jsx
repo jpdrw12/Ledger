@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { Target, CreditCard, Landmark, CalendarRange, Wand2 } from "lucide-react";
+import { Target, CreditCard, Landmark, CalendarRange, Wand2, AlertTriangle } from "lucide-react";
 import * as db from "../lib/db.js";
-import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, whatIfComparison, money } from "../lib/calc.js";
+import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, budgetPaceAlerts, whatIfComparison, money } from "../lib/calc.js";
 import { Collapsible, BudgetEditor, BudgetGrid, Sparkline } from "./Shared.jsx";
 
 // One home for every monthly budget target — expense categories, card
@@ -106,6 +106,16 @@ function BudgetingTab({ state, onChanged }) {
     onChanged();
   };
 
+  // --- Mid-month pace alerts ------------------------------------------------
+  // Only meaningful for the real current calendar month — budgetPaceAlerts
+  // itself returns [] for any other month label, so this is safe to compute
+  // even when latestLabel is a past/future/unparseable month.
+  const paceAlerts = [
+    ...budgetPaceAlerts(expenseBudgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual })), latestLabel).map((a) => ({ ...a, source: "Expense" })),
+    ...budgetPaceAlerts(cardBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel).map((a) => ({ ...a, source: "Card" })),
+    ...budgetPaceAlerts(debtBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel).map((a) => ({ ...a, source: "Debt" })),
+  ].sort((a, b) => b.overBy - a.overBy);
+
   if (state.months.length === 0) {
     return (
       <div className="section">
@@ -125,6 +135,18 @@ function BudgetingTab({ state, onChanged }) {
         against <strong>{latestLabel}</strong>, your most recent month. Card Spending and Debt Spending still show these
         same numbers at a glance; edit them here.
       </p>
+
+      {paceAlerts.length > 0 && (
+        <div className="pace-alert-banner">
+          <h4 className="block-title" style={{ marginTop: 0 }}><AlertTriangle size={13} /> Trending over budget this month</h4>
+          {paceAlerts.map((a) => (
+            <p className="empty small" key={`${a.source}-${a.category}`} style={{ marginBottom: 4 }}>
+              <strong>{a.category}</strong> ({a.source}): on pace for <span className="mono deficit">{money(a.projected)}</span> against a{" "}
+              <span className="mono">{money(a.budget)}</span> budget — {money(a.overBy)} over, at {money(a.actual)} spent so far.
+            </p>
+          ))}
+        </div>
+      )}
 
       <Collapsible title="Expense categories" icon={<Target size={13} />} right={latestLabel} defaultOpen>
         <BudgetEditor
