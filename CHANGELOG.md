@@ -5,6 +5,19 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.36.0]
+
+### Added
+- **Budgeting & Planning tab.** One place to set every monthly budget
+  target — expense categories, card spending, and debt spending —
+  instead of three separate editing UIs scattered across Insights, Card
+  Spending, and Debt Spending. Those tabs now show a read-only glance
+  with a link to manage targets here.
+- **Budget trend context.** Each target now shows a "Recent avg: $X/mo"
+  reference and a 6-month over/under history (dots), applying the
+  current target retroactively against recent actual spend — context
+  right where you set the number.
+
 ## [0.35.0]
 
 ### Added
