@@ -26,8 +26,34 @@ React + SQLite; ships for macOS, Windows, and Linux with an in-app updater.
   debt's balance). Both with categories, per-category budgets, a monthly
   trend, spend-by-category breakdown, and CSV export.
 - **Debts** — balances + APR with payment/interest math and a history table.
+- **Categories** — rename a payment category once and every expense, bill, or
+  debt charge using it updates together, along with its budget — with
+  collapsible, drag-and-drop (or click-to-assign) **category groups** for
+  organizing a long category list, shared by Card and Debt Spending's
+  breakdowns too.
+- **Budgeting & Planning** — every monthly budget target in one place
+  (expense categories, card spending, debt spending), each showing a recent
+  average and a 6-month over/under trend. Also includes:
+  - **Plan ahead** — an editable multi-month grid for setting a different
+    target ahead of time per category (e.g. a higher heating budget in
+    December) instead of one ongoing amount.
+  - **Recurring goal auto-contributions** — set a Savings Goal to
+    auto-contribute a fixed amount from a chosen account every time a new
+    month is added, the same way an auto-add bill works.
+  - **What-if scenarios** — a sandbox to nudge income or spending up or down
+    and compare the resulting forecast against the unadjusted baseline, over
+    3/6/12 months. Nothing here is saved.
+  - **Pace alerts** — a banner flagging any budgeted category on pace to
+    blow past its target before the current month ends, projected from this
+    month's day-of-month spend rate.
 - **Insights** — net worth, spending by category, budgets vs. actuals, and a
   forecast projected from your income and recent spending.
+- **Report** — a single styled, printable document for a month range you
+  pick: collapsible charts with value labels and trend lines, a $0 reference
+  line on history/forecast charts, a bills breakdown, a combined
+  categories/groups summary across accounts/card/debt spending, and
+  checkbox-preset buttons (built-in and your own saved combinations) for
+  which sections to include.
 - **Backups** — snapshot the live database locally, mirror every backup to a
   synced folder (Dropbox/Drive desktop folder), and archive individual months.
 - **Profiles** — up to seven completely separate ledgers, plus a demo profile.
