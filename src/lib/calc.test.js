@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeLedger,
   projectLedger,
+  whatIfComparison,
   averageNetChange,
   planTransfer,
   computeGoalBalances,
@@ -388,6 +389,51 @@ describe("projectLedger", () => {
     const res = projectLedger([], acct, bills, { count: 3 });
     expect(res.projectedIds).toEqual([]);
     expect(res.months).toEqual([]);
+  });
+
+  it("applies incomeDelta and expenseDelta to every projected month", () => {
+    // Real month m1 ends at 3500 (see prior test). Projected month with
+    // +200 income and +100 spending: 3500 + 4200 - 1000 - 600 = 6100.
+    const { ledger } = projectLedger([realMonth], acct, bills, { count: 1, incomeDelta: 200, expenseDelta: 100 });
+    expect(ledger["forecast-1"].consolidatedCarryOut).toBe(6100);
+  });
+
+  it("clamps expenseDelta so projected spending never goes negative", () => {
+    const { ledger } = projectLedger([realMonth], acct, bills, { count: 1, expenseDelta: -10000 });
+    // Spending floors at 0, so the only outflow is the bill: 3500 + 4000 - 1000 = 6500.
+    expect(ledger["forecast-1"].consolidatedCarryOut).toBe(6500);
+  });
+});
+
+describe("whatIfComparison", () => {
+  const acct = [{ id: "a", startingBalance: 1000 }];
+  const realMonth = makeMonth("m1", {
+    monthLabel: "June 2026",
+    sequence: 1,
+    pay1: { income: 4000, incomeAccountId: "a", additions: [] },
+    pay2: { income: 0, incomeAccountId: "a", additions: [] },
+    billPayments: [{ billId: "b1", accountId: "a", amountPaid: 1000, slot: 1 }],
+    expensesPay1: [{ category: "Food", amount: 500, accountId: "a" }],
+  });
+  const bills = [{ id: "b1", name: "Rent", autoAdd: true, addToSlot1: true, addToSlot2: false, defaultAmount: 1000 }];
+
+  it("pairs baseline and scenario balances for each projected month", () => {
+    const { rows } = whatIfComparison([realMonth], acct, bills, { count: 2, incomeDelta: 200 });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].baseline).toBe(6000);
+    expect(rows[0].scenario).toBe(6200);
+    expect(rows[1].baseline).toBe(8500);
+    expect(rows[1].scenario).toBe(8900);
+  });
+
+  it("scenario matches baseline when no deltas are given", () => {
+    const { rows } = whatIfComparison([realMonth], acct, bills, { count: 2 });
+    rows.forEach((r) => expect(r.scenario).toBe(r.baseline));
+  });
+
+  it("returns no rows when there are no real months", () => {
+    const { rows } = whatIfComparison([], acct, bills, { count: 3 });
+    expect(rows).toEqual([]);
   });
 });
 

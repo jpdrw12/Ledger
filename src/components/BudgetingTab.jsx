@@ -1,8 +1,8 @@
-import React from "react";
-import { Target, CreditCard, Landmark, CalendarRange } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Target, CreditCard, Landmark, CalendarRange, Wand2 } from "lucide-react";
 import * as db from "../lib/db.js";
-import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory } from "../lib/calc.js";
-import { Collapsible, BudgetEditor, BudgetGrid } from "./Shared.jsx";
+import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, whatIfComparison, money } from "../lib/calc.js";
+import { Collapsible, BudgetEditor, BudgetGrid, Sparkline } from "./Shared.jsx";
 
 // One home for every monthly budget target — expense categories, card
 // spending, and debt spending each had their own hand-rolled editing UI
@@ -13,6 +13,20 @@ import { Collapsible, BudgetEditor, BudgetGrid } from "./Shared.jsx";
 function BudgetingTab({ state, onChanged }) {
   const latestMonth = state.months.length ? state.months[state.months.length - 1] : null;
   const latestLabel = latestMonth?.monthLabel || null;
+
+  // --- What-if scenarios (client-side only — nothing here is persisted) ---
+  const [whatIfHorizon, setWhatIfHorizon] = useState(6);
+  const [incomeDelta, setIncomeDelta] = useState(0);
+  const [expenseDelta, setExpenseDelta] = useState(0);
+  const whatIf = useMemo(
+    () => whatIfComparison(state.months, state.accounts, state.bills, { count: whatIfHorizon, incomeDelta, expenseDelta }),
+    [state.months, state.accounts, state.bills, whatIfHorizon, incomeDelta, expenseDelta]
+  );
+  const whatIfSeries = whatIf.rows.map((r) => ({ id: r.id, label: r.label, value: r.scenario }));
+  const whatIfProjectedIds = new Set(whatIf.rows.map((r) => r.id));
+  const whatIfFirstNegative = whatIf.rows.find((r) => r.scenario < 0);
+  const endBaseline = whatIf.rows.length ? whatIf.rows[whatIf.rows.length - 1].baseline : 0;
+  const endScenario = whatIf.rows.length ? whatIf.rows[whatIf.rows.length - 1].scenario : 0;
 
   // --- Expense categories (category_budgets) -----------------------------
   const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
@@ -205,6 +219,72 @@ function BudgetingTab({ state, onChanged }) {
               onSaveCell={saveDebtBudgetMonth}
             />
           </Collapsible>
+        )}
+      </Collapsible>
+
+      <Collapsible title="What-if scenarios" icon={<Wand2 size={13} />} className="cat-group">
+        <p className="empty small" style={{ marginTop: 0 }}>
+          Sandbox a hypothetical raise, cut, or expense change against the same forecast used on the Insights tab —
+          nothing here is saved.
+        </p>
+        <div className="grid-3">
+          <div className="field">
+            <span>Income change / month</span>
+            <input
+              className="amount-input"
+              type="number"
+              step="1"
+              value={incomeDelta || ""}
+              placeholder="0"
+              onChange={(e) => setIncomeDelta(Number(e.target.value) || 0)}
+            />
+          </div>
+          <div className="field">
+            <span>Spending change / month</span>
+            <input
+              className="amount-input"
+              type="number"
+              step="1"
+              value={expenseDelta || ""}
+              placeholder="0"
+              onChange={(e) => setExpenseDelta(Number(e.target.value) || 0)}
+              title="Positive = spend more, negative = spend less. Applied on top of the recent-average projection."
+            />
+          </div>
+          <div className="field">
+            <span>Project ahead</span>
+            <select value={whatIfHorizon} onChange={(e) => setWhatIfHorizon(Number(e.target.value))}>
+              {[3, 6, 12].map((n) => (
+                <option key={n} value={n}>{n} months</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {whatIf.rows.length === 0 ? (
+          <p className="empty small">Add a month to run a scenario.</p>
+        ) : (
+          <>
+            <Sparkline series={whatIfSeries} projectedIds={whatIfProjectedIds} />
+            <p className="empty small">
+              After {whatIfHorizon} months: baseline <span className="mono">{money(endBaseline)}</span>, scenario{" "}
+              <span className={`mono ${endScenario < 0 ? "deficit" : "surplus"}`}>{money(endScenario)}</span>
+              {" "}({endScenario - endBaseline >= 0 ? "+" : ""}{money(endScenario - endBaseline)} vs baseline)
+            </p>
+            <div className="forecast-table">
+              {whatIf.rows.map((r) => (
+                <div className="ledger-row" key={r.id}>
+                  <span className="row-name">{r.label}</span>
+                  <span className="mono" style={{ opacity: 0.6 }}>{money(r.baseline)}</span>
+                  <span className={`mono ${r.scenario < 0 ? "deficit" : "surplus"}`}>{money(r.scenario)}</span>
+                </div>
+              ))}
+            </div>
+            {whatIfFirstNegative && (incomeDelta !== 0 || expenseDelta !== 0) && (
+              <p className="empty small" style={{ color: "var(--deficit)" }}>
+                Under this scenario, projected to go negative in {whatIfFirstNegative.label} ({money(whatIfFirstNegative.scenario)}).
+              </p>
+            )}
+          </>
         )}
       </Collapsible>
     </div>

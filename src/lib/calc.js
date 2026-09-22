@@ -95,7 +95,10 @@ export function computeLedger(months, accounts) {
 // the last `expenseLookback` real months' total expenses. Pure — no I/O, and
 // the synthetic months are never persisted. Returns the combined month list,
 // the ledger over all of them, and the ids of the projected months.
-export function projectLedger(months, accounts, bills, { count = 6, expenseLookback = 3 } = {}) {
+// `incomeDelta`/`expenseDelta` (both default 0) let a caller nudge every
+// projected month's pay1 income and projected-spending amount, for what-if
+// scenarios — spending is clamped at 0 so a large cut can't go negative.
+export function projectLedger(months, accounts, bills, { count = 6, expenseLookback = 3, incomeDelta = 0, expenseDelta = 0 } = {}) {
   const real = months || [];
   if (real.length === 0 || count <= 0) {
     return { months: real, ledger: computeLedger(real, accounts), projectedIds: [] };
@@ -123,6 +126,8 @@ export function projectLedger(months, accounts, bills, { count = 6, expenseLookb
     });
   });
 
+  const adjustedExpense = Math.max(0, avgExpense + expenseDelta);
+
   const projected = [];
   let label = last.monthLabel;
   for (let i = 1; i <= count; i++) {
@@ -133,10 +138,10 @@ export function projectLedger(months, accounts, bills, { count = 6, expenseLookb
       id: `forecast-${i}`,
       monthLabel: parseable ? next : `Forecast +${i}`,
       sequence: (last.sequence || real.length) + i,
-      pay1: { income: Number(last.pay1.income) || 0, incomeAccountId: last.pay1.incomeAccountId, additions: (last.pay1.additions || []).map((a) => ({ ...a })) },
+      pay1: { income: (Number(last.pay1.income) || 0) + incomeDelta, incomeAccountId: last.pay1.incomeAccountId, additions: (last.pay1.additions || []).map((a) => ({ ...a })) },
       pay2: { income: Number(last.pay2.income) || 0, incomeAccountId: last.pay2.incomeAccountId, additions: (last.pay2.additions || []).map((a) => ({ ...a })) },
       billPayments: recurringBills.map((bp) => ({ ...bp, id: `${bp.id}-m${i}` })),
-      expensesPay1: avgExpense > 0 ? [{ id: `f-exp-${i}`, category: "Projected spending", amount: avgExpense, tag: null, accountId: primaryAccount }] : [],
+      expensesPay1: adjustedExpense > 0 ? [{ id: `f-exp-${i}`, category: "Projected spending", amount: adjustedExpense, tag: null, accountId: primaryAccount }] : [],
       expensesPay2: [],
       goalContributions: [],
       debtPayments: [],
@@ -146,6 +151,26 @@ export function projectLedger(months, accounts, bills, { count = 6, expenseLookb
 
   const all = [...real, ...projected];
   return { months: all, ledger: computeLedger(all, accounts), projectedIds: projected.map((m) => m.id) };
+}
+
+// Runs projectLedger twice — once unmodified (baseline) and once with
+// `incomeDelta`/`expenseDelta` applied (scenario) — and pairs up each
+// projected month so a what-if UI can show both side by side without
+// re-deriving the projection logic. Pure — no I/O, nothing persisted.
+export function whatIfComparison(months, accounts, bills, { count = 6, incomeDelta = 0, expenseDelta = 0 } = {}) {
+  const baseline = projectLedger(months, accounts, bills, { count });
+  const scenario = projectLedger(months, accounts, bills, { count, incomeDelta, expenseDelta });
+  const rows = scenario.projectedIds.map((id, i) => {
+    const baseId = baseline.projectedIds[i];
+    const scenarioMonth = scenario.months.find((m) => m.id === id);
+    return {
+      id,
+      label: scenarioMonth.monthLabel,
+      baseline: baseline.ledger[baseId].consolidatedCarryOut,
+      scenario: scenario.ledger[id].consolidatedCarryOut,
+    };
+  });
+  return { baseline, scenario, rows };
 }
 
 // Decides which transfer record a same-kind move becomes, given typed
