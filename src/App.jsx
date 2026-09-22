@@ -1239,7 +1239,7 @@ export default function App() {
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} onPatch={patchState} />
       )}
       {tab === "card" && <CardTab state={state} onChanged={reload} />}
-      {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} onChanged={reload} onPatch={patchState} />}
+      {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} months={state.months} onChanged={reload} onPatch={patchState} />}
       {tab === "debtspending" && <DebtSpendingTab state={state} onChanged={reload} />}
       {tab === "insights" && <InsightsTab state={state} ledger={ledger} onChanged={reload} />}
       {tab === "report" && <ReportTab state={state} ledger={ledger} theme={theme} accent={accent} appVersion={APP_VERSION} />}

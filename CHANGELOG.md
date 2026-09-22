@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.33.2]
+
+### Fixed
+- Debts tab's "Label this month's update" field defaulted to the literal
+  placeholder text "This month" — never a real month's label. That's the
+  root cause behind 0.33.1's "Payments in range" bug: anything applied
+  with that default couldn't be tied to any actual month, so a date range
+  could never meaningfully include it. Now defaults to the real current
+  month's label when one exists (so it lines up with an actual month),
+  falling back to the most recent real month, then to today's "Month
+  Year" if there are no months yet — never the old placeholder text.
+  Moved the shared `currentMonthLabel()` helper (previously private to
+  demo-data seeding) into calc.js so both can use it. Still just a
+  starting point — freely editable before applying, same as before.
+
 ## [0.33.1]
 
 ### Fixed

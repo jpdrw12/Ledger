@@ -8,6 +8,7 @@ import {
   latestAccountBalances,
   money,
   nextMonthLabel,
+  currentMonthLabel,
   computeDueDate,
   dueDayForSlot,
   spendingByCategory,
@@ -888,6 +889,15 @@ describe("nextMonthLabel", () => {
 
   it("returns the label unchanged when it isn't a parseable Month Year", () => {
     expect(nextMonthLabel("House Move")).toBe("House Move");
+  });
+});
+
+describe("currentMonthLabel", () => {
+  it("returns today's month in the same 'Month Year' format nextMonthLabel expects", () => {
+    const label = currentMonthLabel();
+    expect(label).toMatch(/^[A-Z][a-z]+ \d{4}$/);
+    // Round-trips through nextMonthLabel without being treated as unparseable.
+    expect(nextMonthLabel(label)).not.toBe(label);
   });
 });
 

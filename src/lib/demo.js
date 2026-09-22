@@ -3,13 +3,7 @@
 // ordinary db.js actions, so it exercises exactly the same code paths the user
 // will. Idempotent-ish: only seeds when the demo ledger is empty.
 import * as db from "./db.js";
-import { nextMonthLabel, computeDueDate } from "./calc.js";
-
-// A "MonthName Year" label for the current month, matching how due-date parsing
-// expects labels to read.
-function currentMonthLabel() {
-  return new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
+import { nextMonthLabel, computeDueDate, currentMonthLabel } from "./calc.js";
 
 // Resets the demo profile to a clean, freshly-seeded state. The demo db is
 // reused (never deleted) across tours, so we wipe rows first — this makes

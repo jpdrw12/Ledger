@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, estimateMonthlyInterest } from "../lib/calc.js";
+import { money, estimateMonthlyInterest, currentMonthLabel } from "../lib/calc.js";
 import { Field, parseNumberInput, useDragList, DragHandle, patchEntity } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
-function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
+function DebtsTab({ debts, debtHistory, months, onChanged, onPatch }) {
   const { confirm, toast } = useToast();
   const { itemProps, handleProps } = useDragList(debts.map((d) => d.id), async (ids) => {
     await db.reorderDebts(ids);
@@ -14,7 +14,22 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
   });
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [interestDrafts, setInterestDrafts] = useState({});
-  const [monthDraft, setMonthDraft] = useState("This month");
+  // Defaults to the real current month's label when one exists — so a
+  // payment/interest applied here lands on an actual month (and shows up
+  // correctly in the Report's date-range filtering) instead of a free-text
+  // label like the old literal default "This month", which matched no real
+  // month at all. Falls back to the most recent real month, then to
+  // today's "Month Year" (still not tied to a real month, but at least in
+  // the same format real month labels use, unlike the old placeholder
+  // text) if there are no months yet. Still just a starting point — freely
+  // editable below.
+  const [monthDraft, setMonthDraft] = useState(() => {
+    const todayLabel = currentMonthLabel();
+    const labels = (months || []).map((m) => m.monthLabel);
+    if (labels.includes(todayLabel)) return todayLabel;
+    if (labels.length) return labels[labels.length - 1];
+    return todayLabel;
+  });
 
   const addDebt = async () => {
     await db.upsertDebt({ name: "New debt", apr: 0.2, balance: 0 });

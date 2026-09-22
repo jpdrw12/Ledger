@@ -806,6 +806,13 @@ export function nextMonthLabel(label) {
   return `${MONTHS[nextIdx]} ${nextYear}`;
 }
 
+// "MonthName Year" for right now, matching the format real month labels use
+// (addMonth/nextMonthLabel) — so a value from this function will actually
+// match a real month's label if one exists for the current calendar month.
+export function currentMonthLabel() {
+  return new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 // The due day a bill uses for a given pay slot. Pay 2 uses its own dueDay2,
 // falling back to the Pay 1 dueDay when unset (back-compat / single-day bills).
 export function dueDayForSlot(bill, slot) {
