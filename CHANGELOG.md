@@ -5,6 +5,20 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.41.0]
+
+### Added
+- **Investments & Dividends tab.** Record each investment account's value
+  at the start of a month in an editable grid — growth since the previous
+  month is computed automatically, carrying the last known value forward
+  for months with no new entry. Log dividend payments per month
+  (optionally tagged to an account), summed into a monthly total and
+  trend chart. The Report's Net worth chart gains a second line ("incl.
+  investments") once any investment account exists.
+- **Visible tabs toggle.** Settings → Appearance → Visible tabs lets you
+  hide any tab you don't use from the sidebar/nav (Months and Settings
+  always stay reachable).
+
 ## [0.40.1]
 
 ### Fixed

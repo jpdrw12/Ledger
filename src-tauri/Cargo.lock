@@ -1898,7 +1898,7 @@ dependencies = [
 
 [[package]]
 name = "ledger-desktop"
-version = "0.40.1"
+version = "0.41.0"
 dependencies = [
  "chrono",
  "serde",
