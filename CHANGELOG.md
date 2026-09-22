@@ -5,6 +5,14 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.38.0]
+
+### Added
+- **Budgeting & Planning: recurring goal auto-contributions.** A savings
+  goal can now be set to auto-contribute a fixed amount from a chosen
+  account every time a new month is added, the same way auto-add bills
+  already work — no need to remember to log the contribution by hand.
+
 ## [0.37.0]
 
 ### Added
