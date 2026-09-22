@@ -316,6 +316,7 @@ export const css = `
   .quick-add { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; font-size:12px; color:var(--ink-soft); }
   .chip { display:flex; align-items:center; gap:4px; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:12px; padding:4px 10px; font-size:12px; cursor:pointer; color:var(--ink); }
   .chip:hover { border-color: var(--stamp); }
+  .chip.active { background:var(--accent); color:#fff; border-color:var(--accent); }
 
   .card-list { display:flex; flex-direction:column; gap:10px; }
   .bill-card { display:grid; grid-template-columns:1fr 1fr 92px 90px 120px 100px 36px 28px; gap:8px; align-items:center; background:var(--card); border:1px solid var(--paper-line); padding:10px; border-radius:2px; }

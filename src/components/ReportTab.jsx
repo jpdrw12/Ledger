@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { FileText, Download, Printer, CheckSquare, Square } from "lucide-react";
+import { FileText, Download, Printer, CheckSquare, Square, Plus, X } from "lucide-react";
 import { netWorthSnapshot, money } from "../lib/calc.js";
 import { buildReportHtml, REPORT_SECTIONS } from "../lib/report.js";
 import { exportHtmlFile } from "../lib/backup.js";
@@ -8,6 +8,34 @@ import { activeProfileName } from "../lib/profiles.js";
 import { useToast } from "./Toast.jsx";
 
 const ALL_SECTION_KEYS = REPORT_SECTIONS.map((s) => s.key);
+
+// Quick-pick combinations of REPORT_SECTIONS keys, shown as chips above the
+// checklist. "Everything" duplicates what "Select all" already does, but as
+// a one-click chip alongside the others rather than a separate link, so
+// picking one preset over another reads as one consistent choice instead of
+// "chips, plus a different kind of toggle off to the side."
+const BUILTIN_PRESETS = [
+  { label: "Everything", keys: ALL_SECTION_KEYS },
+  { label: "Spending overview", keys: ["networth", "spending", "card", "debtspending", "budgets", "combined"] },
+  { label: "Bills & debts", keys: ["bills", "debts", "budgets"] },
+  { label: "Net worth & accounts", keys: ["networth", "months", "accounts"] },
+];
+
+// User-saved combinations, on top of the built-in ones above — plain
+// localStorage, same as the app's other UI-preference-not-financial-data
+// settings (tab order, layout, theme). Global rather than per-profile: which
+// tabs someone likes to export is a personal habit, not ledger data, and a
+// profile switch doesn't reset any of those other prefs either.
+const CUSTOM_PRESETS_KEY = "ledger.reportPresets";
+function loadCustomPresets() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOM_PRESETS_KEY) || "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((p) => p && typeof p.name === "string" && Array.isArray(p.keys) && p.keys.length);
+  } catch {
+    return [];
+  }
+}
 
 // One document, styled to match the app's current theme/accent, covering a
 // month range the person picks. "Save as PDF" prints it through a hidden
@@ -33,6 +61,29 @@ function ReportTab({ state, ledger, theme, accent, appVersion }) {
     });
   const allSelected = enabledSections.size === ALL_SECTION_KEYS.length;
   const noneSelected = enabledSections.size === 0;
+  const matchesPreset = (keys) => keys.length === enabledSections.size && keys.every((k) => enabledSections.has(k));
+
+  const [customPresets, setCustomPresets] = useState(loadCustomPresets);
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  const persistCustomPresets = (next) => {
+    setCustomPresets(next);
+    localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(next));
+  };
+  const saveCurrentAsPreset = () => {
+    const name = newPresetName.trim();
+    if (!name) return;
+    const keys = [...enabledSections];
+    // Saving under a name that already exists replaces it, same as most
+    // "save as" flows — no separate rename/overwrite prompt to deal with.
+    persistCustomPresets([...customPresets.filter((p) => p.name !== name), { name, keys }]);
+    setNewPresetName("");
+    setSavingPreset(false);
+    toast(`Saved "${name}" as a preset.`, "success");
+  };
+  const deleteCustomPreset = (name) => {
+    persistCustomPresets(customPresets.filter((p) => p.name !== name));
+  };
 
   // Keep the pickers valid if the month list changes underneath them (e.g.
   // a month was deleted while this tab was open).
@@ -164,6 +215,66 @@ function ReportTab({ state, ledger, theme, accent, appVersion }) {
         <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setEnabledSections(new Set(allSelected ? [] : ALL_SECTION_KEYS))}>
           {allSelected ? "Deselect all" : "Select all"}
         </button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, margin: "8px 0 12px" }}>
+        {BUILTIN_PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            className={`chip${matchesPreset(p.keys) ? " active" : ""}`}
+            onClick={() => setEnabledSections(new Set(p.keys))}
+            title={`Set the checklist below to: ${p.keys.map((k) => REPORT_SECTIONS.find((s) => s.key === k)?.label.split(" — ")[0].split(",")[0]).join(", ")}`}
+          >
+            {p.label}
+          </button>
+        ))}
+        {customPresets.map((p) => (
+          <button
+            key={p.name}
+            type="button"
+            className={`chip${matchesPreset(p.keys) ? " active" : ""}`}
+            onClick={() => setEnabledSections(new Set(p.keys))}
+            title={`Set the checklist below to: ${p.keys.map((k) => REPORT_SECTIONS.find((s) => s.key === k)?.label.split(" — ")[0].split(",")[0]).join(", ")}`}
+          >
+            {p.name}
+            <X
+              size={12}
+              style={{ marginLeft: 2 }}
+              onClick={(e) => { e.stopPropagation(); deleteCustomPreset(p.name); }}
+              title={`Delete the "${p.name}" preset`}
+            />
+          </button>
+        ))}
+        {savingPreset ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input
+              className="text-input"
+              autoFocus
+              placeholder="Preset name…"
+              style={{ width: 140, padding: "4px 8px", fontSize: 12 }}
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveCurrentAsPreset();
+                if (e.key === "Escape") { setSavingPreset(false); setNewPresetName(""); }
+              }}
+              onBlur={() => { if (!newPresetName.trim()) setSavingPreset(false); }}
+            />
+            <button type="button" className="chip" onClick={saveCurrentAsPreset} disabled={!newPresetName.trim()}>
+              Save
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="chip"
+            onClick={() => setSavingPreset(true)}
+            disabled={noneSelected}
+            title={noneSelected ? "Check at least one section first" : "Save the checklist below as a reusable preset"}
+          >
+            <Plus size={12} /> Save current as preset
+          </button>
+        )}
       </div>
       <div className="insight-card">
         <p className="empty small" style={{ marginTop: 0 }}>
