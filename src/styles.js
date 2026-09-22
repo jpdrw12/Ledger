@@ -281,6 +281,8 @@ export const css = `
   .row-name { flex:1; font-size:13.5px; display:flex; align-items:center; gap:6px; }
   .mono { font-family: ui-monospace, monospace; }
   .small-label { font-size:11px; color:var(--ink-soft); }
+  .link-btn { background:none; border:none; padding:0; font:inherit; color:var(--ink); cursor:pointer; border-radius:2px; }
+  .link-btn:hover { color:var(--accent); text-decoration:underline; }
 
   .slot-pill { font-size:10px; background:var(--paper); border:1px solid var(--paper-line); border-radius:8px; padding:1px 6px; color:var(--ink-soft); }
   .chip-slot { font-size:9.5px; opacity:0.6; }

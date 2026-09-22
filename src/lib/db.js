@@ -146,6 +146,66 @@ export async function reassignAccountReferences(fromId, toId) {
 }
 
 // ---------------------------------------------------------------------
+// Category rename — categories are plain free text, retyped independently
+// on every expenses/bills/debt_charges row (no categories table), so a typo
+// or a re-cased duplicate ("Groceries" vs "groceries") can only be fixed by
+// editing every affected row by hand. This renames every row across the
+// given source's table AND the budget table(s) keyed by that same category
+// string, in one go. See CategoriesTab.jsx for the source -> table mapping
+// rationale (bills feed card_budgets only, not category_budgets, mirroring
+// how billPaymentsAsExpenses() in calc.js already treats them).
+// ---------------------------------------------------------------------
+const CATEGORY_SOURCES = {
+  expenses: { table: "expenses", budgetTables: ["category_budgets", "card_budgets"] },
+  bills: { table: "bills", budgetTables: ["card_budgets"] },
+  debtCharges: { table: "debt_charges", budgetTables: ["debt_budgets"] },
+};
+
+// Renames every row (and matching budget row) from oldName to newName for
+// the given source. Case-insensitive/trimmed matching throughout, so
+// "groceries" -> "Groceries" merges cleanly. Throws (without writing
+// anything) if a budget table already has a distinct row under newName as
+// well as oldName — merging those silently would drop one budget amount, so
+// the caller has to resolve that conflict first. Blank/"" categories (the
+// "Uncategorized" bucket, and the reserved '' budget-total row) are never
+// touched.
+export async function renameCategory(source, oldName, newName) {
+  const spec = CATEGORY_SOURCES[source];
+  if (!spec) throw new Error(`Unknown category source "${source}"`);
+  const from = (oldName || "").trim();
+  const to = (newName || "").trim();
+  if (!from || !to) throw new Error("Category name can't be blank.");
+  if (from.toLowerCase() === to.toLowerCase() && from === to) return { rowsRenamed: 0, budgetsMoved: 0 };
+
+  const db = await getDb();
+
+  const budgetMoves = [];
+  for (const bt of spec.budgetTables) {
+    const oldRows = await db.select(`SELECT category FROM ${bt} WHERE LOWER(TRIM(category)) = LOWER($1) AND category != ''`, [from]);
+    const newRows = await db.select(`SELECT category FROM ${bt} WHERE LOWER(TRIM(category)) = LOWER($1) AND category != ''`, [to]);
+    // Pre-existing duplicate-cased budget rows under one name (shouldn't
+    // normally happen — the budget key is case-sensitive) make "the" old or
+    // new row ambiguous; bail rather than guess which one wins.
+    if (oldRows.length > 1 || newRows.length > 1) {
+      throw new Error(`${bt.replace(/_/g, " ")} already has more than one budget matching "${oldRows.length > 1 ? from : to}" — merge those first, then rename.`);
+    }
+    if (!oldRows.length) continue;
+    if (newRows.length && newRows[0].category !== oldRows[0].category) {
+      throw new Error(`"${to}" already has its own budget in ${bt.replace(/_/g, " ")} — resolve that budget first, then rename.`);
+    }
+    budgetMoves.push({ table: bt, oldKey: oldRows[0].category });
+  }
+
+  const countRows = await db.select(`SELECT COUNT(*) AS n FROM ${spec.table} WHERE LOWER(TRIM(category)) = LOWER($1)`, [from]);
+  const rowsRenamed = Number(countRows[0]?.n) || 0;
+  await db.execute(`UPDATE ${spec.table} SET category = $1 WHERE LOWER(TRIM(category)) = LOWER($2)`, [to, from]);
+  for (const move of budgetMoves) {
+    await db.execute(`UPDATE ${move.table} SET category = $1 WHERE category = $2`, [to, move.oldKey]);
+  }
+  return { rowsRenamed, budgetsMoved: budgetMoves.length };
+}
+
+// ---------------------------------------------------------------------
 // Bills (templates)
 // ---------------------------------------------------------------------
 export async function getBills() {

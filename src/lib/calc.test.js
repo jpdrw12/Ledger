@@ -27,6 +27,7 @@ import {
   resolveActivityRow,
   buildCsvReferenceBlock,
   reconcileTabOrder,
+  categoryUsageReport,
   debtSpendingByCategory,
   debtMonthlyTotals,
   debtSpendByDebt,
@@ -603,6 +604,35 @@ describe("reconcileTabOrder", () => {
 
   it("ignores non-string entries and duplicates in the saved order", () => {
     expect(reconcileTabOrder(["months", 42, "months", "card"], defaultOrder)).toEqual(["months", "card", "bills", "goals"]);
+  });
+});
+
+describe("categoryUsageReport", () => {
+  it("counts rows per exact literal category and flags which ones have a budget", () => {
+    const rows = [{ category: "Groceries" }, { category: "Groceries" }, { category: "Gas" }];
+    const budgets = [{ category: "Gas", amount: 100 }];
+    expect(categoryUsageReport(rows, budgets)).toEqual([
+      { category: "Gas", count: 1, hasBudget: true },
+      { category: "Groceries", count: 2, hasBudget: false },
+    ]);
+  });
+
+  it("keeps different casings as separate rows instead of merging them (that's the point of this view)", () => {
+    const rows = [{ category: "Groceries" }, { category: "groceries" }, { category: "GROCERIES" }];
+    const result = categoryUsageReport(rows, []);
+    expect(result).toHaveLength(3);
+    expect(new Set(result.map((r) => r.category))).toEqual(new Set(["Groceries", "groceries", "GROCERIES"]));
+    expect(result.every((r) => r.count === 1 && r.hasBudget === false)).toBe(true);
+  });
+
+  it("excludes blank/whitespace-only categories (the Uncategorized bucket)", () => {
+    const rows = [{ category: "" }, { category: "   " }, { category: null }, { category: "Rent" }];
+    expect(categoryUsageReport(rows, [])).toEqual([{ category: "Rent", count: 1, hasBudget: false }]);
+  });
+
+  it("returns an empty list for no rows", () => {
+    expect(categoryUsageReport([], [])).toEqual([]);
+    expect(categoryUsageReport(undefined, undefined)).toEqual([]);
   });
 });
 

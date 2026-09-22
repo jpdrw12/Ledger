@@ -789,6 +789,31 @@ export function reconcileTabOrder(savedOrder, defaultOrder) {
   return [...cleaned, ...missing];
 }
 
+// Every distinct category string in use across `rows` (expenses, bills, or
+// debt charges — anything with a `.category` field), for the Categories
+// tab's rename-in-one-place view. Deliberately does NOT merge different
+// casings the way spendingByCategory's display-dedup does — "Groceries" and
+// "groceries" need to show as two separate rows here so the person can see
+// the drift and fix it (that's the whole point of the tab). `budgetRows` is
+// the matching budget table's rows ({category, amount}); a row's `category`
+// exactly matching one (case-sensitive — the budget key itself may also be
+// mis-cased relative to the expense rows, which is fine, hasBudget just
+// reflects reality) marks hasBudget true. Blank/"" categories (shown
+// elsewhere as "Uncategorized") are excluded — nothing to rename there.
+// Pure — no I/O.
+export function categoryUsageReport(rows, budgetRows) {
+  const counts = {}; // exact literal category string -> row count
+  (rows || []).forEach((r) => {
+    const cat = (r.category || "").trim();
+    if (!cat) return;
+    counts[cat] = (counts[cat] || 0) + 1;
+  });
+  const budgeted = new Set((budgetRows || []).map((b) => b.category).filter((c) => c));
+  return Object.entries(counts)
+    .map(([category, count]) => ({ category, count, hasBudget: budgeted.has(category) }))
+    .sort((a, b) => a.category.localeCompare(b.category));
+}
+
 export const money = (n) => {
   const v = Number(n) || 0;
   const sign = v < 0 ? "-" : "";

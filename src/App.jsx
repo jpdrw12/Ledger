@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money, reconcileTabOrder } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -14,6 +14,7 @@ import { checkForUpdate, installUpdate, restartApp, isNewer } from "./lib/update
 import MonthsTab from "./components/MonthsTab.jsx";
 import CardTab from "./components/CardTab.jsx";
 import BillsTab from "./components/BillsTab.jsx";
+import CategoriesTab from "./components/CategoriesTab.jsx";
 import GoalsTab from "./components/GoalsTab.jsx";
 import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
@@ -33,6 +34,7 @@ const TAB_DEFS = [
   { id: "months", label: "Months", icon: ListChecks },
   { id: "card", label: "Card Spending", icon: CreditCard, dataTour: "tab-card" },
   { id: "bills", label: "Bill Templates", icon: Receipt, dataTour: "tab-bills" },
+  { id: "categories", label: "Categories", icon: Tag },
   { id: "goals", label: "Savings Goals", icon: PiggyBank, dataTour: "tab-goals" },
   { id: "accounts", label: "Accounts", icon: Wallet, dataTour: "tab-accounts" },
   { id: "debts", label: "Debts", icon: Landmark, dataTour: "tab-debts" },
@@ -61,6 +63,7 @@ const TAB_HELP = {
   months: { title: "Months", body: "Your month-by-month budget. Open a month to log income, pay bills, and record expenses across the two pays — balances carry forward automatically." },
   card: { title: "Card Spending", body: "Track spending on a card account separately from your consolidated total. Load the card with a transfer on the Months tab, then log purchases here." },
   bills: { title: "Bill Templates", body: "Define recurring bills once. Mark a bill auto-add and it drops into every new month at its due date." },
+  categories: { title: "Categories", body: "Rename a payment category in one place and every expense, bill, or debt charge using it updates together — along with its budget, if it has one. Click a category name to rename it." },
   goals: { title: "Savings Goals", body: "Set a target and track progress. Contribute to goals from any account, month by month." },
   accounts: { title: "Accounts", body: "Your bank accounts and cards. Uncheck 'count in the total' for a prepaid spending card you load from other accounts." },
   debts: { title: "Debts", body: "Track balances and APR. Payments reduce principal; charge interest once a month with 'Apply monthly interest'. Tick 'Spendable' to charge purchases to a debt from the Debt Spending tab." },
@@ -1234,6 +1237,7 @@ export default function App() {
         />
       )}
       {tab === "bills" && <BillsTab bills={state.bills} onChanged={reload} onPatch={patchState} />}
+      {tab === "categories" && <CategoriesTab state={state} onChanged={reload} />}
       {tab === "goals" && <GoalsTab goals={state.goals} goalBalances={goalBalances} onChanged={reload} onPatch={patchState} />}
       {tab === "accounts" && (
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} onPatch={patchState} />

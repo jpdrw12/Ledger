@@ -26,6 +26,12 @@ import {
   deleteDebtCharge,
   restoreDebtCharge,
   getDebtCharges,
+  addExpense,
+  upsertBill,
+  upsertCategoryBudget,
+  upsertCardBudget,
+  upsertDebtBudget,
+  renameCategory,
 } from "./db.js";
 
 let adapter;
@@ -284,5 +290,65 @@ describe("debt spending charges", () => {
     const state = await loadFullState();
     expect(state.debtCharges).toHaveLength(1);
     expect(state.debtCharges[0]).toMatchObject({ debtId: "d", monthLabel: "June 2026", category: "Groceries", amount: 12.5 });
+  });
+});
+
+describe("renameCategory", () => {
+  it("renames every expenses row under the old category, case-insensitively, and moves its category_budgets/card_budgets rows", async () => {
+    await addExpense("m", 1, { category: "groceries", amount: 20, accountId: "a" });
+    await addExpense("m", 2, { category: "Groceries", amount: 30, accountId: "a" });
+    await upsertCategoryBudget("groceries", 200);
+    await upsertCardBudget("groceries", 50);
+
+    const result = await renameCategory("expenses", "groceries", "Grocery");
+    expect(result.rowsRenamed).toBe(2);
+    expect(result.budgetsMoved).toBe(2);
+
+    expect(all("SELECT category FROM expenses").map((r) => r.category)).toEqual(["Grocery", "Grocery"]);
+    expect(get("SELECT amount FROM category_budgets WHERE category='Grocery'").amount).toBe(200);
+    expect(get("SELECT amount FROM card_budgets WHERE category='Grocery'").amount).toBe(50);
+    expect(get("SELECT * FROM category_budgets WHERE category='groceries'")).toBeUndefined();
+  });
+
+  it("renames bills.category and moves only card_budgets (bills don't feed category_budgets)", async () => {
+    await upsertBill({ name: "Internet", category: "Utilities", defaultAmount: 60, addToSlot1: true, dueDay: 5, paymentType: "manual" });
+    await upsertCardBudget("Utilities", 75);
+
+    const result = await renameCategory("bills", "Utilities", "Bills & Utilities");
+    expect(result.rowsRenamed).toBe(1);
+    expect(result.budgetsMoved).toBe(1);
+    expect(get("SELECT category FROM bills").category).toBe("Bills & Utilities");
+    expect(get("SELECT amount FROM card_budgets WHERE category='Bills & Utilities'").amount).toBe(75);
+  });
+
+  it("renames debt_charges.category and moves debt_budgets", async () => {
+    await addDebtCharge("d", { monthLabel: "June 2026", category: "Shopping", amount: 40 });
+    await upsertDebtBudget("Shopping", 100);
+
+    const result = await renameCategory("debtCharges", "Shopping", "Retail");
+    expect(result.rowsRenamed).toBe(1);
+    expect(result.budgetsMoved).toBe(1);
+    expect(get("SELECT category FROM debt_charges").category).toBe("Retail");
+    expect(get("SELECT amount FROM debt_budgets WHERE category='Retail'").amount).toBe(100);
+  });
+
+  it("blocks the rename (no rows touched) when the target name already has its own budget", async () => {
+    await addExpense("m", 1, { category: "Dining", amount: 15, accountId: "a" });
+    await upsertCategoryBudget("Dining", 80);
+    await upsertCategoryBudget("Eating Out", 120); // pre-existing budget under the target name
+
+    await expect(renameCategory("expenses", "Dining", "Eating Out")).rejects.toThrow(/already has its own budget/);
+
+    // Nothing changed — no partial writes.
+    expect(get("SELECT category FROM expenses").category).toBe("Dining");
+    expect(get("SELECT amount FROM category_budgets WHERE category='Dining'").amount).toBe(80);
+    expect(get("SELECT amount FROM category_budgets WHERE category='Eating Out'").amount).toBe(120);
+  });
+
+  it("is a no-op when the new name is identical to the old one", async () => {
+    await addExpense("m", 1, { category: "Gas", amount: 40, accountId: "a" });
+    const result = await renameCategory("expenses", "Gas", "Gas");
+    expect(result).toEqual({ rowsRenamed: 0, budgetsMoved: 0 });
+    expect(get("SELECT category FROM expenses").category).toBe("Gas");
   });
 });
