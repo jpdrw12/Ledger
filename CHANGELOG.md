@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.39.0]
+
+### Added
+- **Budgeting & Planning: what-if scenarios.** A new sandbox section lets
+  you nudge monthly income or spending up or down and see the effect on
+  the same 3/6/12-month forecast used on the Insights tab, side by side
+  with the unadjusted baseline — nothing here is saved, it's just for
+  exploring "what if."
+
 ## [0.38.0]
 
 ### Added
