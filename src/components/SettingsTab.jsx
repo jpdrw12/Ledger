@@ -48,6 +48,7 @@ function SettingsTab({
   onCheckUpdate, onInstallUpdate, onRestart, onStartTour,
   layout, onLayoutChange, expandSections, onExpandSectionsChange,
   settingsGroup, onSettingsGroupChange,
+  allTabs, hiddenTabs, onToggleTabHidden,
 }) {
   const { confirm, toast } = useToast();
   const [profiles, setProfiles] = useState(getProfiles);
@@ -272,6 +273,23 @@ function SettingsTab({
             Keep scrolling inside a section (don't scroll the page at its end)
           </label>
         </div>
+        {allTabs && (
+          <div className="backup-folder" style={{ marginTop: 10, alignItems: "flex-start" }}>
+            <span className="small-label" style={{ flex: 1, paddingTop: 2 }}>Visible tabs</span>
+            <div className="tab-visibility-grid">
+              {allTabs.filter((t) => t.id !== "months" && t.id !== "settings").map((t) => (
+                <label className="exclude-toggle" key={t.id}>
+                  <input
+                    type="checkbox"
+                    checked={!hiddenTabs.includes(t.id)}
+                    onChange={() => onToggleTabHidden(t.id)}
+                  />
+                  {t.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <h4 className="block-title"><Users size={13} /> Profiles</h4>

@@ -436,6 +436,8 @@ export const css = `
   .contribution-row { padding-left:14px; }
   .excluded-tag { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); border:1px solid var(--stamp); border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:middle; }
   .exclude-toggle { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); cursor:pointer; padding:7px 0; }
+  .tab-visibility-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:0 12px; flex:2; }
+  .tab-visibility-grid .exclude-toggle { padding:4px 0; }
   .cat-row.selectable { cursor:pointer; border-radius:3px; }
   .cat-row.selectable:hover { background:var(--card); }
   .cat-row.selected { background:var(--card); }

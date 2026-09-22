@@ -293,6 +293,33 @@ export default function App() {
   }, []);
   const { itemProps: tabItemProps, handleProps: tabHandleProps } = useDragList(tabOrder, setTabOrder);
 
+  // Which tabs are hidden from the nav (Settings → Appearance → Visible
+  // tabs). "months" and "settings" can't be hidden — months is the default
+  // landing tab and settings is the only way back to this toggle. Reconciled
+  // the same way as tabOrder: an id from an older/removed tab is dropped
+  // silently rather than left dangling.
+  const [hiddenTabs, setHiddenTabsState] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("ledger.hiddenTabs") || "[]");
+      const known = new Set(DEFAULT_TAB_ORDER);
+      return Array.isArray(saved) ? saved.filter((id) => known.has(id) && id !== "months" && id !== "settings") : [];
+    } catch {
+      return [];
+    }
+  });
+  const toggleTabHidden = useCallback((id) => {
+    if (id === "months" || id === "settings") return;
+    setHiddenTabsState((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      localStorage.setItem("ledger.hiddenTabs", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+  // If the tab currently open just got hidden, land somewhere still visible
+  // rather than leaving the person stranded on a screen with no nav entry.
+  useEffect(() => {
+    if (hiddenTabs.includes(tab)) setTab("months");
+  }, [hiddenTabs, tab]);
 
   const [expandSections, setExpandSectionsState] = useState(() => localStorage.getItem("ledger.expandSections") !== "0"); // default on
   const setExpandSections = useCallback((v) => {
@@ -1068,6 +1095,7 @@ export default function App() {
   const tabNav = (
     <>
       {orderedTabs.map((t, i) => {
+        if (hiddenTabs.includes(t.id)) return null;
         const Icon = t.icon;
         return (
           <TabButton
@@ -1301,6 +1329,9 @@ export default function App() {
           onExpandSectionsChange={setExpandSections}
           settingsGroup={settingsGroup}
           onSettingsGroupChange={setSettingsGroup}
+          allTabs={TAB_DEFS}
+          hiddenTabs={hiddenTabs}
+          onToggleTabHidden={toggleTabHidden}
         />
       )}
 
