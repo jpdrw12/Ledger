@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.41.1]
+
+### Changed
+- Settings → Appearance → Visible tabs now shows icon+label chips (filled
+  when visible, dimmed when hidden) instead of a plain checkbox grid.
+
 ## [0.41.0]
 
 ### Added
