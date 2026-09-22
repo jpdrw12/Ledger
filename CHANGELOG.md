@@ -5,6 +5,17 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.33.3]
+
+### Fixed
+- Report: the Months table's "Debt pmts" column (and the range summary's
+  "Debt payments" card) only counted payments logged via the Months tab.
+  A payment applied straight from the Debts tab writes its debt_history
+  row directly, with no month_debt_payments row behind it, so it never
+  reached computeLedger()'s totals — now folded in, matched by month
+  label the same way debt spending already handles its own free-text
+  labels.
+
 ## [0.33.2]
 
 ### Fixed
