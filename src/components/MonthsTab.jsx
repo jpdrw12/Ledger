@@ -7,6 +7,16 @@ import { Field, AccountSelect, EndpointSelect, endpointValue, parseEndpoint, Dat
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
+// Remembers the endpoints of the last transfer added or edited, across every
+// month's MonthStub in this session, so "+ Add transfer" starts from that
+// pair instead of always accounts[0]/accounts[1] — handy when entering
+// several transfers of the same kind in a row. Deliberately plain module
+// state, not persisted to localStorage or the db: a profile switch fully
+// reloads the app (see SettingsTab), which clears this along with everything
+// else, so a stale account/goal id from a different profile can never leak
+// in here.
+let lastTransferEndpoints = null; // { from: {kind,id}, to: {kind,id} } | null
+
 // Local YYYY-MM-DD (matches how due dates are stored/compared).
 const localToday = () => {
   const d = new Date();
@@ -606,15 +616,30 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
     return pick ? { kind, id: pick.id } : null;
   };
 
+  // True when a remembered endpoint still refers to a real account/goal —
+  // it may have been deleted since the last transfer was entered.
+  const endpointExists = (ep) => {
+    if (!ep) return false;
+    const list = ep.kind === "goal" ? goals : accounts;
+    return list.some((x) => x.id === ep.id);
+  };
+
   const addTransfer = async () => {
-    let plan = null;
-    if (accounts.length >= 2) {
-      plan = planTransfer({ kind: "account", id: accounts[0].id }, { kind: "account", id: accounts[1].id }, 0);
+    let from = null, to = null;
+    if (lastTransferEndpoints && endpointExists(lastTransferEndpoints.from) && endpointExists(lastTransferEndpoints.to)) {
+      ({ from, to } = lastTransferEndpoints);
+    } else if (accounts.length >= 2) {
+      from = { kind: "account", id: accounts[0].id };
+      to = { kind: "account", id: accounts[1].id };
     } else if (goals.length >= 2) {
-      plan = planTransfer({ kind: "goal", id: goals[0].id }, { kind: "goal", id: goals[1].id }, 0);
+      from = { kind: "goal", id: goals[0].id };
+      to = { kind: "goal", id: goals[1].id };
     }
-    if (!plan || plan.type === "invalid") return;
+    if (!from || !to) return;
+    const plan = planTransfer(from, to, 0);
+    if (plan.type === "invalid") return;
     await db.addTransfer(month.id, { ...transferCols(plan), amount: plan.amount, note: "" });
+    lastTransferEndpoints = { from, to };
     onChanged();
   };
 
@@ -631,6 +656,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
       return;
     }
     await db.updateTransfer(row.id, { ...transferCols(plan), amount: plan.amount, note });
+    lastTransferEndpoints = { from, to };
     onChanged();
   };
   const removeTransferRow = async (row) => {
