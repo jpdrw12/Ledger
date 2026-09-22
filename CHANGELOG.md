@@ -5,6 +5,16 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.37.0]
+
+### Added
+- **Budgeting & Planning: multi-month "Plan ahead" grid.** Each budgeted
+  category now has an editable grid — one column per month — for setting a
+  different target ahead of time ("higher heating budget in December")
+  instead of just one single ongoing amount. A month with no override just
+  falls back to the regular target; actual spend shows under each cell for
+  reference.
+
 ## [0.36.0]
 
 ### Added
