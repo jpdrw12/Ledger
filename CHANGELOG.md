@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.41.2]
+
+### Fixed
+- README and the in-app guide (quick-reference + guided tour) now cover
+  Investments & Dividends and the visible-tabs toggle, both missing since
+  they shipped.
+
 ## [0.41.1]
 
 ### Changed
