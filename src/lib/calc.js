@@ -219,6 +219,31 @@ function billPaymentsAsExpenses(m, bills) {
     .map((bp) => ({ category: (billsById.get(bp.billId) || {}).category || "Bills", amount: bp.amountPaid, accountId: bp.accountId }));
 }
 
+// Every PAID bill payment across `months`, one row per bill actually paid
+// (by billId, so payments of the same bill across several months sum
+// together) — the "paid this range" breakdown behind the Report's Bills
+// section. Unlike billPaymentsAsExpenses (private, folds into card/general
+// spending totals only), this isn't scoped to any account and carries the
+// bill's own name, not just its category. A payment whose bill template has
+// since been deleted still counts, labeled "Deleted bill" rather than
+// silently dropped. Pure — no I/O.
+export function billPaymentTotals(months, bills) {
+  const billsById = new Map((bills || []).map((b) => [b.id, b]));
+  const totals = {}; // billId -> { billId, name, category, total, count }
+  (months || []).forEach((m) => {
+    (m.billPayments || []).forEach((bp) => {
+      if (!bp.paid) return;
+      const bill = billsById.get(bp.billId);
+      if (!totals[bp.billId]) {
+        totals[bp.billId] = { billId: bp.billId, name: bill?.name || "Deleted bill", category: (bill?.category || "").trim(), total: 0, count: 0 };
+      }
+      totals[bp.billId].total += Number(bp.amountPaid) || 0;
+      totals[bp.billId].count += 1;
+    });
+  });
+  return Object.values(totals).sort((a, b) => b.total - a.total);
+}
+
 // `bills` is optional and, when passed, folds in paid bill payments (see
 // billPaymentsAsExpenses) alongside ad-hoc expenses. Regular expenses can't
 // be assigned to a card account from the UI, but a bill payment can (paying

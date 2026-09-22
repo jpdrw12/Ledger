@@ -30,6 +30,7 @@ import {
   categoryUsageReport,
   groupCategoryRows,
   mergeCategoryTotals,
+  billPaymentTotals,
   debtSpendingByCategory,
   debtMonthlyTotals,
   debtSpendByDebt,
@@ -635,6 +636,36 @@ describe("categoryUsageReport", () => {
   it("returns an empty list for no rows", () => {
     expect(categoryUsageReport([], [])).toEqual([]);
     expect(categoryUsageReport(undefined, undefined)).toEqual([]);
+  });
+});
+
+describe("billPaymentTotals", () => {
+  const bills = [{ id: "b1", name: "Rent", category: "Housing" }, { id: "b2", name: "Internet", category: "Utilities" }];
+
+  it("sums a bill's paid amounts across months, by billId, carrying its name/category", () => {
+    const months = [
+      { billPayments: [{ billId: "b1", amountPaid: 500, paid: true }, { billId: "b2", amountPaid: 60, paid: true }] },
+      { billPayments: [{ billId: "b1", amountPaid: 500, paid: true }] },
+    ];
+    expect(billPaymentTotals(months, bills)).toEqual([
+      { billId: "b1", name: "Rent", category: "Housing", total: 1000, count: 2 },
+      { billId: "b2", name: "Internet", category: "Utilities", total: 60, count: 1 },
+    ]);
+  });
+
+  it("ignores a bill payment that hasn't been marked paid yet", () => {
+    const months = [{ billPayments: [{ billId: "b1", amountPaid: 500, paid: false }] }];
+    expect(billPaymentTotals(months, bills)).toEqual([]);
+  });
+
+  it("labels a payment whose bill template was since deleted, instead of dropping it", () => {
+    const months = [{ billPayments: [{ billId: "gone", amountPaid: 25, paid: true }] }];
+    expect(billPaymentTotals(months, bills)).toEqual([{ billId: "gone", name: "Deleted bill", category: "", total: 25, count: 1 }]);
+  });
+
+  it("handles empty/missing input", () => {
+    expect(billPaymentTotals([], bills)).toEqual([]);
+    expect(billPaymentTotals(undefined, undefined)).toEqual([]);
   });
 });
 

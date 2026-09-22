@@ -22,6 +22,7 @@ import {
   monthlyEndingBalances,
   groupCategoryRows,
   mergeCategoryTotals,
+  billPaymentTotals,
   money,
 } from "./calc.js";
 
@@ -434,7 +435,7 @@ export const REPORT_SECTIONS = [
   { key: "card", label: "Card spending" },
   { key: "debtspending", label: "Debt spending" },
   { key: "budgets", label: "Budgets vs. actual" },
-  { key: "bills", label: "Bill templates" },
+  { key: "bills", label: "Bills — paid-this-range breakdown by bill/category, plus the recurring templates" },
   { key: "goals", label: "Savings goals" },
   { key: "debts", label: "Debts — current balances, payments logged in range, and applied history" },
   { key: "combined", label: "Combined categories — expenses, card spending, and debt spending totaled together, at the very bottom" },
@@ -581,6 +582,16 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     { emptyLabel: "No accounts yet." }
   );
 
+  // Expenses and card spending are the same category namespace ("expenses"
+  // source) as the Categories tab's "Expense & Card categories" groups —
+  // both breakdowns below use those same groups.
+  const expenseCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const expenseCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
+  const debtCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
+  const debtCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
+  const billCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "bills");
+  const billCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "bills");
+
   const billsSection = table(
     [
       { key: "name", label: "Bill" },
@@ -600,6 +611,35 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     })),
     { emptyLabel: "No bill templates yet." }
   );
+
+  // What was actually paid this range, not just the recurring templates
+  // above — mirrors the Card/Debt Spending sections' own "by X"/"by
+  // category" shape, grouped using the Categories tab's "Bill categories"
+  // groups (bills' own source, separate from expenses/debt charges).
+  const billTotals = billPaymentTotals(rangeMonths, state.bills);
+  const billsPaidTotal = billTotals.reduce((s, r) => s + r.total, 0);
+  const billCategoryTotals = mergeCategoryTotals(billTotals.map((r) => ({ category: r.category || "Uncategorized", total: r.total })));
+  const billsTrend = rangeMonths.length >= 2
+    ? rangeMonths.map((m) => ({
+        id: m.id,
+        label: m.monthLabel,
+        value: (m.billPayments || []).filter((bp) => bp.paid).reduce((s, bp) => s + (Number(bp.amountPaid) || 0), 0),
+      }))
+    : [];
+  const billsTrendChart = billsTrend.length >= 2 ? lineChartSvg(billsTrend, new Set(), { ariaLabel: "Bills paid by month" }) : "";
+  const billsByBillChart = billTotals.length
+    ? barChartSvg(billTotals.map((r) => ({ category: r.name, total: r.total })), { ariaLabel: "Paid by bill" })
+    : "";
+  const billsCategoryChart = billCategoryTotals.length
+    ? barChartSvg(billCategoryTotals, { ariaLabel: "Paid bills by category" })
+    : "";
+  const billsPaidSection = billTotals.length
+    ? billsTrendChart +
+      (billsByBillChart ? `<h3>By bill</h3>${billsByBillChart}` : "") +
+      (billsCategoryChart ? `<h3>By category</h3>${billsCategoryChart}` : "") +
+      categoryTableHtml(billCategoryTotals, billCategoryGroups, billCategoryGroupMembers, { showTotal: false }) +
+      `<p style="text-align:right;font-weight:700;margin-top:6px;">Total paid this range: ${money(billsPaidTotal)}</p>`
+    : `<p class="empty">No bills paid in this range.</p>`;
 
   const goalsSection = table(
     [
@@ -686,14 +726,6 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     [...debtHistoryInRange, ...pendingPaymentsInRange],
     { emptyLabel: "No debt payments or interest logged in this range." }
   );
-
-  // Expenses and card spending are the same category namespace ("expenses"
-  // source) as the Categories tab's "Expense & Card categories" groups —
-  // both breakdowns below use those same groups.
-  const expenseCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
-  const expenseCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
-  const debtCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
-  const debtCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
 
   const nonCardCategories = spendingByCategory(rangeMonths, { exclude: cardIds });
   const spendingSection = categoryTableHtml(nonCardCategories, expenseCategoryGroups, expenseCategoryGroupMembers, { emptyLabel: "No expenses logged in this range." });
@@ -861,7 +893,10 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   const setupBlocks = [];
   if (on("bills")) setupBlocks.push(`
   <section>
-    <h2>Bill templates</h2>
+    <h2>Bills</h2>
+    <h3>Paid this range</h3>
+    ${billsPaidSection}
+    <h3>Templates</h3>
     ${billsSection}
   </section>`);
   if (on("goals")) setupBlocks.push(`

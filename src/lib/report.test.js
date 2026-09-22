@@ -251,7 +251,7 @@ describe("buildReportHtml", () => {
     expect(html).not.toContain("<h2>Spending by category");
     expect(html).not.toContain("<h2>Debt spending");
     expect(html).not.toContain("<h2>Budgets");
-    expect(html).not.toContain("<h2>Bill templates");
+    expect(html).not.toContain("<h2>Bills");
     expect(html).not.toContain("<h2>Savings goals");
     expect(html).not.toContain("<h2>Debts");
     expect(html).not.toContain("Your current setup"); // nothing in the "setup" half either
@@ -265,7 +265,7 @@ describe("buildReportHtml", () => {
     const html = buildReportHtml(state, ledger, { sections: ["months", "bills"] });
 
     expect(html).toContain("<h2>Months");
-    expect(html).toContain("<h2>Bill templates");
+    expect(html).toContain("<h2>Bills");
     expect(html).toContain("Your current setup");
     expect(html).not.toContain("<h2>Card spending");
   });
@@ -448,6 +448,46 @@ describe("buildReportHtml", () => {
     expect(html.indexOf("<footer>")).toBeGreaterThan(html.indexOf("<h2>Combined categories"));
   });
 
+  it("breaks down what was actually paid this range — by bill and by category — alongside the recurring templates", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const rent = await upsertBill({ name: "Rent", category: "Housing", defaultAmount: 500, addToSlot1: true, dueDay: 1, paymentType: "manual" });
+    const internet = await upsertBill({ name: "Internet", category: "Utilities", defaultAmount: 60, addToSlot1: true, dueDay: 5, paymentType: "manual" });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+    await addBillPayment(m1, { billId: rent, amountPaid: 500, accountId: checking, dueDate: computeDueDate(label, 1), slot: 1 });
+    const internetPaymentId = await addBillPayment(m1, { billId: internet, amountPaid: 60, accountId: checking, dueDate: computeDueDate(label, 5), slot: 1 });
+    await updateBillPayment(internetPaymentId, { amountPaid: 60, paid: true, accountId: checking, dueDate: computeDueDate(label, 5) });
+    // Mark the rent payment paid too (addBillPayment alone doesn't set paid).
+    const state1 = await loadFullState();
+    const rentPayment = state1.months[0].billPayments.find((bp) => bp.billId === rent);
+    await updateBillPayment(rentPayment.id, { amountPaid: 500, paid: true, accountId: checking, dueDate: computeDueDate(label, 1) });
+
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain("<h2>Bills");
+    expect(html).toContain("<h3>Paid this range</h3>");
+    expect(html).toContain("<h3>Templates</h3>");
+    expect(html).toContain('aria-label="Paid by bill"');
+    expect(html).toContain('aria-label="Paid bills by category"');
+    expect(html).toContain("Total paid this range: $560.00");
+    // Both the per-bill names and their shared/separate categories show up.
+    expect(html).toContain("Rent");
+    expect(html).toContain("Internet");
+    expect(html).toContain("Housing");
+    expect(html).toContain("Utilities");
+  });
+
+  it("shows 'No bills paid in this range' when nothing was paid, without erroring", async () => {
+    await seedTwoMonths(); // seeds a Rent bill template but no paid bill payment
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain("No bills paid in this range.");
+  });
+
   it("includes every section (and the divider) when `sections` is omitted, same as before the option existed", async () => {
     const { label1 } = await seedTwoMonths();
     const state = await loadFullState();
@@ -458,7 +498,7 @@ describe("buildReportHtml", () => {
     expect(REPORT_SECTIONS.map((s) => s.key)).toEqual([
       "networth", "months", "accounts", "spending", "card", "debtspending", "budgets", "bills", "goals", "debts", "combined",
     ]);
-    ["<h2>Net worth", "<h2>Months", "<h2>Accounts", "<h2>Spending by category", "<h2>Card spending", "<h2>Debt spending", "<h2>Budgets", "<h2>Bill templates", "<h2>Savings goals", "<h2>Debts", "<h2>Combined categories"].forEach((h) =>
+    ["<h2>Net worth", "<h2>Months", "<h2>Accounts", "<h2>Spending by category", "<h2>Card spending", "<h2>Debt spending", "<h2>Budgets", "<h2>Bills", "<h2>Savings goals", "<h2>Debts", "<h2>Combined categories"].forEach((h) =>
       expect(html).toContain(h)
     );
     expect(html).toContain("Your current setup");
