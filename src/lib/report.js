@@ -23,6 +23,7 @@ import {
   groupCategoryRows,
   mergeCategoryTotals,
   billPaymentTotals,
+  investmentTotalsByMonth,
   money,
 } from "./calc.js";
 
@@ -261,10 +262,14 @@ function linearRegression(points) {
 // Sparkline can. Labels alternate a few px of vertical offset by index
 // parity so tightly-packed points (many months in 680px) land in two
 // staggered rows instead of overlapping into unreadable text.
-function lineChartSvg(series, projectedIds, { width = 680, height = 190, pad = 12, topPad = 24, bottomPad = 46, ariaLabel = "Trend" } = {}) {
+// `series2` (optional) is a second line over the same x-axis (same length/ids
+// as `series`, e.g. net worth including investments) — drawn without its own
+// value labels or trend line to keep the chart legible, just a distinct
+// dashed line, smaller dots, and a legend entry (`series2Label`).
+function lineChartSvg(series, projectedIds, { width = 680, height = 190, pad = 12, topPad = 24, bottomPad = 46, ariaLabel = "Trend", series2 = null, series2Label = "" } = {}) {
   if (!series || series.length < 2) return `<p class="empty small">Need at least two months to chart a trend.</p>`;
   const proj = projectedIds || new Set();
-  const values = series.map((s) => s.value);
+  const values = series.map((s) => s.value).concat((series2 || []).map((s) => s.value));
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const span = max - min || 1;
@@ -301,11 +306,19 @@ function lineChartSvg(series, projectedIds, { width = 680, height = 190, pad = 1
   const trendLine = trend
     ? `<line x1="${x(0).toFixed(1)}" y1="${y(trend.intercept).toFixed(1)}" x2="${x(realCount - 1).toFixed(1)}" y2="${y(trend.slope * (realCount - 1) + trend.intercept).toFixed(1)}" stroke="${trendColor}" stroke-width="1.5" stroke-dasharray="1 5" stroke-linecap="round" />`
     : "";
-  const legend = trend
-    ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;display:flex;gap:14px;">
+  const series2Color = "color-mix(in srgb, var(--accent) 55%, transparent)";
+  const line2 = series2 && series2.length === series.length
+    ? series2.map((s, i) => pt(s, i)).join(" ")
+    : "";
+  const dots2 = series2 && series2.length === series.length
+    ? series2.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.value)}" r="2.5" fill="${series2Color}"><title>${esc(s.label)}: ${esc(money(s.value))}${series2Label ? ` (${esc(series2Label)})` : ""}</title></circle>`).join("")
+    : "";
+  const legend = trend || line2
+    ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;display:flex;gap:14px;flex-wrap:wrap;">
         <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:var(--accent);display:inline-block;"></span>Actual</span>
-        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:${trendColor};display:inline-block;"></span>Trend</span>
+        ${trend ? `<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:${trendColor};display:inline-block;"></span>Trend</span>` : ""}
         ${firstProj > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:var(--ink-soft);display:inline-block;"></span>Forecast</span>` : ""}
+        ${line2 ? `<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:2px;background:${series2Color};display:inline-block;"></span>${esc(series2Label || "Second series")}</span>` : ""}
       </div>`
     : "";
   return collapsibleChart(ariaLabel, `
@@ -314,8 +327,10 @@ function lineChartSvg(series, projectedIds, { width = 680, height = 190, pad = 1
       <text x="2" y="${(zeroY - 3).toFixed(1)}" font-size="9" fill="var(--ink-soft)">$0</text>
       ${firstProj > 0 ? `<line x1="${x(firstProj - 1).toFixed(1)}" y1="${topPad}" x2="${x(firstProj - 1).toFixed(1)}" y2="${plotBottom}" stroke="var(--line)" stroke-dasharray="3 3" />` : ""}
       ${trendLine}
+      ${line2 ? `<polyline points="${line2}" fill="none" stroke="${series2Color}" stroke-width="1.75" stroke-dasharray="2 3" />` : ""}
       <polyline points="${realLine}" fill="none" stroke="var(--accent)" stroke-width="2" />
       ${projLine ? `<polyline points="${projLine}" fill="none" stroke="var(--ink-soft)" stroke-width="2" stroke-dasharray="5 4" />` : ""}
+      ${dots2}
       ${dots}
       ${valueLabels}
       ${ticks}
@@ -480,7 +495,24 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   const netWorthSeries = forecast
     ? monthlyEndingBalances(forecast.months, forecast.ledger).map((s) => ({ ...s, value: s.value - currentDebtTotal }))
     : [];
-  const netWorthChart = lineChartSvg(netWorthSeries, projectedIdSet, { ariaLabel: "Net worth history and forecast" });
+  // Investments-included second line: real months use their own recorded
+  // (carried-forward) investment total; projected months hold the latest
+  // known total flat, same "can't project it, so keep it constant" approach
+  // already used for currentDebtTotal above. Omitted entirely (both the
+  // series and the legend entry) when no investment accounts exist, so a
+  // ledger that's never used the feature sees no change to this chart.
+  const investmentAccounts = state.investmentAccounts || [];
+  const investTotals = investmentAccounts.length ? investmentTotalsByMonth(months, state.investmentValues, investmentAccounts) : [];
+  const latestInvestTotal = investTotals.length ? investTotals[investTotals.length - 1].value : 0;
+  const investById = new Map(investTotals.map((r) => [r.id, r.value]));
+  const netWorthWithInvestSeries = investmentAccounts.length
+    ? netWorthSeries.map((s) => ({ ...s, value: s.value + (investById.has(s.id) ? investById.get(s.id) : latestInvestTotal) }))
+    : null;
+  const netWorthChart = lineChartSvg(netWorthSeries, projectedIdSet, {
+    ariaLabel: "Net worth history and forecast",
+    series2: netWorthWithInvestSeries,
+    series2Label: "Incl. investments",
+  });
 
   // --- Range activity totals -------------------------------------------
   const rangeLabels = new Set(rangeMonths.map((m) => m.monthLabel));

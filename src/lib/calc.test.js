@@ -27,6 +27,11 @@ import {
   buildCardCsv,
   budgetReport,
   netWorthSnapshot,
+  investmentValueAsOf,
+  investmentGrowth,
+  investmentTotalsByMonth,
+  dividendTotalsByMonth,
+  netWorthWithInvestmentsSeries,
   billStatus,
   parseCsv,
   parseExpensesCsv,
@@ -913,6 +918,81 @@ describe("netWorthSnapshot", () => {
 
   it("is zero assets with no months", () => {
     expect(netWorthSnapshot([], {}, [{ balance: 200 }])).toEqual({ assets: 0, debt: 200, net: -200 });
+  });
+});
+
+describe("investmentValueAsOf / investmentGrowth / investmentTotalsByMonth", () => {
+  const months = [
+    { id: "m1", monthLabel: "March 2026" },
+    { id: "m2", monthLabel: "April 2026" },
+    { id: "m3", monthLabel: "May 2026" },
+  ];
+  const values = [
+    { investmentAccountId: "acct1", monthLabel: "March 2026", value: 1000 },
+    { investmentAccountId: "acct1", monthLabel: "May 2026", value: 1200 },
+    { investmentAccountId: "acct2", monthLabel: "April 2026", value: 500 },
+  ];
+
+  it("carries the most recent recorded value forward when a month has no entry", () => {
+    expect(investmentValueAsOf(values, "acct1", months, "m1")).toBe(1000);
+    expect(investmentValueAsOf(values, "acct1", months, "m2")).toBe(1000); // no entry for April, carried from March
+    expect(investmentValueAsOf(values, "acct1", months, "m3")).toBe(1200);
+  });
+
+  it("returns 0 before an account's first recorded value", () => {
+    expect(investmentValueAsOf(values, "acct2", months, "m1")).toBe(0);
+    expect(investmentValueAsOf(values, "acct2", months, "m2")).toBe(500);
+  });
+
+  it("computes $ growth since the previous month, 0 for the first month", () => {
+    expect(investmentGrowth(values, "acct1", months)).toEqual([
+      { id: "m1", label: "March 2026", value: 1000, growth: 0 },
+      { id: "m2", label: "April 2026", value: 1000, growth: 0 },
+      { id: "m3", label: "May 2026", value: 1200, growth: 200 },
+    ]);
+  });
+
+  it("sums every account's carried-forward value per month", () => {
+    const accounts = [{ id: "acct1" }, { id: "acct2" }];
+    expect(investmentTotalsByMonth(months, values, accounts)).toEqual([
+      { id: "m1", label: "March 2026", value: 1000 }, // acct1 1000, acct2 0
+      { id: "m2", label: "April 2026", value: 1500 }, // acct1 1000, acct2 500
+      { id: "m3", label: "May 2026", value: 1700 }, // acct1 1200, acct2 500
+    ]);
+  });
+});
+
+describe("dividendTotalsByMonth", () => {
+  const months = [{ id: "m1", monthLabel: "March 2026" }, { id: "m2", monthLabel: "April 2026" }];
+  const dividends = [
+    { monthLabel: "March 2026", amount: 10 },
+    { monthLabel: "March 2026", amount: 5 },
+    { monthLabel: "April 2026", amount: 20 },
+  ];
+
+  it("sums dividend payments per real month", () => {
+    expect(dividendTotalsByMonth(months, dividends)).toEqual([
+      { id: "m1", label: "March 2026", value: 15 },
+      { id: "m2", label: "April 2026", value: 20 },
+    ]);
+  });
+
+  it("is 0 for a month with no dividend entries", () => {
+    expect(dividendTotalsByMonth(months, [])).toEqual([
+      { id: "m1", label: "March 2026", value: 0 },
+      { id: "m2", label: "April 2026", value: 0 },
+    ]);
+  });
+});
+
+describe("netWorthWithInvestmentsSeries", () => {
+  it("adds each month's carried-forward investment total onto the cash balance", () => {
+    const months = [makeMonth("m1", { monthLabel: "March 2026", pay1: { income: 500, incomeAccountId: "a", additions: [] } })];
+    const ledger = computeLedger(months, [ACCT_A]);
+    const values = [{ investmentAccountId: "acct1", monthLabel: "March 2026", value: 300 }];
+    const series = netWorthWithInvestmentsSeries(months, ledger, values, [{ id: "acct1" }]);
+    // cash: 100 starting + 500 = 600; plus 300 invested = 900
+    expect(series).toEqual([{ id: "m1", label: "March 2026", value: 900 }]);
   });
 });
 

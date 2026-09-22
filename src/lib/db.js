@@ -646,6 +646,102 @@ export async function deleteCategoryBudgetMonth(kind, category, monthLabel) {
 }
 
 // ---------------------------------------------------------------------
+// Investments — accounts (RRSP, brokerage, …) with one value recorded per
+// month (the balance "at the start of each month", not a full transaction
+// ledger), plus dividend payments logged the same way. Both use a free-text
+// month_label, same convention as debt_charges/category_budget_months.
+// ---------------------------------------------------------------------
+export async function getInvestmentAccounts() {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM investment_accounts ORDER BY sort_order, name");
+  return rows.map((r) => ({ id: r.id, name: r.name, sortOrder: r.sort_order }));
+}
+
+export async function upsertInvestmentAccount(account) {
+  const db = await getDb();
+  const id = account.id || uid();
+  const order = account.id ? 0 : await nextOrder(db, "investment_accounts"); // ignored on update
+  await db.execute(
+    `INSERT INTO investment_accounts (id, name, sort_order) VALUES ($1, $2, $3)
+     ON CONFLICT(id) DO UPDATE SET name = $2`,
+    [id, account.name, order]
+  );
+  return id;
+}
+
+export async function deleteInvestmentAccount(id) {
+  const db = await getDb();
+  await db.execute("DELETE FROM investment_accounts WHERE id = $1", [id]);
+}
+
+// `values` are in the camelCase shape getInvestmentValues() returns (the UI
+// snapshots an account's own values from state before deleting it).
+export async function restoreInvestmentAccount(account, values = []) {
+  const db = await getDb();
+  await db.execute("INSERT INTO investment_accounts (id, name, sort_order) VALUES ($1, $2, $3)", [account.id, account.name, account.sortOrder || 0]);
+  for (const v of values) {
+    await db.execute("INSERT INTO investment_values (id, investment_account_id, month_label, value) VALUES ($1, $2, $3, $4)", [v.id, v.investmentAccountId, v.monthLabel, v.value]);
+  }
+}
+
+export async function reorderInvestmentAccounts(orderedIds) {
+  await setOrder(await getDb(), "investment_accounts", orderedIds);
+}
+
+export async function getInvestmentValues() {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM investment_values");
+  return rows.map((r) => ({ id: r.id, investmentAccountId: r.investment_account_id, monthLabel: r.month_label, value: r.value }));
+}
+
+export async function upsertInvestmentValue(investmentAccountId, monthLabel, value) {
+  const db = await getDb();
+  const id = uid();
+  await db.execute(
+    `INSERT INTO investment_values (id, investment_account_id, month_label, value) VALUES ($1, $2, $3, $4)
+     ON CONFLICT(investment_account_id, month_label) DO UPDATE SET value = $4`,
+    [id, investmentAccountId, monthLabel, value || 0]
+  );
+}
+
+export async function getDividends() {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM dividends ORDER BY created_at");
+  return rows.map((r) => ({ id: r.id, investmentAccountId: r.investment_account_id, monthLabel: r.month_label, amount: r.amount, note: r.note }));
+}
+
+export async function addDividend(monthLabel, { investmentAccountId, amount, note } = {}) {
+  const db = await getDb();
+  const id = uid();
+  await db.execute(
+    "INSERT INTO dividends (id, investment_account_id, month_label, amount, note) VALUES ($1, $2, $3, $4, $5)",
+    [id, investmentAccountId || null, monthLabel, amount || 0, note || null]
+  );
+  return id;
+}
+
+export async function updateDividend(id, { investmentAccountId, amount, note }) {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE dividends SET investment_account_id = $1, amount = $2, note = $3 WHERE id = $4",
+    [investmentAccountId || null, amount || 0, note || null, id]
+  );
+}
+
+export async function deleteDividend(id) {
+  const db = await getDb();
+  await db.execute("DELETE FROM dividends WHERE id = $1", [id]);
+}
+
+export async function restoreDividend(dividend) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO dividends (id, investment_account_id, month_label, amount, note) VALUES ($1, $2, $3, $4, $5)",
+    [dividend.id, dividend.investmentAccountId || null, dividend.monthLabel, dividend.amount || 0, dividend.note || null]
+  );
+}
+
+// ---------------------------------------------------------------------
 // Category groups — purely organizational: collapsible groups the
 // Categories tab uses to bucket its (otherwise flat, per-source) category
 // list for easier review. A group belongs to one source ("expenses" |
@@ -964,6 +1060,7 @@ export async function wipeAllData() {
     "debt_history", "goal_contributions", "month_debt_payments", "transfers",
     "additions", "bill_payments", "expenses", "pay_blocks", "months",
     "category_budgets", "card_budgets", "bills", "goals", "debts", "accounts",
+    "dividends", "investment_values", "investment_accounts",
   ];
   for (const t of tables) await db.execute(`DELETE FROM ${t}`);
 }
@@ -971,7 +1068,7 @@ export async function wipeAllData() {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows, categoryBudgetMonthRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows, categoryBudgetMonthRows, investmentAccounts, investmentValues, dividends] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -994,6 +1091,9 @@ export async function loadFullState() {
       db.select("SELECT * FROM category_groups ORDER BY source, sort_order, name"),
       db.select("SELECT * FROM category_group_members"),
       db.select("SELECT * FROM category_budget_months"),
+      getInvestmentAccounts(),
+      getInvestmentValues(),
+      getDividends(),
     ]);
 
   const months = monthRows.map((m) => {
@@ -1054,5 +1154,5 @@ export async function loadFullState() {
   const categoryGroupMembers = categoryGroupMemberRows.map((m) => ({ source: m.source, category: m.category, groupId: m.group_id }));
   const categoryBudgetMonths = categoryBudgetMonthRows.map((r) => ({ kind: r.source, category: r.category, monthLabel: r.month_label, amount: r.amount }));
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers, categoryBudgetMonths };
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers, categoryBudgetMonths, investmentAccounts, investmentValues, dividends };
 }

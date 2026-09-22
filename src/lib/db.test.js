@@ -42,6 +42,18 @@ import {
   getCategoryBudgetMonths,
   upsertCategoryBudgetMonth,
   deleteCategoryBudgetMonth,
+  getInvestmentAccounts,
+  upsertInvestmentAccount,
+  deleteInvestmentAccount,
+  restoreInvestmentAccount,
+  reorderInvestmentAccounts,
+  getInvestmentValues,
+  upsertInvestmentValue,
+  getDividends,
+  addDividend,
+  updateDividend,
+  deleteDividend,
+  restoreDividend,
 } from "./db.js";
 
 let adapter;
@@ -487,5 +499,94 @@ describe("goal auto-contribute fields", () => {
     await upsertGoal({ ...goal, targetAmount: 2500 }); // caller must spread the existing goal, same convention updateGoal() in GoalsTab.jsx already follows
     const updated = (await getGoals()).find((g) => g.id === id);
     expect(updated).toMatchObject({ targetAmount: 2500, autoContributeAmount: 100, autoContributeAccountId: "a" });
+  });
+});
+
+describe("investment accounts and values", () => {
+  it("upsertInvestmentAccount inserts, getInvestmentAccounts reads back in sort order", async () => {
+    const id1 = await upsertInvestmentAccount({ name: "RRSP" });
+    const id2 = await upsertInvestmentAccount({ name: "TFSA" });
+    const accounts = await getInvestmentAccounts();
+    expect(accounts.map((a) => a.id)).toEqual([id1, id2]);
+    expect(accounts.map((a) => a.name)).toEqual(["RRSP", "TFSA"]);
+  });
+
+  it("upsertInvestmentAccount with an id renames in place rather than inserting", async () => {
+    const id = await upsertInvestmentAccount({ name: "RRSP" });
+    await upsertInvestmentAccount({ id, name: "RRSP (renamed)" });
+    const accounts = await getInvestmentAccounts();
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].name).toBe("RRSP (renamed)");
+  });
+
+  it("reorderInvestmentAccounts persists a new sort order", async () => {
+    const id1 = await upsertInvestmentAccount({ name: "RRSP" });
+    const id2 = await upsertInvestmentAccount({ name: "TFSA" });
+    await reorderInvestmentAccounts([id2, id1]);
+    const accounts = await getInvestmentAccounts();
+    expect(accounts.map((a) => a.id)).toEqual([id2, id1]);
+  });
+
+  it("upsertInvestmentValue inserts a new month's value and updates it on a second call (upsert on account+month)", async () => {
+    const id = await upsertInvestmentAccount({ name: "RRSP" });
+    await upsertInvestmentValue(id, "June 2026", 1000);
+    await upsertInvestmentValue(id, "June 2026", 1100);
+    const values = await getInvestmentValues();
+    expect(values).toHaveLength(1);
+    expect(values[0]).toMatchObject({ investmentAccountId: id, monthLabel: "June 2026", value: 1100 });
+  });
+
+  it("deleteInvestmentAccount cascades its values, restoreInvestmentAccount brings both back", async () => {
+    const id = await upsertInvestmentAccount({ name: "RRSP" });
+    await upsertInvestmentValue(id, "June 2026", 1000);
+    const account = (await getInvestmentAccounts()).find((a) => a.id === id);
+    const values = await getInvestmentValues();
+
+    await deleteInvestmentAccount(id);
+    expect(await getInvestmentAccounts()).toEqual([]);
+    expect(await getInvestmentValues()).toEqual([]);
+
+    await restoreInvestmentAccount(account, values);
+    expect(await getInvestmentAccounts()).toEqual([account]);
+    expect(await getInvestmentValues()).toEqual(values);
+  });
+
+  it("loadFullState exposes investmentAccounts and investmentValues", async () => {
+    const id = await upsertInvestmentAccount({ name: "RRSP" });
+    await upsertInvestmentValue(id, "June 2026", 1000);
+    const state = await loadFullState();
+    expect(state.investmentAccounts).toEqual([{ id, name: "RRSP", sortOrder: 0 }]);
+    expect(state.investmentValues).toMatchObject([{ investmentAccountId: id, monthLabel: "June 2026", value: 1000 }]);
+  });
+});
+
+describe("dividends", () => {
+  it("addDividend inserts, getDividends reads back", async () => {
+    const id = await addDividend("June 2026", { amount: 25, note: "VFV" });
+    const rows = await getDividends();
+    expect(rows).toEqual([{ id, investmentAccountId: null, monthLabel: "June 2026", amount: 25, note: "VFV" }]);
+  });
+
+  it("updateDividend overwrites amount/note/account", async () => {
+    const acctId = await upsertInvestmentAccount({ name: "RRSP" });
+    const id = await addDividend("June 2026", { amount: 25, note: "VFV" });
+    await updateDividend(id, { investmentAccountId: acctId, amount: 30, note: "VFV updated" });
+    const rows = await getDividends();
+    expect(rows[0]).toMatchObject({ investmentAccountId: acctId, amount: 30, note: "VFV updated" });
+  });
+
+  it("deleteDividend removes it, restoreDividend brings it back with the same id", async () => {
+    const id = await addDividend("June 2026", { amount: 25, note: "VFV" });
+    const [dividend] = await getDividends();
+    await deleteDividend(id);
+    expect(await getDividends()).toEqual([]);
+    await restoreDividend(dividend);
+    expect(await getDividends()).toEqual([dividend]);
+  });
+
+  it("loadFullState exposes dividends", async () => {
+    await addDividend("June 2026", { amount: 25 });
+    const state = await loadFullState();
+    expect(state.dividends).toMatchObject([{ monthLabel: "June 2026", amount: 25 }]);
   });
 });

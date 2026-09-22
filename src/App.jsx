@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money, reconcileTabOrder } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -21,6 +21,7 @@ import DebtsTab from "./components/DebtsTab.jsx";
 import DebtSpendingTab from "./components/DebtSpendingTab.jsx";
 import InsightsTab from "./components/InsightsTab.jsx";
 import BudgetingTab from "./components/BudgetingTab.jsx";
+import InvestmentsTab from "./components/InvestmentsTab.jsx";
 import ReportTab from "./components/ReportTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
 
@@ -41,6 +42,7 @@ const TAB_DEFS = [
   { id: "debts", label: "Debts", icon: Landmark, dataTour: "tab-debts" },
   { id: "debtspending", label: "Debt Spending", icon: ShoppingCart, dataTour: "tab-debtspending" },
   { id: "budgeting", label: "Budgeting & Planning", icon: Target, dataTour: "tab-budgeting" },
+  { id: "investments", label: "Investments", icon: LineChart, dataTour: "tab-investments" },
   { id: "insights", label: "Insights", icon: TrendingUp, dataTour: "tab-insights" },
   { id: "report", label: "Report", icon: FileText, dataTour: "tab-report" },
   { id: "backups", label: "Backups", icon: HardDrive, dataTour: "tab-backups" },
@@ -71,6 +73,7 @@ const TAB_HELP = {
   debts: { title: "Debts", body: "Track balances and APR. Payments reduce principal; charge interest once a month with 'Apply monthly interest'. Tick 'Spendable' to charge purchases to a debt from the Debt Spending tab." },
   debtspending: { title: "Debt Spending", body: "Log purchases charged to your spendable debts, month by month. Each charge raises that debt's balance and touches no bank account. Tick 'Spendable' on a debt first." },
   budgeting: { title: "Budgeting & Planning", body: "Every monthly budget target in one place — expense categories, card spending, and debt spending — compared against your most recent month, with recent-average and trend context, a multi-month planning grid, goal auto-contributions, what-if scenarios, and a pace-alert banner if you're trending over this month." },
+  investments: { title: "Investments", body: "Record each investment account's value at the start of a month — growth since the last one is computed for you. Log dividend payments per month below. The running total adds a second line to the Report's Net worth chart." },
   insights: { title: "Insights", body: "Net worth, spending by category, budgets, and a forecast projected from your income and recent spending." },
   report: { title: "Report", body: "Generate a single styled document covering a month range you pick — open it in any browser, or print it to PDF from there." },
   backups: { title: "Backups", body: "Back up your ledger locally or mirror it to a synced folder. Nothing leaves this computer unless you send it." },
@@ -1262,6 +1265,7 @@ export default function App() {
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} months={state.months} onChanged={reload} onPatch={patchState} />}
       {tab === "debtspending" && <DebtSpendingTab state={state} onChanged={reload} onGoToBudgeting={() => setTab("budgeting")} />}
       {tab === "budgeting" && <BudgetingTab state={state} onChanged={reload} />}
+      {tab === "investments" && <InvestmentsTab state={state} onChanged={reload} />}
       {tab === "insights" && <InsightsTab state={state} ledger={ledger} onGoToBudgeting={() => setTab("budgeting")} />}
       {tab === "report" && <ReportTab state={state} ledger={ledger} theme={theme} accent={accent} appVersion={APP_VERSION} />}
       {tab === "settings" && (

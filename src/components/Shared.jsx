@@ -380,6 +380,57 @@ export function BudgetGrid({ categories, months, overrides, actualSnapshots, onS
   );
 }
 
+// Investments tab's monthly-value grid: one row per investment account, one
+// column per real month, each cell the value recorded for that month (or
+// carried forward from the last one entered — see calc.js's
+// investmentValueAsOf) plus its $ growth since the previous month. Same
+// shape as BudgetGrid, but there's no target/actual split — just a value.
+export function InvestmentGrid({ accounts, months, growthByAccount, onSaveCell }) {
+  if (accounts.length === 0 || months.length === 0) {
+    return <p className="empty small">Add an investment account above first, then record a value per month here.</p>;
+  }
+  return (
+    <div className="table-scroll">
+      <table className="budget-grid">
+        <thead>
+          <tr>
+            <th>Account</th>
+            {months.map((m) => <th key={m.monthLabel}>{shortMonth(m.monthLabel)}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {accounts.map((a) => {
+            const growth = growthByAccount[a.id] || [];
+            return (
+              <tr key={a.id}>
+                <td className="budget-grid-cat">{a.name}</td>
+                {months.map((m, i) => {
+                  const cell = growth[i] || { value: 0, growth: 0 };
+                  return (
+                    <td key={m.monthLabel} className="budget-grid-cell">
+                      <input
+                        className="budget-grid-input"
+                        type="number"
+                        defaultValue={cell.value}
+                        onBlur={(e) => onSaveCell(a.id, m.monthLabel, parseFloat(e.target.value) || 0)}
+                      />
+                      {i > 0 && (
+                        <span className={`budget-grid-actual ${cell.growth < 0 ? "deficit" : cell.growth > 0 ? "surplus" : ""}`}>
+                          {cell.growth >= 0 ? "+" : ""}{money(cell.growth)}
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Collapsible section with a header + optional total (used by Months & Card tabs).
 export function MonthSection({ icon, title, hint, total, totalClass, children }) {
   const [open, setOpen] = useState(false);

@@ -405,6 +405,62 @@ export function netWorthSnapshot(months, ledger, debts) {
   return { assets, debt, net: assets - debt };
 }
 
+// Investments are recorded once per month (the value "at the start of each
+// month"), not every month — so a month with no explicit entry carries
+// forward the most recent known value, same "no override = inherit the last
+// one" idea as effectiveBudget. Walks the real month order backward from
+// `monthId` so a gap doesn't read as the account suddenly dropping to $0.
+export function investmentValueAsOf(investmentValues, accountId, months, monthId) {
+  const idx = (months || []).findIndex((m) => m.id === monthId);
+  if (idx === -1) return 0;
+  for (let i = idx; i >= 0; i--) {
+    const row = (investmentValues || []).find((v) => v.investmentAccountId === accountId && v.monthLabel === months[i].monthLabel);
+    if (row) return Number(row.value) || 0;
+  }
+  return 0;
+}
+
+// Sum of every investment account's carried-forward value, per real month —
+// the investment total line for the net-worth chart and the Investments tab.
+export function investmentTotalsByMonth(months, investmentValues, accounts) {
+  return (months || []).map((m) => ({
+    id: m.id,
+    label: m.monthLabel,
+    value: (accounts || []).reduce((s, a) => s + investmentValueAsOf(investmentValues, a.id, months, m.id), 0),
+  }));
+}
+
+// One account's month-by-month carried-forward value and its $ growth since
+// the previous real month (0 for the first month — nothing to compare yet).
+export function investmentGrowth(investmentValues, accountId, months) {
+  let prev = null;
+  return (months || []).map((m) => {
+    const value = investmentValueAsOf(investmentValues, accountId, months, m.id);
+    const growth = prev === null ? 0 : value - prev;
+    prev = value;
+    return { id: m.id, label: m.monthLabel, value, growth };
+  });
+}
+
+// Dividend payments summed per real month (across every investment account).
+export function dividendTotalsByMonth(months, dividends) {
+  return (months || []).map((m) => ({
+    id: m.id,
+    label: m.monthLabel,
+    value: (dividends || []).filter((d) => d.monthLabel === m.monthLabel).reduce((s, d) => s + (Number(d.amount) || 0), 0),
+  }));
+}
+
+// Net worth history including investments: consolidated cash balance plus
+// the carried-forward investment total, per real month — the second trend
+// line shown alongside the existing (cash-only) net worth history.
+export function netWorthWithInvestmentsSeries(months, ledger, investmentValues, investmentAccounts) {
+  const cash = monthlyEndingBalances(months, ledger);
+  const investTotals = investmentTotalsByMonth(months, investmentValues, investmentAccounts);
+  const investById = new Map(investTotals.map((r) => [r.id, r.value]));
+  return cash.map((r) => ({ ...r, value: r.value + (investById.get(r.id) || 0) }));
+}
+
 // Compares each budgeted category's spend in the latest month against its
 // monthly target. Returns rows sorted with over-budget first, then by overage.
 export function budgetReport(months, budgets) {
