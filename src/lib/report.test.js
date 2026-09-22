@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { makeTestDb } from "./testdb.js";
-import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, updateBillPayment, addGoalContribution, addDebtCharge, addMonthDebtPayment, applyMonthDebtPayment, applyMonthlyInterest } from "./db.js";
+import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, updateBillPayment, addGoalContribution, addDebtCharge, addMonthDebtPayment, applyMonthDebtPayment, applyMonthlyInterest, logDebtHistory } from "./db.js";
 import { computeLedger, computeDueDate } from "./calc.js";
 import { buildReportHtml } from "./report.js";
 
@@ -112,6 +112,29 @@ describe("buildReportHtml", () => {
     expect(html).toContain('aria-label="Income, bills, expenses, savings, debt payments, and debt spending by month"');
   });
 
+  it("shows debt payments/interest logged from the Debts tab, even though they use a free-text label like 'This month' that matches no real month", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const debt = await upsertDebt({ name: "Visa", apr: 0.24, balance: 1000, spendable: false });
+    // Two real months exist, same as any normal ledger — the bug was never
+    // about having no months, it was that "This month" (DebtsTab's actual
+    // default label) doesn't match either of their real labels.
+    await addMonth({ monthLabel: "January 2026", sequence: 1, defaultAccountId: checking });
+    await addMonth({ monthLabel: "February 2026", sequence: 2, defaultAccountId: checking });
+
+    await logDebtHistory({ debtId: debt, monthLabel: "This month", previousBalance: 1000, amountPaid: 150, interest: 0, newBalance: 850 });
+    await applyMonthlyInterest(debt, { monthLabel: "This month", currentBalance: 850, apr: 0.24 });
+
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    // Default range (no fromMonthId/toMonthId given) — exactly what the
+    // Report tab uses when you haven't touched the From/To pickers.
+    const html = buildReportHtml(state, ledger, {});
+
+    expect(html).toContain("This month");
+    expect(html).toContain("150.00"); // the logged payment
+    expect(html).toContain("17.00"); // interest: 850 * 0.24/12 = 17
+  });
+
   it("shows per-card and per-debt comparison charts only when there's more than one of each", async () => {
     const checking = await upsertAccount({ name: "Checking", startingBalance: 500 });
     const card1 = await upsertAccount({ name: "Visa card", startingBalance: 0, excludeFromTotal: true });
@@ -133,6 +156,12 @@ describe("buildReportHtml", () => {
     expect(html).toContain('aria-label="Spending per debt"');
     expect(html).toContain('aria-label="Card spending by category"');
     expect(html).toContain('aria-label="Debt spending by category"');
+    // Separator headings between the two bar charts in each section, so
+    // "per card"/"per debt" and "by category" don't read as one glued-
+    // together chart.
+    expect(html).toContain("<h3>By card</h3>");
+    expect(html).toContain("<h3>By debt</h3>");
+    expect((html.match(/<h3>By category<\/h3>/g) || []).length).toBe(2); // once for cards, once for debts
   });
 
   it("merges applied debt history with still-pending payments in one table, without double-counting an applied payment", async () => {

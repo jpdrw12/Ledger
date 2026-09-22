@@ -304,7 +304,20 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   // --- Range activity totals -------------------------------------------
   const rangeLabels = new Set(rangeMonths.map((m) => m.monthLabel));
-  const debtChargesInRange = (state.debtCharges || []).filter((c) => rangeLabels.has(c.monthLabel));
+  // Debt payments/interest (DebtsTab) and debt charges (DebtSpendingTab) are
+  // tagged with a free-text month label, not a real month id — DebtsTab's
+  // "Apply payment"/"Apply monthly interest" default that label to the
+  // literal text "This month", which never matches any real month's label.
+  // Filtering strictly by rangeLabels.has(label) would make every entry
+  // logged that way invisible in the report regardless of which range is
+  // selected. Since a label that matches no real month at all can't be
+  // meaningfully placed within — or excluded by — a date range, such an
+  // "orphan" label is always treated as in range (mirroring how
+  // DebtSpendingTab itself always shows its own orphan-labeled sections,
+  // unaffected by any date filtering).
+  const allMonthLabels = new Set(months.map((m) => m.monthLabel));
+  const inDebtRange = (label) => rangeLabels.has(label) || !allMonthLabels.has(label);
+  const debtChargesInRange = (state.debtCharges || []).filter((c) => inDebtRange(c.monthLabel));
   let totalIncome = 0, totalBills = 0, totalExpenses = 0, totalSavings = 0, totalDebtPmts = 0;
   rangeMonths.forEach((m) => {
     const l = ledger[m.id];
@@ -445,7 +458,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   // (`rangeLabels.has(undefined)`) silently matched nothing and this table
   // has shown "No debt payments/interest logged" regardless of real data.
   const debtHistoryInRange = (state.debtHistory || [])
-    .filter((h) => rangeLabels.has(h.month_label))
+    .filter((h) => inDebtRange(h.month_label))
     .map((h) => ({
       monthLabel: h.month_label,
       debt: (state.debts.find((d) => d.id === h.debt_id) || {}).name || "—",
@@ -520,8 +533,8 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     : "";
   const cardSection = cardAccounts.length
     ? cardTrendChart +
-      cardsChart +
-      cardCategoriesChart +
+      (cardsChart ? `<h3>By card</h3>${cardsChart}` : "") +
+      (cardCategoriesChart ? `<h3>By category</h3>${cardCategoriesChart}` : "") +
       table(
         [
           { key: "category", label: "Category" },
@@ -557,8 +570,8 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     : "";
   const debtSpendSection = spendableDebts.length
     ? debtTrendChart +
-      debtSpendByDebtChart +
-      debtSpendCatsChart +
+      (debtSpendByDebtChart ? `<h3>By debt</h3>${debtSpendByDebtChart}` : "") +
+      (debtSpendCatsChart ? `<h3>By category</h3>${debtSpendCatsChart}` : "") +
       table(
         [{ key: "category", label: "Category" }, { key: "total", label: "Total", num: true, render: (r) => money(r.total) }],
         debtSpendCats.map((c) => ({ category: c.category, total: c.total })),

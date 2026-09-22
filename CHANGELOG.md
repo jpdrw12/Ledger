@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.33.1]
+
+### Fixed
+- Report: "Payments in range" wasn't picking up payments or interest
+  applied from the Debts tab. Its "Apply payment"/"Apply monthly
+  interest" default to the free-text label "This month", which never
+  matches a real month's label — the report's date-range filter only
+  matched entries tied to an actual month within the selected range, so
+  these were invisible no matter which range you picked. A label that
+  matches no real month at all now always shows (mirroring how the Debt
+  Spending tab already treats its own free-text labels), instead of only
+  showing when it happens to equal a real month's name. Debt charges with
+  the same kind of label had the identical bug; fixed there too.
+- Report: the two bar charts in Card spending (per-card, by category) and
+  Debt spending (per-debt, by category) were concatenated with nothing
+  between them, reading as one confusing chart. Added "By card"/"By
+  debt" and "By category" headings between them.
+
 ## [0.33.0]
 
 ### Added
