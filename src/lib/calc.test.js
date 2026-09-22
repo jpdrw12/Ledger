@@ -16,6 +16,7 @@ import {
   debtCategorySnapshotsByLabel,
   recentCategoryAverage,
   budgetOverUnderHistory,
+  effectiveBudget,
   monthlyExpenseTotals,
   spendByAccount,
   cardBudgetReport,
@@ -998,6 +999,30 @@ describe("budgetOverUnderHistory", () => {
       { label: "Apr", actual: 250, over: true },
       { label: "May", actual: 180, over: false },
     ]);
+  });
+});
+
+describe("effectiveBudget", () => {
+  const overrides = [
+    { category: "Groceries", monthLabel: "December 2026", amount: 800 },
+    { category: "Gas", monthLabel: "January 2027", amount: 100 },
+  ];
+
+  it("uses the per-month override when one exists for that category+month", () => {
+    expect(effectiveBudget(500, overrides, "Groceries", "December 2026")).toBe(800);
+  });
+
+  it("falls back to the global amount when there's no override for that month", () => {
+    expect(effectiveBudget(500, overrides, "Groceries", "January 2027")).toBe(500);
+  });
+
+  it("falls back to the global amount when there's no override for that category at all", () => {
+    expect(effectiveBudget(500, overrides, "Dining", "December 2026")).toBe(500);
+  });
+
+  it("handles no overrides", () => {
+    expect(effectiveBudget(500, [], "Groceries", "December 2026")).toBe(500);
+    expect(effectiveBudget(500, undefined, "Groceries", "December 2026")).toBe(500);
   });
 });
 

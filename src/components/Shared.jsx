@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useContext, createContext } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Trash2, Plus } from "lucide-react";
-import { money, groupCategoryRows } from "../lib/calc.js";
+import { money, groupCategoryRows, effectiveBudget } from "../lib/calc.js";
 import { useToast } from "./Toast.jsx";
 
 // Drag-to-reorder for a card list — pointer-based (native HTML5 DnD is
@@ -312,6 +312,71 @@ export function BudgetProgressList({ allowance, rows, emptyLabel = "No budgets s
         <BudgetRow key={b.category} label={b.category} budget={b.budget} actual={b.actual} />
       ))}
     </>
+  );
+}
+
+// "Jan 2026" -> "Jan '26" — compact enough for a grid column header.
+function shortMonth(label) {
+  const [mon, year] = String(label).split(" ");
+  return year ? `${(mon || "").slice(0, 3)} '${year.slice(-2)}` : label;
+}
+
+// Editable multi-month planning grid: one row per already-budgeted category,
+// one column per month. Each cell shows/edits the EFFECTIVE target for that
+// cell (effectiveBudget in calc.js — a per-month override if one exists,
+// else the category's single global target) with the actual spend for that
+// month underneath for reference, so setting ahead ("higher heating budget
+// in December") stays anchored to what actually happened.
+// `categories`: [{ category, globalBudget }] — only categories that already
+// have a global target; adding a brand-new budgeted category still happens
+// in the plain BudgetEditor above, not here.
+// `months`: [{ monthLabel }] in display order (oldest first).
+// `overrides`: [{ category, monthLabel, amount }] — category_budget_months
+// rows for this source.
+// `actualSnapshots`: categorySnapshotsByMonth()/debtCategorySnapshotsByLabel()
+// shape, aligned to `months` by label.
+export function BudgetGrid({ categories, months, overrides, actualSnapshots, onSaveCell }) {
+  if (categories.length === 0 || months.length === 0) {
+    return <p className="empty small">Budget a category above first — the grid lets you set ahead once one exists.</p>;
+  }
+  const actualFor = (monthLabel, category) => {
+    const snap = (actualSnapshots || []).find((s) => s.label === monthLabel);
+    return snap ? (snap.totals[category] || 0) : 0;
+  };
+  return (
+    <div className="table-scroll">
+      <table className="budget-grid">
+        <thead>
+          <tr>
+            <th>Category</th>
+            {months.map((m) => <th key={m.monthLabel}>{shortMonth(m.monthLabel)}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {categories.map((c) => (
+            <tr key={c.category}>
+              <td className="budget-grid-cat">{c.category}</td>
+              {months.map((m) => {
+                const eff = effectiveBudget(c.globalBudget, overrides, c.category, m.monthLabel);
+                const actual = actualFor(m.monthLabel, c.category);
+                const over = eff > 0 && actual > eff;
+                return (
+                  <td key={m.monthLabel} className={`budget-grid-cell${over ? " over" : ""}`}>
+                    <input
+                      className="budget-grid-input"
+                      type="number"
+                      defaultValue={eff}
+                      onBlur={(e) => onSaveCell(c.category, m.monthLabel, parseFloat(e.target.value) || 0)}
+                    />
+                    <span className="budget-grid-actual">{money(actual)}</span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

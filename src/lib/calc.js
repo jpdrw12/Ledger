@@ -423,6 +423,16 @@ export function budgetOverUnderHistory(snapshots, category, budget, count = 6) {
   });
 }
 
+// The target a planning-grid cell shows/edits for one category+month: a
+// per-month override if one exists (category_budget_months), else the
+// single global target (category_budgets/card_budgets/debt_budgets) —
+// so a month with no explicit plan just inherits the default rather than
+// showing $0. Pure — no I/O.
+export function effectiveBudget(globalAmount, overrides, category, monthLabel) {
+  const override = (overrides || []).find((o) => o.category === category && o.monthLabel === monthLabel);
+  return override ? override.amount : globalAmount;
+}
+
 // Flattens every money movement into CSV rows: one line per bill, expense,
 // addition, goal contribution, and debt payment, tagged with its month.
 export function buildLedgerCsv(state, ledger) {

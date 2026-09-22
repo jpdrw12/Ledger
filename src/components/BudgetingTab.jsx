@@ -1,8 +1,8 @@
 import React from "react";
-import { Target, CreditCard, Landmark } from "lucide-react";
+import { Target, CreditCard, Landmark, CalendarRange } from "lucide-react";
 import * as db from "../lib/db.js";
 import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory } from "../lib/calc.js";
-import { Collapsible, BudgetEditor } from "./Shared.jsx";
+import { Collapsible, BudgetEditor, BudgetGrid } from "./Shared.jsx";
 
 // One home for every monthly budget target — expense categories, card
 // spending, and debt spending each had their own hand-rolled editing UI
@@ -25,6 +25,11 @@ function BudgetingTab({ state, onChanged }) {
   };
   const deleteExpenseBudget = async (category) => {
     await db.deleteCategoryBudget(category);
+    onChanged();
+  };
+  const expenseOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "category");
+  const saveExpenseBudgetMonth = async (category, monthLabel, amount) => {
+    await db.upsertCategoryBudgetMonth("category", category, monthLabel, amount);
     onChanged();
   };
 
@@ -54,6 +59,11 @@ function BudgetingTab({ state, onChanged }) {
     await db.deleteCardBudget(category);
     onChanged();
   };
+  const cardOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "card");
+  const saveCardBudgetMonth = async (category, monthLabel, amount) => {
+    await db.upsertCategoryBudgetMonth("card", category, monthLabel, amount);
+    onChanged();
+  };
 
   // --- Debt spending (debt_budgets) ---------------------------------------
   const spendableDebts = (state.debts || []).filter((d) => d.spendable);
@@ -74,6 +84,11 @@ function BudgetingTab({ state, onChanged }) {
   };
   const deleteDebtBudget = async (category) => {
     await db.deleteDebtBudget(category);
+    onChanged();
+  };
+  const debtOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "debt");
+  const saveDebtBudgetMonth = async (category, monthLabel, amount) => {
+    await db.upsertCategoryBudgetMonth("debt", category, monthLabel, amount);
     onChanged();
   };
 
@@ -112,6 +127,17 @@ function BudgetingTab({ state, onChanged }) {
           categorySuggestions={expenseCategorySuggestions}
           datalistId="budgeting-expense-suggestions"
         />
+        {expenseBudgets.length > 0 && (
+          <Collapsible title="Plan ahead" icon={<CalendarRange size={13} />} className="cat-group">
+            <BudgetGrid
+              categories={expenseBudgets.map((b) => ({ category: b.category, globalBudget: b.budget }))}
+              months={state.months}
+              overrides={expenseOverrides}
+              actualSnapshots={expenseSnapshots}
+              onSaveCell={saveExpenseBudgetMonth}
+            />
+          </Collapsible>
+        )}
       </Collapsible>
 
       <Collapsible title="Card spending" icon={<CreditCard size={13} />} right={latestLabel} defaultOpen>
@@ -135,6 +161,17 @@ function BudgetingTab({ state, onChanged }) {
             datalistId="budgeting-card-suggestions"
           />
         )}
+        {cardBudgetData.categories.length > 0 && (
+          <Collapsible title="Plan ahead" icon={<CalendarRange size={13} />} className="cat-group">
+            <BudgetGrid
+              categories={cardBudgetData.categories.map((b) => ({ category: b.category, globalBudget: b.budget }))}
+              months={state.months}
+              overrides={cardOverrides}
+              actualSnapshots={cardSnapshots}
+              onSaveCell={saveCardBudgetMonth}
+            />
+          </Collapsible>
+        )}
       </Collapsible>
 
       <Collapsible title="Debt spending" icon={<Landmark size={13} />} right={latestLabel} defaultOpen>
@@ -157,6 +194,17 @@ function BudgetingTab({ state, onChanged }) {
             categorySuggestions={debtCategorySuggestions}
             datalistId="budgeting-debt-suggestions"
           />
+        )}
+        {debtBudgetData.categories.length > 0 && (
+          <Collapsible title="Plan ahead" icon={<CalendarRange size={13} />} className="cat-group">
+            <BudgetGrid
+              categories={debtBudgetData.categories.map((b) => ({ category: b.category, globalBudget: b.budget }))}
+              months={state.months}
+              overrides={debtOverrides}
+              actualSnapshots={debtSnapshots}
+              onSaveCell={saveDebtBudgetMonth}
+            />
+          </Collapsible>
         )}
       </Collapsible>
     </div>

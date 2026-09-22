@@ -39,6 +39,9 @@ import {
   setCategoryGroup,
   getCategoryGroups,
   getCategoryGroupMembers,
+  getCategoryBudgetMonths,
+  upsertCategoryBudgetMonth,
+  deleteCategoryBudgetMonth,
 } from "./db.js";
 
 let adapter;
@@ -417,5 +420,49 @@ describe("category groups", () => {
     await deleteCategoryGroup(food);
     expect(await getCategoryGroups("expenses")).toEqual([]);
     expect(await getCategoryGroupMembers("expenses")).toEqual([]); // membership row is gone too — nothing dangling
+  });
+});
+
+describe("category budget months (per-month overrides)", () => {
+  it("upsertCategoryBudgetMonth adds a row scoped to its kind, category, and month", async () => {
+    await upsertCategoryBudgetMonth("category", "Groceries", "December 2026", 800);
+    expect(await getCategoryBudgetMonths("category")).toEqual([{ kind: "category", category: "Groceries", monthLabel: "December 2026", amount: 800 }]);
+    expect(await getCategoryBudgetMonths("card")).toEqual([]); // different kind — doesn't leak across
+  });
+
+  it("upserting the same kind+category+month again replaces the amount, not adds a second row", async () => {
+    await upsertCategoryBudgetMonth("category", "Groceries", "December 2026", 800);
+    await upsertCategoryBudgetMonth("category", "Groceries", "December 2026", 950);
+    const rows = await getCategoryBudgetMonths("category");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount).toBe(950);
+  });
+
+  it("keeps kinds independent for the same category+month", async () => {
+    await upsertCategoryBudgetMonth("category", "Groceries", "December 2026", 800);
+    await upsertCategoryBudgetMonth("card", "Groceries", "December 2026", 300);
+    expect((await getCategoryBudgetMonths("category"))[0].amount).toBe(800);
+    expect((await getCategoryBudgetMonths("card"))[0].amount).toBe(300);
+  });
+
+  it("deleteCategoryBudgetMonth removes just that one cell", async () => {
+    await upsertCategoryBudgetMonth("debt", "Shopping", "December 2026", 200);
+    await upsertCategoryBudgetMonth("debt", "Shopping", "January 2027", 150);
+    await deleteCategoryBudgetMonth("debt", "Shopping", "December 2026");
+    const rows = await getCategoryBudgetMonths("debt");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].monthLabel).toBe("January 2027");
+  });
+
+  it("loadFullState exposes every kind's overrides together as categoryBudgetMonths", async () => {
+    await upsertCategoryBudgetMonth("category", "Groceries", "December 2026", 800);
+    await upsertCategoryBudgetMonth("card", "Dining", "December 2026", 100);
+    const state = await loadFullState();
+    expect(state.categoryBudgetMonths).toEqual(
+      expect.arrayContaining([
+        { kind: "category", category: "Groceries", monthLabel: "December 2026", amount: 800 },
+        { kind: "card", category: "Dining", monthLabel: "December 2026", amount: 100 },
+      ])
+    );
   });
 });

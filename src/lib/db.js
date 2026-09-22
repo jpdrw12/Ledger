@@ -611,6 +611,33 @@ export async function deleteDebtBudget(category) {
 }
 
 // ---------------------------------------------------------------------
+// Per-month budget overrides (category_budget_months) — layered on top of
+// the single global target above. `kind` is 'category' | 'card' | 'debt',
+// matching which of category_budgets/card_budgets/debt_budgets the
+// override belongs to. A cell with no row here falls back to the global
+// target; see BudgetingTab.jsx's planning grid, the only place this table
+// is written.
+// ---------------------------------------------------------------------
+export async function getCategoryBudgetMonths(kind) {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM category_budget_months WHERE source = $1", [kind]);
+  return rows.map((r) => ({ kind: r.source, category: r.category, monthLabel: r.month_label, amount: r.amount }));
+}
+
+export async function upsertCategoryBudgetMonth(kind, category, monthLabel, amount) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO category_budget_months (source, category, month_label, amount) VALUES ($1, $2, $3, $4) ON CONFLICT(source, category, month_label) DO UPDATE SET amount = $4",
+    [kind, category, monthLabel, amount || 0]
+  );
+}
+
+export async function deleteCategoryBudgetMonth(kind, category, monthLabel) {
+  const db = await getDb();
+  await db.execute("DELETE FROM category_budget_months WHERE source = $1 AND category = $2 AND month_label = $3", [kind, category, monthLabel]);
+}
+
+// ---------------------------------------------------------------------
 // Category groups — purely organizational: collapsible groups the
 // Categories tab uses to bucket its (otherwise flat, per-source) category
 // list for easier review. A group belongs to one source ("expenses" |
@@ -936,7 +963,7 @@ export async function wipeAllData() {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows, categoryBudgetMonthRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -958,6 +985,7 @@ export async function loadFullState() {
       db.select("SELECT * FROM transfers"),
       db.select("SELECT * FROM category_groups ORDER BY source, sort_order, name"),
       db.select("SELECT * FROM category_group_members"),
+      db.select("SELECT * FROM category_budget_months"),
     ]);
 
   const months = monthRows.map((m) => {
@@ -1016,6 +1044,7 @@ export async function loadFullState() {
 
   const categoryGroups = categoryGroupRows.map((g) => ({ id: g.id, source: g.source, name: g.name, sortOrder: g.sort_order }));
   const categoryGroupMembers = categoryGroupMemberRows.map((m) => ({ source: m.source, category: m.category, groupId: m.group_id }));
+  const categoryBudgetMonths = categoryBudgetMonthRows.map((r) => ({ kind: r.source, category: r.category, monthLabel: r.month_label, amount: r.amount }));
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers };
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers, categoryBudgetMonths };
 }

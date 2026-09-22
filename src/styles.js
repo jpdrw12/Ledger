@@ -399,6 +399,14 @@ export const css = `
   .budget-history-dots { display:inline-flex; gap:3px; }
   .budget-history-dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--surplus); }
   .budget-history-dot.over { background:var(--deficit); }
+  .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .budget-grid { border-collapse:collapse; font-size:12px; }
+  .budget-grid th, .budget-grid td { padding:5px 8px; border:1px solid var(--paper-line); text-align:center; white-space:nowrap; }
+  .budget-grid th { color:var(--ink-soft); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.3px; }
+  .budget-grid th:first-child, .budget-grid td.budget-grid-cat { text-align:left; position:sticky; left:0; background:var(--card); z-index:1; }
+  .budget-grid-input { width:70px; text-align:right; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:3px; padding:3px 5px; font-size:12px; color:var(--ink); }
+  .budget-grid-actual { display:block; font-size:10px; color:var(--ink-soft); margin-top:2px; }
+  .budget-grid-cell.over .budget-grid-actual { color:var(--deficit); font-weight:600; }
   .cat-name { flex:0 0 140px; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cat-bar-track { flex:1; height:14px; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:7px; overflow:hidden; }
   .cat-bar-fill { height:100%; background:var(--stamp); opacity:0.55; }
