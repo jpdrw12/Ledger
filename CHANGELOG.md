@@ -5,6 +5,44 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.34.0]
+
+### Added
+- **Categories tab.** Rename a payment category once and every expense,
+  bill, or debt charge using it — plus its budget, if it has one — updates
+  together, instead of editing every row by hand. Blocks the rename if the
+  target name already has its own budget, rather than silently merging two
+  amounts.
+- **Category groups.** Organize categories into collapsible, user-named
+  groups — drag a category onto a group card, or use the small assign
+  button for a click-based alternative. Card Spending and Debt Spending's
+  category breakdowns now render through these same groups.
+- **Report: export just a subset of tabs.** The Report tab lists every
+  section as a checkbox; uncheck any to scope both "Save as HTML" and
+  "Save as PDF" to just what's left, instead of always the full report.
+- **Report: combined categories section.** A new section at the very
+  bottom totals expenses, card spending, and debt spending together by
+  category/group.
+- **Report: trend lines and a $0 reference line** on every chart, plus a
+  value label on every point/bar — a printed/PDF'd report has no hover
+  tooltips to fall back on for the values a chart doesn't label directly.
+- **Report: collapsible charts** and a **Print / Save as PDF button** at
+  the top of the exported page itself. A chart collapsed in the browser
+  still prints in full.
+- **Months tab: transfers remember their last accounts/goals**, so
+  entering several transfers of the same kind in a row no longer needs a
+  re-pick each time.
+
+### Fixed
+- Chart text in the Report looked squished on some window widths — a
+  stray `preserveAspectRatio="none"` was stretching the whole chart
+  (text included) to fill the container instead of scaling uniformly.
+- The Months chart's value labels could land on top of the x-axis month
+  labels for a near-zero bar; skipped now when a bar's too thin to hold
+  a label legibly.
+- The Report's category bar charts were capped at the top 10 entries;
+  now every category charts.
+
 ## [0.33.3]
 
 ### Fixed
