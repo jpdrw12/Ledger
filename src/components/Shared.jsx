@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useContext, createContext } from "react";
-import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, Trash2, Plus } from "lucide-react";
 import { money, groupCategoryRows } from "../lib/calc.js";
+import { useToast } from "./Toast.jsx";
 
 // Drag-to-reorder for a card list — pointer-based (native HTML5 DnD is
 // unreliable in the WebKitGTK webview and renders a giant drag ghost). Mousedown
@@ -174,6 +175,142 @@ export function GroupedCategoryList({ categories, groups, members, selectedCat, 
           {ungrouped.map(catRow)}
         </Collapsible>
       )}
+    </>
+  );
+}
+
+// One editable budget-vs-actual row: progress bar, amount input (commits on
+// blur), delete button. Shared shape behind the Budgeting & Planning tab's
+// three sections (expense/card/debt budgets) — previously nearly-identical
+// JSX hand-rolled three times in InsightsTab/CardTab/DebtSpendingTab.
+// `recentAvg` (a number) and `history` ([{label,actual,over}], oldest
+// first — see budgetOverUnderHistory in calc.js) are both optional: only
+// the Budgeting & Planning tab's editor passes them, giving rollover
+// context ("here's what you've actually spent recently, and whether this
+// target would have been blown lately") right where a target gets set. The
+// read-only BudgetProgressList (used on Card/Debt Spending/Insights) omits
+// both to stay a plain glance.
+function BudgetRow({ label, budget, actual, onSave, onDelete, recentAvg, history }) {
+  const over = actual > budget;
+  const pct = budget > 0 ? Math.min(100, (actual / budget) * 100) : 0;
+  return (
+    <div className="cat-row-group">
+      <div className="cat-row">
+        <span className="cat-name">{label}</span>
+        <div className="cat-bar-track" title={`${money(actual)} of ${money(budget)}`}>
+          <div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
+        </div>
+        <span className={`cat-amount mono ${over ? "deficit" : "surplus"}`}>{money(actual)} / {money(budget)}</span>
+        {onSave && (
+          <input className="amount-input" type="number" defaultValue={budget} onBlur={(e) => onSave(parseFloat(e.target.value) || 0)} />
+        )}
+        {onDelete && (
+          <button className="icon-btn" title="Remove budget" onClick={onDelete}>
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+      {(recentAvg != null || history) && (
+        <div className="budget-trend-row">
+          {recentAvg != null && <span className="small-label">Recent avg: {money(recentAvg)}/mo</span>}
+          {history && history.length > 0 && (
+            <span className="budget-history-dots" title="Last months under this target — green under, red over">
+              {history.map((h, i) => (
+                <span key={i} className={`budget-history-dot ${h.over ? "over" : "under"}`} title={`${h.label}: ${money(h.actual)}`} />
+              ))}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Editable budget list: an optional "total allowance" row (category `""` —
+// card/debt budgets use this; plain expense budgets don't) plus one row per
+// category, an add-row with a datalist of category suggestions, save/delete
+// wired to whichever db.js budget functions the caller passes in. Built for
+// the Budgeting & Planning tab so all three budget kinds (expense/card/debt)
+// share one editing UI instead of three hand-rolled copies of it.
+export function BudgetEditor({
+  allowance, // { budget, actual } | null — omit entirely for sources with no allowance concept (plain expense budgets)
+  onSaveAllowance,
+  rows, // [{ category, budget, actual }]
+  onSaveRow,
+  onDeleteRow,
+  onAddRow,
+  categorySuggestions,
+  datalistId,
+  emptyLabel = "No budgets set. Add one below to track a category against a monthly target.",
+}) {
+  const [newCat, setNewCat] = useState("");
+  const [newAmt, setNewAmt] = useState("");
+  const { toast } = useToast();
+  const addRow = () => {
+    const amt = parseFloat(newAmt) || 0;
+    if (!newCat.trim() || amt <= 0) {
+      toast("Enter a category and a positive amount.", "error");
+      return;
+    }
+    onAddRow(newCat.trim(), amt);
+    setNewCat("");
+    setNewAmt("");
+  };
+  return (
+    <>
+      {onSaveAllowance && (
+        <div className="backup-folder" style={{ marginTop: 0 }}>
+          <span className="small-label" style={{ flex: 1 }}>Monthly allowance (total)</span>
+          <input
+            className="amount-input"
+            type="number"
+            placeholder="e.g. 500"
+            defaultValue={allowance?.budget ?? ""}
+            onBlur={(e) => onSaveAllowance(parseFloat(e.target.value) || 0)}
+          />
+        </div>
+      )}
+      {allowance && <BudgetRow label="Allowance" budget={allowance.budget} actual={allowance.actual} />}
+      {rows.length === 0 && !allowance && <p className="empty small">{emptyLabel}</p>}
+      {rows.map((b) => (
+        <BudgetRow
+          key={b.category}
+          label={b.category}
+          budget={b.budget}
+          actual={b.actual}
+          recentAvg={b.recentAvg}
+          history={b.history}
+          onSave={(amt) => onSaveRow(b.category, amt)}
+          onDelete={() => onDeleteRow(b.category)}
+        />
+      ))}
+      <div className="cat-row budget-add">
+        <input className="text-input" list={datalistId} placeholder="Category" value={newCat} onChange={(e) => setNewCat(e.target.value)} />
+        {categorySuggestions && (
+          <datalist id={datalistId}>
+            {categorySuggestions.map((c) => <option key={c} value={c} />)}
+          </datalist>
+        )}
+        <input className="amount-input" type="number" placeholder="Monthly $" value={newAmt} onChange={(e) => setNewAmt(e.target.value)} />
+        <button className="btn-secondary" onClick={addRow}>
+          <Plus size={13} /> Add budget
+        </button>
+      </div>
+    </>
+  );
+}
+
+// Read-only version of the same progress rows, for a tab that wants an
+// at-a-glance "budget vs. actual" without owning the editing UI — targets
+// are now set from the Budgeting & Planning tab (see BudgetEditor above).
+export function BudgetProgressList({ allowance, rows, emptyLabel = "No budgets set." }) {
+  if (!allowance && rows.length === 0) return <p className="empty small">{emptyLabel}</p>;
+  return (
+    <>
+      {allowance && <BudgetRow label="Allowance" budget={allowance.budget} actual={allowance.actual} />}
+      {rows.map((b) => (
+        <BudgetRow key={b.category} label={b.category} budget={b.budget} actual={b.actual} />
+      ))}
     </>
   );
 }

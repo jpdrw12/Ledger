@@ -3,7 +3,7 @@ import { Landmark, Plus, Trash2, TrendingUp, Receipt, Download, Upload, Shopping
 import * as db from "../lib/db.js";
 import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, debtBudgetReport, buildDebtSpendingCsv, parseExpensesCsv, buildCsvReferenceBlock } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList } from "./Shared.jsx";
+import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, BudgetProgressList } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -11,13 +11,11 @@ import { undoableDelete } from "../lib/undo.js";
 // month. A charge raises the debt's balance (like a purchase on a credit card);
 // it touches no bank account. Charges carry a free-text month label decoupled
 // from the months table, so this reads like CardTab but the money flows to debt.
-function DebtSpendingTab({ state, onChanged }) {
+function DebtSpendingTab({ state, onChanged, onGoToBudgeting }) {
   const { toast } = useToast();
   const [selectedCat, setSelectedCat] = useState(null);
   const [chartMonth, setChartMonth] = useState("all"); // scope by month label; "all" = every label
   const [debtFilter, setDebtFilter] = useState("all"); // scope by debt id; "all" = every spendable debt
-  const [newBudgetCat, setNewBudgetCat] = useState("");
-  const [newBudgetAmt, setNewBudgetAmt] = useState("");
   const spendableDebts = state.debts.filter((d) => d.spendable);
   const debtIds = new Set(spendableDebts.map((d) => d.id));
   const charges = state.debtCharges || [];
@@ -190,25 +188,6 @@ function DebtSpendingTab({ state, onChanged }) {
     });
   };
 
-  const allowance = (state.debtBudgets || []).find((b) => b.category === "");
-  const saveBudget = async (category, amount) => {
-    await db.upsertDebtBudget(category, amount);
-    onChanged();
-  };
-  const removeBudget = async (category) => {
-    await db.deleteDebtBudget(category);
-    onChanged();
-  };
-  const addBudget = async () => {
-    const amt = parseFloat(newBudgetAmt) || 0;
-    if (!newBudgetCat.trim() || amt <= 0) {
-      toast("Enter a category and a positive amount.", "error");
-      return;
-    }
-    await saveBudget(newBudgetCat.trim(), amt);
-    setNewBudgetCat("");
-    setNewBudgetAmt("");
-  };
   const knownCategories = Array.from(new Set(charges.map((c) => c.category).filter(Boolean))).sort();
 
   const handleExport = async () => {
@@ -343,75 +322,16 @@ function DebtSpendingTab({ state, onChanged }) {
       </div>
 
       <Collapsible title="Debt spending budget" icon={<Landmark size={13} />} right={budgetLabel || null}>
-        <div className="backup-folder" style={{ marginTop: 0 }}>
-          <span className="small-label" style={{ flex: 1 }}>Monthly allowance (total debt spend)</span>
-          <input
-            className="amount-input"
-            type="number"
-            placeholder="e.g. 500"
-            defaultValue={allowance?.amount ?? ""}
-            onBlur={(e) => {
-              const v = parseFloat(e.target.value) || 0;
-              if (v > 0) saveBudget("", v);
-              else if (allowance) removeBudget("");
-            }}
-          />
-        </div>
-        {budgets.total && budgetLabel && (
-          <div className="cat-row">
-            <span className="cat-name">Allowance</span>
-            <div className="cat-bar-track" title={`${money(budgets.total.spent)} of ${money(budgets.total.budget)}`}>
-              <div
-                className={`cat-bar-fill ${budgets.total.spent > budgets.total.budget ? "over" : "under"}`}
-                style={{ width: `${budgets.total.budget > 0 ? Math.min(100, (budgets.total.spent / budgets.total.budget) * 100) : 0}%` }}
-              />
-            </div>
-            <span className={`cat-amount mono ${budgets.total.spent > budgets.total.budget ? "deficit" : "surplus"}`}>
-              {money(budgets.total.spent)} / {money(budgets.total.budget)}
-            </span>
-          </div>
-        )}
-        {budgets.categories.map((b) => {
-          const over = b.spent > b.budget;
-          const pct = b.budget > 0 ? Math.min(100, (b.spent / b.budget) * 100) : 0;
-          return (
-            <div className="cat-row" key={b.category}>
-              <span className="cat-name">{b.category}</span>
-              <div className="cat-bar-track" title={`${money(b.spent)} of ${money(b.budget)}`}>
-                <div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
-              </div>
-              <span className={`cat-amount mono ${over ? "deficit" : "surplus"}`}>{money(b.spent)} / {money(b.budget)}</span>
-              <input
-                className="amount-input"
-                type="number"
-                defaultValue={b.budget}
-                onBlur={(e) => saveBudget(b.category, parseFloat(e.target.value) || 0)}
-              />
-              <button className="icon-btn" title="Remove budget" onClick={() => removeBudget(b.category)}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          );
-        })}
-        <div className="cat-row budget-add">
-          <input
-            className="text-input"
-            list="debt-category-suggestions"
-            placeholder="Category"
-            value={newBudgetCat}
-            onChange={(e) => setNewBudgetCat(e.target.value)}
-          />
-          <input
-            className="amount-input"
-            type="number"
-            placeholder="Monthly $"
-            value={newBudgetAmt}
-            onChange={(e) => setNewBudgetAmt(e.target.value)}
-          />
-          <button className="btn-secondary" onClick={addBudget}>
-            <Plus size={13} /> Add category budget
+        <BudgetProgressList
+          allowance={budgets.total ? { budget: budgets.total.budget, actual: budgets.total.spent } : null}
+          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent }))}
+          emptyLabel="No debt spending budget set yet."
+        />
+        {onGoToBudgeting && (
+          <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 8 }} onClick={onGoToBudgeting}>
+            Manage budgets in Budgeting & Planning →
           </button>
-        </div>
+        )}
       </Collapsible>
 
       {spendableDebts.length > 1 && debtFilter === "all" && (

@@ -270,6 +270,19 @@ export function spendingByCategory(months, filter, bills) {
     .sort((a, b) => b.total - a.total);
 }
 
+// One {category -> total} snapshot per month, oldest first — the building
+// block behind the Budgeting & Planning tab's "recent average" and
+// "over/under history" context next to each target. A category missing
+// from a given month's snapshot means $0 that month, not "no data" — every
+// month in `months` gets an entry even if nothing was spent.
+export function categorySnapshotsByMonth(months, filter, bills) {
+  return (months || []).map((m) => {
+    const totals = {};
+    spendingByCategory([m], filter, bills).forEach((c) => { totals[c.category] = c.total; });
+    return { label: m.monthLabel, totals };
+  });
+}
+
 // Total expense per month (optionally filtered to certain accounts), in
 // chronological order — the series behind the card spend trend.
 export function monthlyExpenseTotals(months, filter, bills) {
@@ -386,6 +399,30 @@ export function budgetReport(months, budgets) {
     .sort((a, b) => (a.over === b.over ? b.actual - a.actual : a.over ? -1 : 1));
 }
 
+// Average of a category's total across the last `count` snapshots (fewer if
+// there isn't that much history yet; 0 if there's none at all) — shown next
+// to a budget target as "here's what you've actually spent lately" context
+// when deciding what to set it to. Pure — no I/O.
+export function recentCategoryAverage(snapshots, category, count = 3) {
+  const recent = (snapshots || []).slice(-count);
+  if (!recent.length) return 0;
+  const sum = recent.reduce((s, snap) => s + (snap.totals[category] || 0), 0);
+  return sum / recent.length;
+}
+
+// Whether a category's actual spend would have been over `budget` in each
+// of the last `count` snapshots, oldest first — applies the CURRENT target
+// retroactively (budgets aren't stored per historical month, only as one
+// current amount), so this reads as "how recent months would have looked
+// under this target," not a record of what the target actually was back
+// then. Pure — no I/O.
+export function budgetOverUnderHistory(snapshots, category, budget, count = 6) {
+  return (snapshots || []).slice(-count).map((snap) => {
+    const actual = snap.totals[category] || 0;
+    return { label: snap.label, actual, over: budget > 0 && actual > budget };
+  });
+}
+
 // Flattens every money movement into CSV rows: one line per bill, expense,
 // addition, goal contribution, and debt payment, tagged with its month.
 export function buildLedgerCsv(state, ledger) {
@@ -490,6 +527,19 @@ export function debtSpendingByCategory(charges, filter) {
   return Object.entries(totals)
     .map(([key, total]) => ({ category: display[key], total }))
     .sort((a, b) => b.total - a.total);
+}
+
+// Same idea as categorySnapshotsByMonth, for debt charges — which use a
+// free-text month_label instead of a real month id (see debt_charges' own
+// schema comment), so snapshots are built from the given label list
+// (already deduped/ordered by the caller, e.g. DebtSpendingTab's
+// monthLabels) rather than from a months table.
+export function debtCategorySnapshotsByLabel(charges, labels) {
+  return (labels || []).map((label) => {
+    const totals = {};
+    debtSpendingByCategory((charges || []).filter((c) => c.monthLabel === label)).forEach((c) => { totals[c.category] = c.total; });
+    return { label, totals };
+  });
 }
 
 // Total charged per month label, in first-seen order (charges arrive in

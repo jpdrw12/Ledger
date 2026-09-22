@@ -3,19 +3,17 @@ import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download, Upload } from 
 import * as db from "../lib/db.js";
 import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList } from "./Shared.jsx";
+import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, BudgetProgressList } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
 // Dedicated view for spending on "exclude from total" (card) accounts, tracked
 // month by month. Card purchases are ordinary expenses whose account is a card
 // account; this tab is where they're entered/shown (they're hidden from Months).
-function CardTab({ state, onChanged }) {
+function CardTab({ state, onChanged, onGoToBudgeting }) {
   const { toast } = useToast();
   const [selectedCat, setSelectedCat] = useState(null);
   const [chartMonth, setChartMonth] = useState("all"); // scope the category/per-card charts
-  const [newBudgetCat, setNewBudgetCat] = useState("");
-  const [newBudgetAmt, setNewBudgetAmt] = useState("");
   const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
   const cardIds = new Set(cardAccounts.map((a) => a.id));
   // Card spending shares the "expenses" category namespace with the Months
@@ -190,25 +188,6 @@ function CardTab({ state, onChanged }) {
     });
   };
 
-  const allowance = (state.cardBudgets || []).find((b) => b.category === "");
-  const saveCardBudget = async (category, amount) => {
-    await db.upsertCardBudget(category, amount);
-    onChanged();
-  };
-  const removeCardBudget = async (category) => {
-    await db.deleteCardBudget(category);
-    onChanged();
-  };
-  const addCardBudget = async () => {
-    const amt = parseFloat(newBudgetAmt) || 0;
-    if (!newBudgetCat.trim() || amt <= 0) {
-      toast("Enter a category and a positive amount.", "error");
-      return;
-    }
-    await saveCardBudget(newBudgetCat.trim(), amt);
-    setNewBudgetCat("");
-    setNewBudgetAmt("");
-  };
   const knownCategories = Array.from(new Set(state.months.flatMap((m) => cardExpensesFor(m).map((e) => e.category).filter(Boolean)))).sort();
 
   const handleExport = async () => {
@@ -322,75 +301,16 @@ function CardTab({ state, onChanged }) {
       </div>
 
       <Collapsible title="Card budget" icon={<CreditCard size={13} />} right={budgetMonth ? budgetMonth.monthLabel : null}>
-        <div className="backup-folder" style={{ marginTop: 0 }}>
-          <span className="small-label" style={{ flex: 1 }}>Monthly allowance (total card spend)</span>
-          <input
-            className="amount-input"
-            type="number"
-            placeholder="e.g. 500"
-            defaultValue={allowance?.amount ?? ""}
-            onBlur={(e) => {
-              const v = parseFloat(e.target.value) || 0;
-              if (v > 0) saveCardBudget("", v);
-              else if (allowance) removeCardBudget("");
-            }}
-          />
-        </div>
-        {budgets.total && budgetMonth && (
-          <div className="cat-row">
-            <span className="cat-name">Allowance</span>
-            <div className="cat-bar-track" title={`${money(budgets.total.spent)} of ${money(budgets.total.budget)}`}>
-              <div
-                className={`cat-bar-fill ${budgets.total.spent > budgets.total.budget ? "over" : "under"}`}
-                style={{ width: `${budgets.total.budget > 0 ? Math.min(100, (budgets.total.spent / budgets.total.budget) * 100) : 0}%` }}
-              />
-            </div>
-            <span className={`cat-amount mono ${budgets.total.spent > budgets.total.budget ? "deficit" : "surplus"}`}>
-              {money(budgets.total.spent)} / {money(budgets.total.budget)}
-            </span>
-          </div>
-        )}
-        {budgets.categories.map((b) => {
-          const over = b.spent > b.budget;
-          const pct = b.budget > 0 ? Math.min(100, (b.spent / b.budget) * 100) : 0;
-          return (
-            <div className="cat-row" key={b.category}>
-              <span className="cat-name">{b.category}</span>
-              <div className="cat-bar-track" title={`${money(b.spent)} of ${money(b.budget)}`}>
-                <div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
-              </div>
-              <span className={`cat-amount mono ${over ? "deficit" : "surplus"}`}>{money(b.spent)} / {money(b.budget)}</span>
-              <input
-                className="amount-input"
-                type="number"
-                defaultValue={b.budget}
-                onBlur={(e) => saveCardBudget(b.category, parseFloat(e.target.value) || 0)}
-              />
-              <button className="icon-btn" title="Remove budget" onClick={() => removeCardBudget(b.category)}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          );
-        })}
-        <div className="cat-row budget-add">
-          <input
-            className="text-input"
-            list="card-category-suggestions"
-            placeholder="Category"
-            value={newBudgetCat}
-            onChange={(e) => setNewBudgetCat(e.target.value)}
-          />
-          <input
-            className="amount-input"
-            type="number"
-            placeholder="Monthly $"
-            value={newBudgetAmt}
-            onChange={(e) => setNewBudgetAmt(e.target.value)}
-          />
-          <button className="btn-secondary" onClick={addCardBudget}>
-            <Plus size={13} /> Add category budget
+        <BudgetProgressList
+          allowance={budgets.total ? { budget: budgets.total.budget, actual: budgets.total.spent } : null}
+          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent }))}
+          emptyLabel="No card budget set yet."
+        />
+        {onGoToBudgeting && (
+          <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 8 }} onClick={onGoToBudgeting}>
+            Manage budgets in Budgeting & Planning →
           </button>
-        </div>
+        )}
       </Collapsible>
 
       {cardAccounts.length > 1 && (

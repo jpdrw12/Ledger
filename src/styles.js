@@ -392,6 +392,13 @@ export const css = `
   .forecast-table { margin-top:10px; }
   .forecast-table .ledger-row { display:flex; justify-content:space-between; }
   .cat-row { display:flex; align-items:center; gap:12px; padding:5px 0; }
+  .cat-row-group { border-bottom:1px solid var(--paper-line); }
+  .cat-row-group:last-child { border-bottom:none; }
+  .cat-row-group .cat-row { border-bottom:none; padding-bottom:2px; }
+  .budget-trend-row { display:flex; align-items:center; gap:10px; padding:0 0 6px 152px; }
+  .budget-history-dots { display:inline-flex; gap:3px; }
+  .budget-history-dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--surplus); }
+  .budget-history-dot.over { background:var(--deficit); }
   .cat-name { flex:0 0 140px; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cat-bar-track { flex:1; height:14px; background:var(--control-bg); border:1px solid var(--paper-line); border-radius:7px; overflow:hidden; }
   .cat-bar-fill { height:100%; background:var(--stamp); opacity:0.55; }

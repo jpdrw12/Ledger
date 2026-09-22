@@ -12,6 +12,10 @@ import {
   computeDueDate,
   dueDayForSlot,
   spendingByCategory,
+  categorySnapshotsByMonth,
+  debtCategorySnapshotsByLabel,
+  recentCategoryAverage,
+  budgetOverUnderHistory,
   monthlyExpenseTotals,
   spendByAccount,
   cardBudgetReport,
@@ -890,6 +894,110 @@ describe("budgetReport", () => {
     const mixedCaseMonths = [makeMonth("m1", { monthLabel: "June 2026", expensesPay1: [{ category: "groceries", amount: 55 }] })];
     const report = budgetReport(mixedCaseMonths, [{ category: "Groceries", amount: 200 }]);
     expect(report[0]).toMatchObject({ category: "Groceries", actual: 55 });
+  });
+});
+
+describe("categorySnapshotsByMonth", () => {
+  const months = [
+    makeMonth("m1", { monthLabel: "May 2026", expensesPay1: [{ category: "Groceries", amount: 100 }] }),
+    makeMonth("m2", { monthLabel: "June 2026", expensesPay1: [{ category: "Groceries", amount: 150 }], expensesPay2: [{ category: "Gas", amount: 40 }] }),
+  ];
+
+  it("returns one {label, totals} snapshot per month, oldest first, in the given order", () => {
+    expect(categorySnapshotsByMonth(months)).toEqual([
+      { label: "May 2026", totals: { Groceries: 100 } },
+      { label: "June 2026", totals: { Groceries: 150, Gas: 40 } },
+    ]);
+  });
+
+  it("gives every month an entry even when a category is missing that month (implicit $0)", () => {
+    const snaps = categorySnapshotsByMonth(months);
+    expect(snaps[0].totals.Gas).toBeUndefined(); // absent, not 0 — callers treat missing as 0
+  });
+
+  it("respects a filter (e.g. card-only) the same way spendingByCategory does", () => {
+    const cardMonths = [makeMonth("m1", { monthLabel: "May 2026", expensesPay1: [{ category: "Dining", amount: 20, accountId: "card" }, { category: "Groceries", amount: 100, accountId: "bank" }] })];
+    const snaps = categorySnapshotsByMonth(cardMonths, { include: new Set(["card"]) });
+    expect(snaps[0].totals).toEqual({ Dining: 20 });
+  });
+});
+
+describe("debtCategorySnapshotsByLabel", () => {
+  const charges = [
+    { debtId: "d1", monthLabel: "May 2026", category: "Shopping", amount: 60 },
+    { debtId: "d1", monthLabel: "June 2026", category: "Shopping", amount: 25 },
+    { debtId: "d1", monthLabel: "June 2026", category: "Dining", amount: 15 },
+  ];
+
+  it("returns one snapshot per given label, in that order, regardless of charge order", () => {
+    expect(debtCategorySnapshotsByLabel(charges, ["May 2026", "June 2026"])).toEqual([
+      { label: "May 2026", totals: { Shopping: 60 } },
+      { label: "June 2026", totals: { Shopping: 25, Dining: 15 } },
+    ]);
+  });
+
+  it("gives an empty totals object for a label with no charges", () => {
+    expect(debtCategorySnapshotsByLabel(charges, ["July 2026"])).toEqual([{ label: "July 2026", totals: {} }]);
+  });
+});
+
+describe("recentCategoryAverage", () => {
+  const snaps = [
+    { label: "Mar", totals: { Groceries: 100 } },
+    { label: "Apr", totals: { Groceries: 200 } },
+    { label: "May", totals: { Groceries: 300 } },
+    { label: "Jun", totals: {} }, // no spend this month — counts as 0, not skipped
+  ];
+
+  it("averages the last `count` snapshots, defaulting to 3", () => {
+    expect(recentCategoryAverage(snaps, "Groceries")).toBeCloseTo((200 + 300 + 0) / 3);
+  });
+
+  it("averages fewer snapshots when there isn't `count` worth of history yet", () => {
+    expect(recentCategoryAverage(snaps.slice(0, 2), "Groceries", 3)).toBeCloseTo((100 + 200) / 2);
+  });
+
+  it("returns 0 for no history at all", () => {
+    expect(recentCategoryAverage([], "Groceries")).toBe(0);
+  });
+
+  it("respects a custom count", () => {
+    expect(recentCategoryAverage(snaps, "Groceries", 2)).toBeCloseTo((300 + 0) / 2);
+  });
+});
+
+describe("budgetOverUnderHistory", () => {
+  const snaps = [
+    { label: "Mar", totals: { Groceries: 100 } },
+    { label: "Apr", totals: { Groceries: 250 } },
+    { label: "May", totals: { Groceries: 180 } },
+  ];
+
+  it("flags each snapshot over/under the given budget, oldest first", () => {
+    expect(budgetOverUnderHistory(snaps, "Groceries", 200)).toEqual([
+      { label: "Mar", actual: 100, over: false },
+      { label: "Apr", actual: 250, over: true },
+      { label: "May", actual: 180, over: false },
+    ]);
+  });
+
+  it("treats a missing category as $0 actual (never over)", () => {
+    expect(budgetOverUnderHistory(snaps, "Gas", 50)).toEqual([
+      { label: "Mar", actual: 0, over: false },
+      { label: "Apr", actual: 0, over: false },
+      { label: "May", actual: 0, over: false },
+    ]);
+  });
+
+  it("never flags over when the budget is 0 (no target set)", () => {
+    expect(budgetOverUnderHistory(snaps, "Groceries", 0).every((h) => !h.over)).toBe(true);
+  });
+
+  it("respects a custom count, keeping the most recent snapshots", () => {
+    expect(budgetOverUnderHistory(snaps, "Groceries", 200, 2)).toEqual([
+      { label: "Apr", actual: 250, over: true },
+      { label: "May", actual: 180, over: false },
+    ]);
   });
 });
 

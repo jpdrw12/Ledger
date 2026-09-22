@@ -1,32 +1,24 @@
 import React, { useState, useMemo } from "react";
-import { Download, TrendingUp, Receipt, Target, Plus, Trash2 } from "lucide-react";
-import * as db from "../lib/db.js";
+import { Download, TrendingUp, Receipt, Target } from "lucide-react";
 import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
-import { Sparkline, Collapsible } from "./Shared.jsx";
+import { Sparkline, Collapsible, BudgetProgressList } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
-function InsightsTab({ state, ledger, onChanged }) {
+function InsightsTab({ state, ledger, onGoToBudgeting }) {
   const { toast } = useToast();
-  const [newCat, setNewCat] = useState("");
-  const [newAmt, setNewAmt] = useState("");
   const [horizon, setHorizon] = useState(6);
   const [selectedCat, setSelectedCat] = useState(null); // click a category row to highlight its total
   const [catMonth, setCatMonth] = useState("all"); // scope the spending-by-category chart
 
-  // These pure aggregations only depend on state/ledger/horizon — memoize so
-  // they don't re-run on every keystroke in the add-budget fields, etc.
-  const { categories, series, budgets, latestLabel, nw, avgNet } = useMemo(() => {
-    const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
-    return {
-      categories: spendingByCategory(state.months, { exclude: cardAccountIds }), // full list, for budget suggestions
-      series: monthlyEndingBalances(state.months, ledger),
-      budgets: budgetReport(state.months, state.categoryBudgets),
-      latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
-      nw: netWorthSnapshot(state.months, ledger, state.debts),
-      avgNet: averageNetChange(state.months, ledger),
-    };
-  }, [state, ledger]);
+  // These pure aggregations only depend on state/ledger/horizon.
+  const { series, budgets, latestLabel, nw, avgNet } = useMemo(() => ({
+    series: monthlyEndingBalances(state.months, ledger),
+    budgets: budgetReport(state.months, state.categoryBudgets),
+    latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
+    nw: netWorthSnapshot(state.months, ledger, state.debts),
+    avgNet: averageNetChange(state.months, ledger),
+  }), [state, ledger]);
 
   // Spending by category, scoped to the selected month (or all months).
   const { scopedCategories, scopedTotal, scopedMax, catScopeLabel } = useMemo(() => {
@@ -50,26 +42,6 @@ function InsightsTab({ state, ledger, onChanged }) {
       .map((m) => ({ id: m.id, label: m.monthLabel, value: forecast.ledger[m.id].consolidatedCarryOut }));
     return { forecastSeries: monthlyEndingBalances(forecast.months, forecast.ledger), projectedSet: pSet, projectedRows: rows, firstNegative: rows.find((r) => r.value < 0) };
   }, [state, horizon]);
-
-  const saveBudget = async (category, amount) => {
-    if (!category.trim()) return;
-    await db.upsertCategoryBudget(category.trim(), amount);
-    onChanged();
-  };
-  const addBudget = async () => {
-    const amt = parseFloat(newAmt) || 0;
-    if (!newCat.trim() || amt <= 0) {
-      toast("Enter a category and a positive amount.", "error");
-      return;
-    }
-    await saveBudget(newCat, amt);
-    setNewCat("");
-    setNewAmt("");
-  };
-  const removeBudget = async (category) => {
-    await db.deleteCategoryBudget(category);
-    onChanged();
-  };
 
   const handleExport = async () => {
     try {
@@ -196,52 +168,16 @@ function InsightsTab({ state, ledger, onChanged }) {
       </div>
 
       <Collapsible title="Budgets" icon={<Target size={13} />} right={latestLabel ? `vs ${latestLabel}` : null}>
-        {budgets.length === 0 && <p className="empty small">No budgets set. Add one below to track a category against a monthly target.</p>}
-        {budgets.map((b) => {
-          const pct = b.budget > 0 ? Math.min(100, (b.actual / b.budget) * 100) : 0;
-          return (
-            <div className="cat-row" key={b.category}>
-              <span className="cat-name">{b.category}</span>
-              <div className="cat-bar-track" title={`${money(b.actual)} of ${money(b.budget)}`}>
-                <div className={`cat-bar-fill ${b.over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
-              </div>
-              <span className={`cat-amount mono ${b.over ? "deficit" : "surplus"}`}>
-                {money(b.actual)} / {money(b.budget)}
-              </span>
-              <input
-                className="amount-input"
-                type="number"
-                defaultValue={b.budget}
-                onBlur={(e) => saveBudget(b.category, parseFloat(e.target.value) || 0)}
-              />
-              <button className="icon-btn" title="Remove budget" onClick={() => removeBudget(b.category)}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          );
-        })}
-        <div className="cat-row budget-add">
-          <input
-            className="text-input"
-            list="budget-cat-suggestions"
-            placeholder="Category"
-            value={newCat}
-            onChange={(e) => setNewCat(e.target.value)}
-          />
-          <datalist id="budget-cat-suggestions">
-            {categories.map((c) => <option key={c.category} value={c.category} />)}
-          </datalist>
-          <input
-            className="amount-input"
-            type="number"
-            placeholder="Monthly $"
-            value={newAmt}
-            onChange={(e) => setNewAmt(e.target.value)}
-          />
-          <button className="btn-secondary" onClick={addBudget}>
-            <Plus size={13} /> Add budget
+        <BudgetProgressList
+          allowance={null}
+          rows={budgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual }))}
+          emptyLabel="No budgets set yet."
+        />
+        {onGoToBudgeting && (
+          <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 8 }} onClick={onGoToBudgeting}>
+            Manage budgets in Budgeting & Planning →
           </button>
-        </div>
+        )}
       </Collapsible>
     </div>
   );
