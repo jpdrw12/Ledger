@@ -46,19 +46,26 @@ React + SQLite; ships for macOS, Windows, and Linux with an in-app updater.
   - **Pace alerts** — a banner flagging any budgeted category on pace to
     blow past its target before the current month ends, projected from this
     month's day-of-month spend rate.
+- **Investments & Dividends** — record each investment account's value once
+  a month in an editable grid; growth since the previous month is computed
+  automatically, carrying the last known value forward for months with no
+  new entry. Dividend payments are logged per month (optionally tagged to
+  an account) and summed into a monthly total and trend chart.
 - **Insights** — net worth, spending by category, budgets vs. actuals, and a
   forecast projected from your income and recent spending.
 - **Report** — a single styled, printable document for a month range you
   pick: collapsible charts with value labels and trend lines, a $0 reference
   line on history/forecast charts, a bills breakdown, a combined
-  categories/groups summary across accounts/card/debt spending, and
-  checkbox-preset buttons (built-in and your own saved combinations) for
-  which sections to include.
+  categories/groups summary across accounts/card/debt spending, checkbox-
+  preset buttons (built-in and your own saved combinations) for which
+  sections to include, and — once you've recorded any investment values —
+  a second "incl. investments" line on the Net worth chart.
 - **Backups** — snapshot the live database locally, mirror every backup to a
   synced folder (Dropbox/Drive desktop folder), and archive individual months.
 - **Profiles** — up to seven completely separate ledgers, plus a demo profile.
 - **Settings** — light/dark themes, accent colors, UI scale, sidebar or
-  classic layout, keyboard shortcuts, and an interactive guided tour.
+  classic layout, a toggle to hide any tab you don't use from the nav,
+  keyboard shortcuts, and an interactive guided tour.
 
 ## Running it (development)
 

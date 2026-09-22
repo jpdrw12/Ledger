@@ -77,7 +77,7 @@ const TAB_HELP = {
   insights: { title: "Insights", body: "Net worth, spending by category, budgets, and a forecast projected from your income and recent spending." },
   report: { title: "Report", body: "Generate a single styled document covering a month range you pick — open it in any browser, or print it to PDF from there." },
   backups: { title: "Backups", body: "Back up your ledger locally or mirror it to a synced folder. Nothing leaves this computer unless you send it." },
-  settings: { title: "Settings", body: "Appearance & layout, profiles, backups, updates, keyboard shortcuts, and the interactive guide." },
+  settings: { title: "Settings", body: "Appearance & layout, which tabs show in the nav, profiles, backups, updates, keyboard shortcuts, and the interactive guide." },
 };
 
 // A short 2-letter badge for an account when the sidebar is collapsed: initials
