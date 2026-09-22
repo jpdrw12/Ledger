@@ -5,6 +5,33 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.32.0]
+
+### Added
+- **Filter Debt Spending by debt.** When you have more than one spendable
+  debt, a new "Debt" dropdown scopes the whole tab — per-month charge
+  lists, category breakdown, trend, and budget — to just one debt (or
+  "All debts"). The "Per-debt totals" section hides itself while a
+  specific debt is selected, since it's redundant with the filter.
+
+### Fixed
+- Category totals (spending by category, card spending, debt spending)
+  and their budget comparisons were case-sensitive — "Groceries" and
+  "groceries" counted as two different categories instead of merging.
+  spendingByCategory, debtSpendingByCategory, budgetReport,
+  cardBudgetReport, and debtBudgetReport all now match case-insensitively
+  (display keeps the first-seen casing).
+- The Report's "Applied history" table used camelCase field names against
+  raw snake_case debt_history rows, so it silently showed nothing
+  regardless of real data. Merged it with the "Payments in range" table
+  into one, so an already-applied payment isn't also shown a second time
+  as a separate "logged" row.
+- Report: mobile-friendly formatting — tables scroll horizontally instead
+  of forcing the whole page wide, tighter padding/fonts and a stacked
+  header below 640px. Folded the redundant "Range activity summary" cards
+  into the Net Worth section, and added a divider separating range
+  activity from reference/setup data (bill templates, goals, debts).
+
 ## [0.31.1]
 
 ### Fixed

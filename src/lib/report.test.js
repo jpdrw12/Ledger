@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { makeTestDb } from "./testdb.js";
-import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, addGoalContribution, addDebtCharge } from "./db.js";
+import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, addGoalContribution, addDebtCharge, addMonthDebtPayment, applyMonthDebtPayment, applyMonthlyInterest } from "./db.js";
 import { computeLedger, computeDueDate } from "./calc.js";
 import { buildReportHtml } from "./report.js";
 
@@ -127,6 +127,43 @@ describe("buildReportHtml", () => {
     expect(html).toContain('aria-label="Spending per debt"');
     expect(html).toContain('aria-label="Card spending by category"');
     expect(html).toContain('aria-label="Debt spending by category"');
+  });
+
+  it("merges applied debt history with still-pending payments in one table, without double-counting an applied payment", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const debt = await upsertDebt({ name: "Visa", apr: 0.24, balance: 1000, spendable: false });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+
+    // One payment applied (should surface only via its debt_history row —
+    // not also as a separate "logged" row), one interest charge (history
+    // only, no payment counterpart at all), and one payment left pending.
+    const paidId = await addMonthDebtPayment(m1, { debtId: debt, amount: 200, accountId: checking });
+    await applyMonthDebtPayment(paidId, { debtId: debt, amount: 200, monthLabel: label, currentBalance: 1000 });
+    await applyMonthlyInterest(debt, { monthLabel: label, currentBalance: 800, apr: 0.24 });
+    await addMonthDebtPayment(m1, { debtId: debt, amount: 50, accountId: checking }); // left unapplied
+
+    const state = await loadFullState();
+    expect(state.debtHistory.length).toBe(2); // sanity: both history rows exist
+
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    // The fix: debt_history rows now actually render (a field-name bug
+    // meant this table was always empty before, regardless of real data).
+    expect(html).toContain("Applied");
+    expect(html).toContain("200.00"); // the applied payment's amount
+    expect(html).toContain("16.00"); // interest: 800 * (0.24/12) = 16
+    expect(html).toContain("816.00"); // resulting balance: 800 + 16
+
+    // The still-pending payment shows too, distinctly labeled.
+    expect(html).toContain("Logged, not yet applied");
+    expect(html).toContain("50.00");
+
+    // The applied payment must NOT also appear as a second, separate
+    // "logged" row — that's exactly the double-count this merge avoids.
+    const pendingCount = (html.match(/Logged, not yet applied/g) || []).length;
+    expect(pendingCount).toBe(1);
   });
 
   it("scopes month-based sections to a narrower range without erroring", async () => {

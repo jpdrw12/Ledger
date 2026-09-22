@@ -291,6 +291,14 @@ describe("cardBudgetReport", () => {
     expect(cardBudgetReport(month, [], cardIds)).toEqual({ total: null, categories: [] });
     expect(cardBudgetReport(null, budgets, cardIds).total).toEqual({ budget: 500, spent: 0 });
   });
+
+  it("matches a budget category to actual spending regardless of case", () => {
+    const mixedCaseMonth = makeMonth("m1", {
+      expensesPay1: [{ id: "e1", category: "groceries", amount: 50, accountId: "card" }],
+    });
+    const r = cardBudgetReport(mixedCaseMonth, [{ category: "Groceries", amount: 300 }], cardIds);
+    expect(r.categories).toEqual([{ category: "Groceries", budget: 300, spent: 50 }]);
+  });
 });
 
 describe("goal -> goal transfer effect on goal balances", () => {
@@ -458,6 +466,14 @@ describe("spendingByCategory", () => {
   it("rolls blank categories under Uncategorized", () => {
     const months = [makeMonth("m1", { expensesPay1: [{ category: "", amount: 25 }, { category: "  ", amount: 5 }] })];
     expect(spendingByCategory(months)).toEqual([{ category: "Uncategorized", total: 30 }]);
+  });
+
+  it("merges categories that differ only by case, keeping the first-seen casing for display", () => {
+    const months = [
+      makeMonth("m1", { expensesPay1: [{ category: "Groceries", amount: 100 }] }),
+      makeMonth("m2", { expensesPay1: [{ category: "groceries", amount: 40 }, { category: "GROCERIES", amount: 10 }] }),
+    ];
+    expect(spendingByCategory(months)).toEqual([{ category: "Groceries", total: 150 }]);
   });
 });
 
@@ -718,6 +734,12 @@ describe("budgetReport", () => {
     expect(budgetReport([], [{ category: "X", amount: 10 }])[0]).toMatchObject({ actual: 0 });
     expect(budgetReport(months, [])).toEqual([]);
   });
+
+  it("matches a budget category to actual spending regardless of case", () => {
+    const mixedCaseMonths = [makeMonth("m1", { monthLabel: "June 2026", expensesPay1: [{ category: "groceries", amount: 55 }] })];
+    const report = budgetReport(mixedCaseMonths, [{ category: "Groceries", amount: 200 }]);
+    expect(report[0]).toMatchObject({ category: "Groceries", actual: 55 });
+  });
 });
 
 describe("buildLedgerCsv", () => {
@@ -904,6 +926,14 @@ describe("debt spending helpers", () => {
     ]);
   });
 
+  it("debtSpendingByCategory merges categories that differ only by case", () => {
+    const mixedCase = [
+      { id: "c1", debtId: "d1", monthLabel: "June 2026", category: "Shopping", amount: 60 },
+      { id: "c2", debtId: "d1", monthLabel: "June 2026", category: "shopping", amount: 15 },
+    ];
+    expect(debtSpendingByCategory(mixedCase)).toEqual([{ category: "Shopping", total: 75 }]);
+  });
+
   it("debtMonthlyTotals totals per month label in first-seen order", () => {
     expect(debtMonthlyTotals(charges, { include: d1Only })).toEqual([
       { id: "June 2026", label: "June 2026", value: 140 }, // 100 + 40
@@ -940,6 +970,12 @@ describe("debt spending helpers", () => {
     expect(report.categories).toEqual([
       { category: "Groceries", budget: 80, spent: 100 }, // over budget
     ]);
+  });
+
+  it("debtBudgetReport matches a budget category to actual spending regardless of case", () => {
+    const mixedCase = [{ id: "c1", debtId: "d1", monthLabel: "June 2026", category: "groceries", amount: 45 }];
+    const report = debtBudgetReport(mixedCase, "June 2026", [{ category: "Groceries", amount: 80 }], d1Only);
+    expect(report.categories).toEqual([{ category: "Groceries", budget: 80, spent: 45 }]);
   });
 
   it("buildDebtSpendingCsv emits a header, rows, and per-month totals", () => {

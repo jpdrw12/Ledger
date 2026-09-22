@@ -15,6 +15,7 @@ function DebtSpendingTab({ state, onChanged }) {
   const { toast } = useToast();
   const [selectedCat, setSelectedCat] = useState(null);
   const [chartMonth, setChartMonth] = useState("all"); // scope by month label; "all" = every label
+  const [debtFilter, setDebtFilter] = useState("all"); // scope by debt id; "all" = every spendable debt
   const [newBudgetCat, setNewBudgetCat] = useState("");
   const [newBudgetAmt, setNewBudgetAmt] = useState("");
   const spendableDebts = state.debts.filter((d) => d.spendable);
@@ -23,8 +24,9 @@ function DebtSpendingTab({ state, onChanged }) {
 
   // Pure aggregations — memoized (above the early return so hook order stays
   // stable) so they don't re-run on every keystroke in the budget fields.
-  const { trend, scopeLabel, categories, perDebt, maxCat, totalSpend, budgetLabel, budgets } = useMemo(() => {
-    const ids = new Set(state.debts.filter((d) => d.spendable).map((d) => d.id));
+  const { trend, scopeLabel, debtScopeLabel, categories, perDebt, maxCat, totalSpend, budgetLabel, budgets } = useMemo(() => {
+    const allIds = new Set(state.debts.filter((d) => d.spendable).map((d) => d.id));
+    const ids = debtFilter === "all" ? allIds : new Set([debtFilter]);
     const scoped = chartMonth === "all" ? charges : charges.filter((c) => c.monthLabel === chartMonth);
     const cats = debtSpendingByCategory(scoped, { include: ids });
     const lastLabel = state.months.length ? state.months[state.months.length - 1].monthLabel : null;
@@ -32,14 +34,15 @@ function DebtSpendingTab({ state, onChanged }) {
     return {
       trend: debtMonthlyTotals(charges, { include: ids }),
       scopeLabel: chartMonth === "all" ? "all months" : chartMonth,
+      debtScopeLabel: debtFilter === "all" ? "" : ` (${(state.debts.find((d) => d.id === debtFilter) || {}).name || "this debt"})`,
       categories: cats,
-      perDebt: debtSpendByDebt(scoped, [...ids]),
+      perDebt: debtSpendByDebt(scoped, [...allIds]),
       maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
       totalSpend: cats.reduce((s, c) => s + c.total, 0),
       budgetLabel: bLabel,
       budgets: debtBudgetReport(charges, bLabel, state.debtBudgets || [], ids),
     };
-  }, [state, chartMonth]);
+  }, [state, chartMonth, debtFilter]);
 
   if (spendableDebts.length === 0) {
     return (
@@ -60,7 +63,8 @@ function DebtSpendingTab({ state, onChanged }) {
   const orphanLabels = [...new Set(charges.filter((c) => debtIds.has(c.debtId) && !labelSet.has(c.monthLabel)).map((c) => c.monthLabel))];
   const sectionLabels = [...monthLabels, ...orphanLabels];
 
-  const chargesForLabel = (label) => charges.filter((c) => c.monthLabel === label && debtIds.has(c.debtId));
+  const chargesForLabel = (label) =>
+    charges.filter((c) => c.monthLabel === label && debtIds.has(c.debtId) && (debtFilter === "all" || c.debtId === debtFilter));
 
   const addCharge = async (monthLabel) => {
     await db.addDebtCharge(spendableDebts[0].id, { monthLabel, category: "", amount: 0 });
@@ -237,6 +241,18 @@ function DebtSpendingTab({ state, onChanged }) {
         charge raises the debt's balance — it doesn't touch any bank account.
       </p>
 
+      {spendableDebts.length > 1 && (
+        <div className="backup-folder" style={{ marginBottom: 12 }}>
+          <span className="small-label" style={{ flex: 1 }}>Debt</span>
+          <select value={debtFilter} onChange={(e) => setDebtFilter(e.target.value)}>
+            <option value="all">All debts</option>
+            {spendableDebts.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="balance-strip" style={{ marginBottom: 16 }}>
         {spendableDebts.map((d) => (
           <div className="balance-chip" key={d.id}>
@@ -306,7 +322,7 @@ function DebtSpendingTab({ state, onChanged }) {
             ))}
           </select>
         </div>
-        {categories.length === 0 && <p className="empty small">No debt spending for {scopeLabel}.</p>}
+        {categories.length === 0 && <p className="empty small">No debt spending for {scopeLabel}{debtScopeLabel}.</p>}
         {categories.map((c) => (
           <div
             className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
@@ -401,7 +417,7 @@ function DebtSpendingTab({ state, onChanged }) {
         </div>
       </Collapsible>
 
-      {spendableDebts.length > 1 && (
+      {spendableDebts.length > 1 && debtFilter === "all" && (
         <Collapsible title="Per-debt totals" icon={<Landmark size={13} />}>
           {perDebt.map((r) => {
             const d = spendableDebts.find((x) => x.id === r.debtId);

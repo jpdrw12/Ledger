@@ -93,13 +93,31 @@ function themeStyle(theme, accentName) {
     .card .value { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
     .bar-track { background: var(--card); border: 1px solid var(--line); border-radius: 3px; height: 8px; overflow: hidden; }
     .bar-fill { height: 100%; background: var(--accent); }
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 4px; }
+    .table-scroll table { margin-bottom: 0; min-width: 420px; }
+    .section-divider { display: flex; align-items: center; gap: 10px; margin: 8px 0 22px; color: var(--ink-soft);
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; }
+    .section-divider::before, .section-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
     footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; }
+    @media (max-width: 640px) {
+      body { padding: 18px 14px 40px; font-size: 13px; }
+      .cover { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .cover .meta { text-align: left; }
+      .cover h1 { font-size: 19px; }
+      section { margin-bottom: 22px; }
+      section h2 { font-size: 14.5px; }
+      .card { min-width: 42%; padding: 10px 12px; }
+      .card .value { font-size: 16px; }
+      th, td { padding: 5px 7px; }
+    }
     @media print {
       /* Keep accent/text colors (so it still reads as "your" report) but drop
          heavy fills — printers waste a lot of ink/toner on full-page tints. */
       :root { --paper: #fff; --card: #fff; }
       body { padding: 0 8px; }
       a { color: inherit; text-decoration: none; }
+      .table-scroll { overflow-x: visible; }
+      .table-scroll table { min-width: 0; }
     }
   `;
 }
@@ -124,7 +142,7 @@ const table = (headers, rows, opts = {}) => {
           .join("")}</tr>`
     )
     .join("");
-  return `<table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
+  return `<div class="table-scroll"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
 };
 
 // Slices `months` (already sequence-ordered) to the inclusive [fromId, toId]
@@ -406,21 +424,43 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
 
   const rangeLabels = new Set(rangeMonths.map((m) => m.monthLabel));
 
-  // The bug this fixes: debt_history only gets a row once a payment is
-  // explicitly "applied" from the Debts tab (or monthly interest is applied).
-  // A payment logged on a month but not yet applied — or ever, really —
-  // never showed up anywhere itemized; it was only folded into the "Debt
-  // pmts" total column on the Months table. Pull straight from the months
-  // themselves so every logged payment shows regardless of applied status.
-  const debtPaymentsInRange = [];
+  // Two sources cover debt payments: month_debt_payments (a payment logged
+  // on a month, `applied` tells you whether it's landed yet) and
+  // debt_history (the authoritative record of what actually happened to
+  // the balance — created once a payment is "applied", or by "Apply
+  // monthly interest", which has no payment counterpart at all). Showing
+  // both in full would double up every already-applied payment: once as
+  // the log entry, once as the history entry for the same event. Instead,
+  // one merged table: every debt_history row (interest + paid + resulting
+  // balance — the actual record) plus only the payments still awaiting
+  // application (which have no history row yet to show them).
+  //
+  // Bug fixed here: state.debtHistory is unmapped SELECT * (see
+  // DebtsTab.jsx, which already reads it as snake_case) — this previously
+  // read h.debtId/h.monthLabel/etc., always undefined, so the range filter
+  // (`rangeLabels.has(undefined)`) silently matched nothing and this table
+  // has shown "No debt payments/interest logged" regardless of real data.
+  const debtHistoryInRange = (state.debtHistory || [])
+    .filter((h) => rangeLabels.has(h.month_label))
+    .map((h) => ({
+      monthLabel: h.month_label,
+      debt: (state.debts.find((d) => d.id === h.debt_id) || {}).name || "—",
+      status: "Applied",
+      paid: h.amount_paid,
+      interest: h.interest,
+      newBalance: h.new_balance,
+    }));
+  const pendingPaymentsInRange = [];
   rangeMonths.forEach((m) => {
     (m.debtPayments || []).forEach((d) => {
-      debtPaymentsInRange.push({
+      if (d.applied) return; // already represented by its debt_history row above
+      pendingPaymentsInRange.push({
         monthLabel: m.monthLabel,
         debt: (state.debts.find((x) => x.id === d.debtId) || {}).name || "—",
-        account: (state.accounts.find((a) => a.id === d.accountId) || {}).name || "—",
-        amount: d.amount,
-        applied: d.applied,
+        status: `Logged, not yet applied (${(state.accounts.find((a) => a.id === d.accountId) || {}).name || "—"})`,
+        paid: d.amount,
+        interest: null,
+        newBalance: null,
       });
     });
   });
@@ -428,31 +468,13 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     [
       { key: "monthLabel", label: "Month" },
       { key: "debt", label: "Debt" },
-      { key: "account", label: "Account" },
-      { key: "amount", label: "Amount", num: true, render: (r) => money(r.amount) },
-      { key: "applied", label: "Applied" },
+      { key: "paid", label: "Paid", num: true, render: (r) => (r.paid == null ? "—" : money(r.paid)) },
+      { key: "interest", label: "Interest", num: true, render: (r) => (r.interest == null ? "—" : money(r.interest)) },
+      { key: "newBalance", label: "New balance", num: true, render: (r) => (r.newBalance == null ? "—" : money(r.newBalance)) },
+      { key: "status", label: "Status" },
     ],
-    debtPaymentsInRange.map((r) => ({ ...r, applied: r.applied ? "Yes" : "Not yet" })),
-    { emptyLabel: "No debt payments logged in this range." }
-  );
-
-  const debtHistoryInRange = (state.debtHistory || []).filter((h) => rangeLabels.has(h.monthLabel));
-  const debtHistorySection = table(
-    [
-      { key: "monthLabel", label: "Month" },
-      { key: "debt", label: "Debt" },
-      { key: "paid", label: "Paid", num: true, render: (r) => money(r.paid) },
-      { key: "interest", label: "Interest", num: true, render: (r) => money(r.interest) },
-      { key: "newBalance", label: "New balance", num: true, render: (r) => money(r.newBalance) },
-    ],
-    debtHistoryInRange.map((h) => ({
-      monthLabel: h.monthLabel,
-      debt: (state.debts.find((d) => d.id === h.debtId) || {}).name || "—",
-      paid: h.amountPaid,
-      interest: h.interest,
-      newBalance: h.newBalance,
-    })),
-    { emptyLabel: "No debt payments/interest logged in this range." }
+    [...debtHistoryInRange, ...pendingPaymentsInRange],
+    { emptyLabel: "No debt payments or interest logged in this range." }
   );
 
   const nonCardCategories = spendingByCategory(rangeMonths, { exclude: cardIds });
@@ -589,10 +611,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     <p class="empty">Debts reflect current balances (debts don't keep dated history), everything else is as of the end of the selected range.</p>
     <h3>History &amp; 6-month forecast</h3>
     ${netWorthChart}
-  </section>
-
-  <section>
-    <h2>Range activity summary</h2>
+    <h3>This range</h3>
     <div class="cards">
       <div class="card"><div class="label">Income</div><div class="value pos">${money(totalIncome)}</div></div>
       <div class="card"><div class="label">Bills paid</div><div class="value neg">${money(totalBills)}</div></div>
@@ -635,6 +654,8 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     ${budgetSection}
   </section>
 
+  <div class="section-divider">Your current setup</div>
+
   <section>
     <h2>Bill templates</h2>
     ${billsSection}
@@ -649,10 +670,8 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     <h2>Debts</h2>
     ${debtsSection}
     <h3>Payments in range</h3>
+    <p class="empty small">Interest and applied payments — what actually moved each debt's balance — plus anything logged but not yet applied.</p>
     ${debtPaymentsSection}
-    <h3>Applied history in range</h3>
-    <p class="empty small">Interest charges and payments explicitly "applied" from the Debts tab — this is what actually moved each debt's balance.</p>
-    ${debtHistorySection}
   </section>
 
   <footer>

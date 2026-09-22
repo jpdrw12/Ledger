@@ -210,16 +210,19 @@ function expenseMatches(accountId, { include, exclude } = {}) {
 const allExpenses = (m) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])];
 
 export function spendingByCategory(months, filter) {
-  const totals = {};
+  const totals = {}; // keyed by lowercased category, so "Groceries"/"groceries" merge
+  const display = {}; // lowercased key -> first-seen original casing, for the label shown
   months.forEach((m) => {
     allExpenses(m).forEach((e) => {
       if (!expenseMatches(e.accountId, filter)) return;
-      const key = (e.category || "").trim() || "Uncategorized";
+      const raw = (e.category || "").trim() || "Uncategorized";
+      const key = raw.toLowerCase();
+      if (!(key in display)) display[key] = raw;
       totals[key] = (totals[key] || 0) + (Number(e.amount) || 0);
     });
   });
   return Object.entries(totals)
-    .map(([category, total]) => ({ category, total }))
+    .map(([key, total]) => ({ category: display[key], total }))
     .sort((a, b) => b.total - a.total);
 }
 
@@ -238,10 +241,10 @@ export function monthlyExpenseTotals(months, filter) {
 // the card accounts that month. Pure — no I/O.
 export function cardBudgetReport(month, cardBudgets, cardIds) {
   const months = month ? [month] : [];
-  const spentByCat = {};
+  const spentByCat = {}; // keyed by lowercased category
   let spentTotal = 0;
   spendingByCategory(months, { include: cardIds }).forEach((c) => {
-    spentByCat[c.category] = c.total;
+    spentByCat[c.category.toLowerCase()] = c.total;
     spentTotal += c.total;
   });
 
@@ -249,7 +252,7 @@ export function cardBudgetReport(month, cardBudgets, cardIds) {
   const total = totalRow ? { budget: Number(totalRow.amount) || 0, spent: spentTotal } : null;
   const categories = (cardBudgets || [])
     .filter((b) => b.category !== "")
-    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[b.category] || 0 }))
+    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[(b.category || "").trim().toLowerCase()] || 0 }))
     .sort((a, b) => a.category.localeCompare(b.category));
   return { total, categories };
 }
@@ -324,16 +327,16 @@ export function netWorthSnapshot(months, ledger, debts) {
 // monthly target. Returns rows sorted with over-budget first, then by overage.
 export function budgetReport(months, budgets) {
   const latest = months[months.length - 1];
-  const spend = {};
+  const spend = {}; // keyed by lowercased category
   if (latest) {
     [...(latest.expensesPay1 || []), ...(latest.expensesPay2 || [])].forEach((e) => {
-      const key = (e.category || "").trim() || "Uncategorized";
+      const key = ((e.category || "").trim() || "Uncategorized").toLowerCase();
       spend[key] = (spend[key] || 0) + (Number(e.amount) || 0);
     });
   }
   return (budgets || [])
     .map((b) => {
-      const actual = spend[b.category] || 0;
+      const actual = spend[(b.category || "").trim().toLowerCase()] || 0;
       return { category: b.category, budget: b.amount, actual, remaining: b.amount - actual, over: actual > b.amount };
     })
     .sort((a, b) => (a.over === b.over ? b.actual - a.actual : a.over ? -1 : 1));
@@ -431,14 +434,17 @@ function debtChargeMatches(debtId, { include, exclude } = {}) {
 }
 
 export function debtSpendingByCategory(charges, filter) {
-  const totals = {};
+  const totals = {}; // keyed by lowercased category, so "Shopping"/"shopping" merge
+  const display = {}; // lowercased key -> first-seen original casing, for the label shown
   (charges || []).forEach((c) => {
     if (!debtChargeMatches(c.debtId, filter)) return;
-    const key = (c.category || "").trim() || "Uncategorized";
+    const raw = (c.category || "").trim() || "Uncategorized";
+    const key = raw.toLowerCase();
+    if (!(key in display)) display[key] = raw;
     totals[key] = (totals[key] || 0) + (Number(c.amount) || 0);
   });
   return Object.entries(totals)
-    .map(([category, total]) => ({ category, total }))
+    .map(([key, total]) => ({ category: display[key], total }))
     .sort((a, b) => b.total - a.total);
 }
 
@@ -482,10 +488,10 @@ export function estimateMonthlyInterest(balance, apr) {
 // on spendable debts. Pure — no I/O. Mirrors cardBudgetReport.
 export function debtBudgetReport(charges, monthLabel, debtBudgets, debtIds) {
   const scoped = monthLabel == null ? (charges || []) : (charges || []).filter((c) => c.monthLabel === monthLabel);
-  const spentByCat = {};
+  const spentByCat = {}; // keyed by lowercased category
   let spentTotal = 0;
   debtSpendingByCategory(scoped, { include: debtIds }).forEach((c) => {
-    spentByCat[c.category] = c.total;
+    spentByCat[c.category.toLowerCase()] = c.total;
     spentTotal += c.total;
   });
 
@@ -493,7 +499,7 @@ export function debtBudgetReport(charges, monthLabel, debtBudgets, debtIds) {
   const total = totalRow ? { budget: Number(totalRow.amount) || 0, spent: spentTotal } : null;
   const categories = (debtBudgets || [])
     .filter((b) => b.category !== "")
-    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[b.category] || 0 }))
+    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[(b.category || "").trim().toLowerCase()] || 0 }))
     .sort((a, b) => a.category.localeCompare(b.category));
   return { total, categories };
 }
