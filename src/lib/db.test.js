@@ -466,3 +466,26 @@ describe("category budget months (per-month overrides)", () => {
     );
   });
 });
+
+describe("goal auto-contribute fields", () => {
+  it("upsertGoal writes and getGoals reads back autoContributeAmount/autoContributeAccountId", async () => {
+    const id = await upsertGoal({ name: "Vacation", targetAmount: 2000, startingBalance: 0, autoContributeAmount: 100, autoContributeAccountId: "a" });
+    const goals = await getGoals();
+    expect(goals.find((g) => g.id === id)).toMatchObject({ autoContributeAmount: 100, autoContributeAccountId: "a" });
+  });
+
+  it("defaults to 0/null when not given (auto-contribute off)", async () => {
+    const id = await upsertGoal({ name: "Emergency fund", targetAmount: 1000, startingBalance: 0 });
+    const goal = (await getGoals()).find((g) => g.id === id);
+    expect(goal.autoContributeAmount).toBe(0);
+    expect(goal.autoContributeAccountId).toBeNull();
+  });
+
+  it("preserves auto-contribute fields across an unrelated update (upsertGoal is a full replace, not a partial patch)", async () => {
+    const id = await upsertGoal({ name: "Vacation", targetAmount: 2000, startingBalance: 0, autoContributeAmount: 100, autoContributeAccountId: "a" });
+    const goal = (await getGoals()).find((g) => g.id === id);
+    await upsertGoal({ ...goal, targetAmount: 2500 }); // caller must spread the existing goal, same convention updateGoal() in GoalsTab.jsx already follows
+    const updated = (await getGoals()).find((g) => g.id === id);
+    expect(updated).toMatchObject({ targetAmount: 2500, autoContributeAmount: 100, autoContributeAccountId: "a" });
+  });
+});

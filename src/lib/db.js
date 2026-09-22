@@ -251,7 +251,15 @@ export async function deleteBill(id) {
 export async function getGoals() {
   const db = await getDb();
   const rows = await db.select("SELECT * FROM goals ORDER BY sort_order, name");
-  return rows.map((r) => ({ id: r.id, name: r.name, targetAmount: r.target_amount, startingBalance: r.starting_balance, sortOrder: r.sort_order }));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    targetAmount: r.target_amount,
+    startingBalance: r.starting_balance,
+    sortOrder: r.sort_order,
+    autoContributeAmount: r.auto_contribute_amount,
+    autoContributeAccountId: r.auto_contribute_account_id,
+  }));
 }
 
 export async function upsertGoal(goal) {
@@ -259,9 +267,9 @@ export async function upsertGoal(goal) {
   const id = goal.id || uid();
   const order = goal.id ? 0 : await nextOrder(db, "goals"); // ignored on update
   await db.execute(
-    `INSERT INTO goals (id, name, target_amount, starting_balance, sort_order) VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT(id) DO UPDATE SET name = $2, target_amount = $3, starting_balance = $4`,
-    [id, goal.name, goal.targetAmount || 0, goal.startingBalance || 0, order]
+    `INSERT INTO goals (id, name, target_amount, starting_balance, sort_order, auto_contribute_amount, auto_contribute_account_id) VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT(id) DO UPDATE SET name = $2, target_amount = $3, starting_balance = $4, auto_contribute_amount = $6, auto_contribute_account_id = $7`,
+    [id, goal.name, goal.targetAmount || 0, goal.startingBalance || 0, order, goal.autoContributeAmount || 0, goal.autoContributeAccountId || null]
   );
   return id;
 }

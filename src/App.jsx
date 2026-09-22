@@ -738,6 +738,19 @@ export default function App() {
         });
       }
     }
+    // Same idea for goals: a goal with an auto-contribute amount set gets a
+    // contribution logged automatically, from its chosen account (falling
+    // back to the first account, same as bill payments above, if the goal's
+    // own account was since deleted).
+    const autoContributeGoals = (state.goals || []).filter((g) => Number(g.autoContributeAmount) > 0);
+    for (const goal of autoContributeGoals) {
+      await db.addGoalContribution(monthId, {
+        goalId: goal.id,
+        amount: goal.autoContributeAmount,
+        accountId: goal.autoContributeAccountId || state.accounts[0]?.id,
+        kind: "contribution",
+      });
+    }
     await reload();
     setOpenMonth(monthId);
   }, [state, reload]);
@@ -1241,7 +1254,7 @@ export default function App() {
       )}
       {tab === "bills" && <BillsTab bills={state.bills} onChanged={reload} onPatch={patchState} />}
       {tab === "categories" && <CategoriesTab state={state} onChanged={reload} />}
-      {tab === "goals" && <GoalsTab goals={state.goals} goalBalances={goalBalances} onChanged={reload} onPatch={patchState} />}
+      {tab === "goals" && <GoalsTab goals={state.goals} accounts={state.accounts} goalBalances={goalBalances} onChanged={reload} onPatch={patchState} />}
       {tab === "accounts" && (
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} onPatch={patchState} />
       )}
