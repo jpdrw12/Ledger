@@ -303,6 +303,8 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   const netWorthChart = lineChartSvg(netWorthSeries, projectedIdSet, { ariaLabel: "Net worth history and forecast" });
 
   // --- Range activity totals -------------------------------------------
+  const rangeLabels = new Set(rangeMonths.map((m) => m.monthLabel));
+  const debtChargesInRange = (state.debtCharges || []).filter((c) => rangeLabels.has(c.monthLabel));
   let totalIncome = 0, totalBills = 0, totalExpenses = 0, totalSavings = 0, totalDebtPmts = 0;
   rangeMonths.forEach((m) => {
     const l = ledger[m.id];
@@ -313,6 +315,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     totalSavings += l.totalGoals;
     totalDebtPmts += l.totalDebtPayments;
   });
+  const totalDebtSpend = debtChargesInRange.reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
   // --- Sections ----------------------------------------------------------
   const monthRows = rangeMonths
@@ -324,6 +327,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       expenses: ledger[m.id].totalExpensesPay1 + ledger[m.id].totalExpensesPay2,
       savings: ledger[m.id].totalGoals,
       debt: ledger[m.id].totalDebtPayments,
+      debtSpend: debtChargesInRange.filter((c) => c.monthLabel === m.monthLabel).reduce((s, c) => s + (Number(c.amount) || 0), 0),
       end: ledger[m.id].consolidatedCarryOut,
     }));
   const monthsSection = table(
@@ -334,6 +338,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       { key: "expenses", label: "Expenses", num: true, render: (r) => money(r.expenses) },
       { key: "savings", label: "Savings", num: true, render: (r) => money(r.savings) },
       { key: "debt", label: "Debt pmts", num: true, render: (r) => money(r.debt) },
+      { key: "debtSpend", label: "Debt spend", num: true, render: (r) => money(r.debtSpend) },
       { key: "end", label: "Ending balance", num: true, render: (r) => money(r.end), cls: (r) => amtClass(r.end) },
     ],
     monthRows,
@@ -348,8 +353,9 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
           { label: "Expenses", color: "var(--deficit)", values: monthRows.map((r) => r.expenses) },
           { label: "Savings", color: "var(--ink-soft)", values: monthRows.map((r) => r.savings) },
           { label: "Debt payments", color: "color-mix(in srgb, var(--accent) 45%, var(--ink))", values: monthRows.map((r) => r.debt) },
+          { label: "Debt spend", color: "color-mix(in srgb, var(--deficit) 45%, var(--ink))", values: monthRows.map((r) => r.debtSpend) },
         ],
-        { ariaLabel: "Income, bills, expenses, savings, and debt payments by month" }
+        { ariaLabel: "Income, bills, expenses, savings, debt payments, and debt spending by month" }
       )
     : "";
 
@@ -421,8 +427,6 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     })),
     { emptyLabel: "No debts tracked." }
   );
-
-  const rangeLabels = new Set(rangeMonths.map((m) => m.monthLabel));
 
   // Two sources cover debt payments: month_debt_payments (a payment logged
   // on a month, `applied` tells you whether it's landed yet) and
@@ -498,16 +502,16 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
     : [];
   const spendTrendChart = spendTrend.length >= 2 ? lineChartSvg(spendTrend, new Set(), { ariaLabel: "Spending by month" }) : "";
 
-  const cardCategories = cardAccounts.length ? spendingByCategory(rangeMonths, { include: cardIds }) : [];
+  const cardCategories = cardAccounts.length ? spendingByCategory(rangeMonths, { include: cardIds }, state.bills) : [];
   const cardTotal = cardCategories.reduce((s, c) => s + c.total, 0);
   const cardCategoriesChart = cardCategories.length
     ? barChartSvg([...cardCategories].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Card spending by category" })
     : "";
   const cardTrend = cardAccounts.length && rangeMonths.length >= 2
-    ? rangeMonths.map((m) => ({ id: m.id, label: m.monthLabel, value: spendingByCategory([m], { include: cardIds }).reduce((s, c) => s + c.total, 0) }))
+    ? rangeMonths.map((m) => ({ id: m.id, label: m.monthLabel, value: spendingByCategory([m], { include: cardIds }, state.bills).reduce((s, c) => s + c.total, 0) }))
     : [];
   const cardTrendChart = cardTrend.length >= 2 ? lineChartSvg(cardTrend, new Set(), { ariaLabel: "Card spending by month" }) : "";
-  const cardTotalsByAccount = cardAccounts.length ? spendByAccount(rangeMonths, cardAccounts.map((a) => a.id)) : [];
+  const cardTotalsByAccount = cardAccounts.length ? spendByAccount(rangeMonths, cardAccounts.map((a) => a.id), state.bills) : [];
   const cardsChart = cardAccounts.length > 1
     ? barChartSvg(
         cardTotalsByAccount.map((r) => ({ category: (cardAccounts.find((a) => a.id === r.accountId) || {}).name || "—", total: r.total })),
@@ -527,7 +531,6 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       ) + `<p style="text-align:right;font-weight:700;margin-top:-2px;">Total across ${cardAccounts.length} card${cardAccounts.length === 1 ? "" : "s"}: ${money(cardTotal)}</p>`
     : `<p class="empty">No spending-card accounts set up.</p>`;
 
-  const debtChargesInRange = (state.debtCharges || []).filter((c) => rangeLabels.has(c.monthLabel));
   const debtSpendCats = debtSpendingByCategory(debtChargesInRange);
   const debtSpendCatsChart = debtSpendCats.length
     ? barChartSvg([...debtSpendCats].sort((a, b) => b.total - a.total).slice(0, 10), { ariaLabel: "Debt spending by category" })
@@ -618,6 +621,7 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       <div class="card"><div class="label">Expenses</div><div class="value neg">${money(totalExpenses)}</div></div>
       <div class="card"><div class="label">Savings</div><div class="value">${money(totalSavings)}</div></div>
       <div class="card"><div class="label">Debt payments</div><div class="value">${money(totalDebtPmts)}</div></div>
+      <div class="card"><div class="label">Debt spending</div><div class="value neg">${money(totalDebtSpend)}</div></div>
     </div>
   </section>
 

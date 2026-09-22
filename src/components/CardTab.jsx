@@ -24,18 +24,18 @@ function CardTab({ state, onChanged }) {
   const { trend, scopedMonths, scopeLabel, categories, perCard, maxCat, totalSpend, budgetMonth, budgets } = useMemo(() => {
     const ids = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
     const scoped = chartMonth === "all" ? state.months : state.months.filter((m) => m.id === chartMonth);
-    const cats = spendingByCategory(scoped, { include: ids });
+    const cats = spendingByCategory(scoped, { include: ids }, state.bills);
     const bMonth = chartMonth === "all" ? state.months[state.months.length - 1] : scoped[0];
     return {
-      trend: monthlyExpenseTotals(state.months, { include: ids }),
+      trend: monthlyExpenseTotals(state.months, { include: ids }, state.bills),
       scopedMonths: scoped,
       scopeLabel: chartMonth === "all" ? "all months" : (state.months.find((m) => m.id === chartMonth)?.monthLabel || ""),
       categories: cats,
-      perCard: spendByAccount(scoped, [...ids]),
+      perCard: spendByAccount(scoped, [...ids], state.bills),
       maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
       totalSpend: cats.reduce((s, c) => s + c.total, 0),
       budgetMonth: bMonth,
-      budgets: cardBudgetReport(bMonth, state.cardBudgets || [], ids),
+      budgets: cardBudgetReport(bMonth, state.cardBudgets || [], ids, state.bills),
     };
   }, [state, chartMonth]);
 

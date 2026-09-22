@@ -475,6 +475,26 @@ describe("spendingByCategory", () => {
     ];
     expect(spendingByCategory(months)).toEqual([{ category: "Groceries", total: 150 }]);
   });
+
+  it("omits bill payments by default, includes only paid ones when bills is passed", () => {
+    const bills = [{ id: "b1", category: "Utilities" }];
+    const months = [
+      makeMonth("m1", {
+        expensesPay1: [{ category: "Groceries", amount: 20 }],
+        billPayments: [
+          { billId: "b1", amountPaid: 75, paid: true, accountId: "card" },
+          { billId: "b1", amountPaid: 30, paid: false, accountId: "card" }, // not yet paid — excluded either way
+        ],
+      }),
+    ];
+    // No bills param: original behavior, bill payments invisible regardless of paid status.
+    expect(spendingByCategory(months)).toEqual([{ category: "Groceries", total: 20 }]);
+    // With bills: the paid one joins in under the bill's own category; the unpaid one still doesn't.
+    expect(spendingByCategory(months, undefined, bills)).toEqual([
+      { category: "Utilities", total: 75 },
+      { category: "Groceries", total: 20 },
+    ]);
+  });
 });
 
 describe("monthlyEndingBalances", () => {

@@ -585,10 +585,13 @@ export async function applyMonthDebtPayment(id, { debtId, amount, monthLabel, cu
 }
 
 // Charges one month's interest on the current balance — the once-per-month step,
-// separate from payments. Records a history row with no payment.
-export async function applyMonthlyInterest(debtId, { monthLabel, currentBalance, apr }) {
+// separate from payments. Records a history row with no payment. `interestOverride`,
+// when given, is used as-is instead of computing from apr — lets the Debts tab
+// offer the calculated estimate as a starting point the person can adjust (e.g.
+// their card statement shows a slightly different amount than the estimate).
+export async function applyMonthlyInterest(debtId, { monthLabel, currentBalance, apr, interestOverride }) {
   const db = await getDb();
-  const interest = Math.round(currentBalance * (apr / 12) * 100) / 100;
+  const interest = interestOverride != null ? Math.round(Number(interestOverride) * 100) / 100 : Math.round(currentBalance * (apr / 12) * 100) / 100;
   const newBalance = Math.round((currentBalance + interest) * 100) / 100;
   await db.execute(
     `INSERT INTO debt_history (id, debt_id, month_label, previous_balance, amount_paid, interest, new_balance)

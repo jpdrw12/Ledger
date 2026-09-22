@@ -13,6 +13,7 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
     onChanged();
   });
   const [paymentDrafts, setPaymentDrafts] = useState({});
+  const [interestDrafts, setInterestDrafts] = useState({});
   const [monthDraft, setMonthDraft] = useState("This month");
 
   const addDebt = async () => {
@@ -66,9 +67,19 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
     onChanged();
   };
 
-  // Charges one month's interest on the current balance — do this once per month.
+  // Charges one month's interest on the current balance — do this once per
+  // month. Uses the draft value if it's been touched (so an edit to the
+  // pre-filled estimate is what actually gets applied), otherwise falls
+  // back to the computed estimate.
   const applyInterest = async (debt) => {
-    await db.applyMonthlyInterest(debt.id, { monthLabel: monthDraft, currentBalance: debt.balance, apr: debt.apr });
+    const draft = interestDrafts[debt.id];
+    const interestOverride = draft !== undefined && draft !== "" ? parseFloat(draft) : undefined;
+    await db.applyMonthlyInterest(debt.id, { monthLabel: monthDraft, currentBalance: debt.balance, apr: debt.apr, interestOverride });
+    setInterestDrafts((p) => {
+      const next = { ...p };
+      delete next[debt.id];
+      return next;
+    });
     onChanged();
   };
 
@@ -121,37 +132,51 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
                 onChange={(e) => setPaymentDrafts((p) => ({ ...p, [debt.id]: e.target.value }))}
               />
             </div>
-            {debt.balance > 0 && debt.apr > 0 && (
-              <p className="due-date-hint">
-                Est. interest at this balance: <strong>{money(estimateMonthlyInterest(debt.balance, debt.apr))}</strong>/month
-                {" "}({money(estimateMonthlyInterest(debt.balance, debt.apr) * 12)}/year) — what "Apply monthly interest" would charge right now.
+            {debt.balance > 0 && (
+              <p className="due-date-hint" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span>Interest to apply:</span>
+                <input
+                  className="amount-input"
+                  type="number"
+                  step="0.01"
+                  value={interestDrafts[debt.id] ?? estimateMonthlyInterest(debt.balance, debt.apr)}
+                  onChange={(e) => setInterestDrafts((p) => ({ ...p, [debt.id]: e.target.value }))}
+                  title="Defaults to balance × APR ÷ 12 — edit if your card statement shows a different amount"
+                />
+                <span>
+                  /month (est. {money(estimateMonthlyInterest(debt.balance, debt.apr))} from balance × APR ÷ 12,
+                  {" "}{money(estimateMonthlyInterest(debt.balance, debt.apr) * 12)}/year)
+                </span>
               </p>
             )}
             <div className="debt-actions">
               <button className="btn-secondary" onClick={() => applyPayment(debt)}>
                 Apply payment
               </button>
-              <button className="btn-secondary" onClick={() => applyInterest(debt)} title="Charge one month's interest on the current balance — do this once per month">
+              <button className="btn-secondary" onClick={() => applyInterest(debt)} title="Charge one month's interest on the current balance — do this once per month. Uses the amount above, which you can edit before applying">
                 Apply monthly interest
               </button>
             </div>
 
-            {debtHistory.filter((h) => h.debt_id === debt.id).length > 0 && (
-              <table className="history-table">
-                <thead>
-                  <tr>
-                    <th>Month</th>
-                    <th>Previous</th>
-                    <th>Paid</th>
-                    <th>Interest</th>
-                    <th>New balance</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {debtHistory
-                    .filter((h) => h.debt_id === debt.id)
-                    .map((h) => (
+            {(() => {
+              const history = debtHistory.filter((h) => h.debt_id === debt.id);
+              if (!history.length) return null;
+              const totalPaid = history.reduce((s, h) => s + (Number(h.amount_paid) || 0), 0);
+              const totalInterest = history.reduce((s, h) => s + (Number(h.interest) || 0), 0);
+              return (
+                <table className="history-table">
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Previous</th>
+                      <th>Paid</th>
+                      <th>Interest</th>
+                      <th>New balance</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h) => (
                       <tr key={h.id}>
                         <td>{h.month_label}</td>
                         <td className="mono">{money(h.previous_balance)}</td>
@@ -169,9 +194,17 @@ function DebtsTab({ debts, debtHistory, onChanged, onPatch }) {
                         </td>
                       </tr>
                     ))}
-                </tbody>
-              </table>
-            )}
+                    <tr className="history-total-row">
+                      <td colSpan={2}>Total</td>
+                      <td className="mono">{money(totalPaid)}</td>
+                      <td className="mono">{money(totalInterest)}</td>
+                      <td />
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+              );
+            })()}
           </div>
           );
         })}

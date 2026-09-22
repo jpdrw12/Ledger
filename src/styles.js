@@ -346,6 +346,8 @@ export const css = `
   .history-table th { text-align:right; color:var(--ink-soft); font-weight:500; padding:5px 6px; border-bottom:1px solid var(--ink); }
   .history-table th:first-child, .history-table td:first-child { text-align:left; }
   .history-table td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--paper-line); }
+  .history-total-row td { font-weight:700; border-top:2px solid var(--ink); border-bottom:none; }
+  .history-total-row td:first-child { text-align:left; }
 
   .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; padding:14px; margin-bottom:18px; }
   .collapsible { background:var(--card); border:1px solid var(--paper-line); border-radius:3px; margin-bottom:12px; }

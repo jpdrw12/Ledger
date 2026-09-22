@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { makeTestDb } from "./testdb.js";
-import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, addGoalContribution, addDebtCharge, addMonthDebtPayment, applyMonthDebtPayment, applyMonthlyInterest } from "./db.js";
+import { __setTestDb, loadFullState, upsertAccount, upsertBill, upsertGoal, upsertDebt, addMonth, updatePayBlock, addExpense, addBillPayment, updateBillPayment, addGoalContribution, addDebtCharge, addMonthDebtPayment, applyMonthDebtPayment, applyMonthlyInterest } from "./db.js";
 import { computeLedger, computeDueDate } from "./calc.js";
 import { buildReportHtml } from "./report.js";
 
@@ -68,7 +68,7 @@ describe("buildReportHtml", () => {
     // chart — removed as not useful. No debt-balances chart — a short
     // balance table doesn't need one the way a category breakdown does.)
     expect((html.match(/<svg/g) || []).length).toBeGreaterThanOrEqual(8);
-    expect(html).toContain('aria-label="Income, bills, expenses, savings, and debt payments by month"');
+    expect(html).toContain('aria-label="Income, bills, expenses, savings, debt payments, and debt spending by month"');
     expect(html).toContain('aria-label="Spending by month"');
     expect(html).toContain('aria-label="Card spending by month"');
     expect(html).toContain('aria-label="Debt spending by month"');
@@ -87,6 +87,12 @@ describe("buildReportHtml", () => {
     // from 800 to 860 first (a spendable-debt charge increases what's
     // owed), so interest is estimated on 860: 860 * (0.2/12) = 14.33.
     expect(html).toContain("14.33");
+
+    // New: Debt spending shows in the "This range" summary cards and as a
+    // column in the Months table — previously only visible in its own
+    // Debt spending section, not reflected in either of these.
+    expect(html).toContain('<div class="label">Debt spending</div>');
+    expect(html).toContain('<th class="num">Debt spend</th>');
   });
 
   it("skips trend-line charts when the range is a single month", async () => {
@@ -103,7 +109,7 @@ describe("buildReportHtml", () => {
     expect(html).not.toContain('aria-label="Debt spending by month"');
     expect(html).not.toContain("Need at least two months");
     // The category/comparison charts still render fine for one month.
-    expect(html).toContain('aria-label="Income, bills, expenses, savings, and debt payments by month"');
+    expect(html).toContain('aria-label="Income, bills, expenses, savings, debt payments, and debt spending by month"');
   });
 
   it("shows per-card and per-debt comparison charts only when there's more than one of each", async () => {
@@ -177,6 +183,26 @@ describe("buildReportHtml", () => {
     // Accounts/bills/goals/debts stay full-history regardless of range.
     expect(html).toContain("Checking");
     expect(html).toContain("Rent");
+  });
+
+  it("counts a bill paid from a card account as card spending (previously invisible everywhere)", async () => {
+    const checking = await upsertAccount({ name: "Checking", startingBalance: 1000 });
+    const card = await upsertAccount({ name: "Visa card", startingBalance: 0, excludeFromTotal: true });
+    const internetBill = await upsertBill({ name: "Internet", category: "Utilities", defaultAmount: 75, addToSlot1: true, dueDay: 5, paymentType: "manual" });
+    const label = "January 2026";
+    const m1 = await addMonth({ monthLabel: label, sequence: 1, defaultAccountId: checking });
+    const bpId = await addBillPayment(m1, { billId: internetBill, amountPaid: 75, accountId: card, dueDate: computeDueDate(label, 5), slot: 1 });
+    await updateBillPayment(bpId, { amountPaid: 75, paid: true, accountId: card, dueDate: computeDueDate(label, 5) });
+
+    const state = await loadFullState();
+    const ledger = computeLedger(state.months, state.accounts);
+    const html = buildReportHtml(state, ledger, {});
+
+    // Shows up in the Card spending category breakdown, under the bill's
+    // own category — not just as an untracked $75 that vanished from the
+    // report entirely.
+    expect(html).toContain("Utilities");
+    expect(html).toContain("75.00");
   });
 
   it("handles an empty ledger (no accounts, no months) gracefully", () => {

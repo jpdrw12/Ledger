@@ -74,6 +74,22 @@ describe("applyMonthlyInterest", () => {
     expect(h.interest).toBeCloseTo(10, 5);
     expect(h.new_balance).toBeCloseTo(1010, 5);
   });
+
+  it("uses interestOverride as-is instead of computing from apr, when given", async () => {
+    // APR alone would compute 10 (1000 * 0.12/12) — override says 12.5 instead
+    // (e.g. the actual card statement shows a slightly different charge).
+    await applyMonthlyInterest("d", { monthLabel: "June 2026", currentBalance: 1000, apr: 0.12, interestOverride: 12.5 });
+    expect(get("SELECT balance FROM debts WHERE id='d'").balance).toBeCloseTo(1012.5, 5);
+    const h = get("SELECT * FROM debt_history WHERE debt_id='d'");
+    expect(h.interest).toBeCloseTo(12.5, 5);
+    expect(h.new_balance).toBeCloseTo(1012.5, 5);
+  });
+
+  it("rounds interestOverride to cents, same as the computed path", async () => {
+    await applyMonthlyInterest("d", { monthLabel: "June 2026", currentBalance: 1000, apr: 0.12, interestOverride: 12.567 });
+    const h = get("SELECT * FROM debt_history WHERE debt_id='d'");
+    expect(h.interest).toBeCloseTo(12.57, 5);
+  });
 });
 
 describe("deleteMonthDebtPayment", () => {

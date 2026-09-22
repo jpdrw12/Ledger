@@ -207,13 +207,32 @@ function expenseMatches(accountId, { include, exclude } = {}) {
   return true;
 }
 
-const allExpenses = (m) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])];
+// A bill payment marked paid, reshaped to look like an expense row (category
+// from the bill template, since bill_payments itself carries no category) —
+// so it can be folded into the same spending totals as ad-hoc expenses.
+// Unpaid/planned bill payments are excluded; nothing's actually spent yet.
+function billPaymentsAsExpenses(m, bills) {
+  if (!bills) return [];
+  const billsById = new Map(bills.map((b) => [b.id, b]));
+  return (m.billPayments || [])
+    .filter((bp) => bp.paid)
+    .map((bp) => ({ category: (billsById.get(bp.billId) || {}).category || "Bills", amount: bp.amountPaid, accountId: bp.accountId }));
+}
 
-export function spendingByCategory(months, filter) {
+// `bills` is optional and, when passed, folds in paid bill payments (see
+// billPaymentsAsExpenses) alongside ad-hoc expenses. Regular expenses can't
+// be assigned to a card account from the UI, but a bill payment can (paying
+// a bill from a card) — so callers scoping to card accounts pass `bills` to
+// pick those up; general (non-card) spending totals omit it and are
+// unaffected, keeping "spending by category" scoped to ad-hoc expenses only
+// there, same as before.
+const allExpenses = (m, bills) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || []), ...billPaymentsAsExpenses(m, bills)];
+
+export function spendingByCategory(months, filter, bills) {
   const totals = {}; // keyed by lowercased category, so "Groceries"/"groceries" merge
   const display = {}; // lowercased key -> first-seen original casing, for the label shown
   months.forEach((m) => {
-    allExpenses(m).forEach((e) => {
+    allExpenses(m, bills).forEach((e) => {
       if (!expenseMatches(e.accountId, filter)) return;
       const raw = (e.category || "").trim() || "Uncategorized";
       const key = raw.toLowerCase();
@@ -228,22 +247,22 @@ export function spendingByCategory(months, filter) {
 
 // Total expense per month (optionally filtered to certain accounts), in
 // chronological order — the series behind the card spend trend.
-export function monthlyExpenseTotals(months, filter) {
+export function monthlyExpenseTotals(months, filter, bills) {
   return months.map((m) => ({
     id: m.id,
     label: m.monthLabel,
-    value: allExpenses(m).reduce((s, e) => s + (expenseMatches(e.accountId, filter) ? Number(e.amount) || 0 : 0), 0),
+    value: allExpenses(m, bills).reduce((s, e) => s + (expenseMatches(e.accountId, filter) ? Number(e.amount) || 0 : 0), 0),
   }));
 }
 
 // Card-budget report for a single month: total allowance (budget row with the
 // reserved '' category) and per-category targets vs what was actually spent on
 // the card accounts that month. Pure — no I/O.
-export function cardBudgetReport(month, cardBudgets, cardIds) {
+export function cardBudgetReport(month, cardBudgets, cardIds, bills) {
   const months = month ? [month] : [];
   const spentByCat = {}; // keyed by lowercased category
   let spentTotal = 0;
-  spendingByCategory(months, { include: cardIds }).forEach((c) => {
+  spendingByCategory(months, { include: cardIds }, bills).forEach((c) => {
     spentByCat[c.category.toLowerCase()] = c.total;
     spentTotal += c.total;
   });
@@ -258,11 +277,11 @@ export function cardBudgetReport(month, cardBudgets, cardIds) {
 }
 
 // Total expense per account (over the given account ids), sorted high to low.
-export function spendByAccount(months, accountIds) {
+export function spendByAccount(months, accountIds, bills) {
   const totals = {};
   (accountIds || []).forEach((id) => (totals[id] = 0));
   months.forEach((m) =>
-    allExpenses(m).forEach((e) => {
+    allExpenses(m, bills).forEach((e) => {
       if (totals[e.accountId] !== undefined) totals[e.accountId] += Number(e.amount) || 0;
     })
   );

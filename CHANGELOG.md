@@ -5,6 +5,34 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.33.0]
+
+### Added
+- **Debt spending in the Report's "This range" summary and Months
+  section.** Previously only visible in its own Debt Spending section —
+  now also a summary card and a Months table column/chart series,
+  alongside income/bills/expenses/savings/debt payments.
+- **Editable interest in the Debts tab.** "Apply monthly interest"
+  previously always used the APR-computed estimate with no way to adjust
+  it. The estimate now shows in an editable field — change it before
+  applying if your card statement shows a slightly different amount.
+  `db.js`'s `applyMonthlyInterest` takes an optional `interestOverride`.
+- **Total row on each debt's payment history table**, summing Paid and
+  Interest across every logged entry for that debt.
+
+### Fixed
+- Bill payments assigned to a card account weren't counted as spending
+  anywhere — not the Card Spending tab, not the report. Regular expenses
+  can't be assigned to a card from the UI, but bill payments can (paying
+  a bill from a card), and `allExpenses()` only ever looked at ad-hoc
+  expenses, never bill payments. `spendingByCategory`,
+  `monthlyExpenseTotals`, `spendByAccount`, and `cardBudgetReport` now
+  take an optional `bills` param that folds in paid bill payments,
+  categorized by the bill template; passed wherever spending is scoped to
+  card accounts (Card Spending tab, the report's Card spending section).
+  General (non-card) spending totals are unaffected — bills still don't
+  count as "spending by category" there, unchanged from before.
+
 ## [0.32.0]
 
 ### Added
