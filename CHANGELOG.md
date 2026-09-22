@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.40.1]
+
+### Fixed
+- Guided tour now covers the Categories, Debt Spending, Budgeting &
+  Planning, and Report tabs — previously missing entirely (Categories and
+  Budgeting were also missing the sidebar anchor a tour step needs to point
+  at them). README and the in-app quick-reference (the `?` on each tab)
+  are also brought up to date with recent features.
+
 ## [0.40.0]
 
 ### Added
