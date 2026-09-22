@@ -202,6 +202,7 @@ export async function renameCategory(source, oldName, newName) {
   for (const move of budgetMoves) {
     await db.execute(`UPDATE ${move.table} SET category = $1 WHERE category = $2`, [to, move.oldKey]);
   }
+  await moveCategoryGroupMembership(db, source, from, to);
   return { rowsRenamed, budgetsMoved: budgetMoves.length };
 }
 
@@ -610,6 +611,76 @@ export async function deleteDebtBudget(category) {
 }
 
 // ---------------------------------------------------------------------
+// Category groups — purely organizational: collapsible groups the
+// Categories tab uses to bucket its (otherwise flat, per-source) category
+// list for easier review. A group belongs to one source ("expenses" |
+// "bills" | "debtCharges", same namespace as renameCategory's `source`); a
+// category belongs to at most one group within its own source. Doesn't
+// touch expenses/bills/debt_charges rows or budgets at all — see
+// renameCategory() above for the thing that actually rewrites those.
+// ---------------------------------------------------------------------
+export async function getCategoryGroups(source) {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM category_groups WHERE source = $1 ORDER BY sort_order, name", [source]);
+  return rows.map((r) => ({ id: r.id, source: r.source, name: r.name, sortOrder: r.sort_order }));
+}
+
+export async function getCategoryGroupMembers(source) {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM category_group_members WHERE source = $1", [source]);
+  return rows.map((r) => ({ source: r.source, category: r.category, groupId: r.group_id }));
+}
+
+export async function addCategoryGroup(source, name) {
+  const db = await getDb();
+  const id = uid();
+  const order = await nextOrder(db, "category_groups");
+  await db.execute("INSERT INTO category_groups (id, source, name, sort_order) VALUES ($1, $2, $3, $4)", [id, source, name, order]);
+  return id;
+}
+
+export async function renameCategoryGroup(id, name) {
+  const db = await getDb();
+  await db.execute("UPDATE category_groups SET name = $1 WHERE id = $2", [name, id]);
+}
+
+export async function reorderCategoryGroups(orderedIds) {
+  await setOrder(await getDb(), "category_groups", orderedIds);
+}
+
+// Ungroups its members (rather than deleting them along with the group) so a
+// deleted group never silently drops a category from view.
+export async function deleteCategoryGroup(id) {
+  const db = await getDb();
+  await db.execute("DELETE FROM category_group_members WHERE group_id = $1", [id]);
+  await db.execute("DELETE FROM category_groups WHERE id = $1", [id]);
+}
+
+// Moves `category` into `groupId`, or ungroups it when groupId is null/"".
+export async function setCategoryGroup(source, category, groupId) {
+  const db = await getDb();
+  if (!groupId) {
+    await db.execute("DELETE FROM category_group_members WHERE source = $1 AND category = $2", [source, category]);
+    return;
+  }
+  await db.execute(
+    "INSERT INTO category_group_members (source, category, group_id) VALUES ($1, $2, $3) ON CONFLICT(source, category) DO UPDATE SET group_id = $3",
+    [source, category, groupId]
+  );
+}
+
+// renameCategory() (above) updates expenses/bills/debt_charges.category
+// directly with UPDATE ... WHERE LOWER(TRIM(category)) = ..., so a category's
+// group membership (keyed on the literal string) would otherwise silently
+// detach on rename. Called from renameCategory() itself.
+async function moveCategoryGroupMembership(db, source, oldName, newName) {
+  await db.execute(
+    "UPDATE OR REPLACE category_group_members SET category = $1 WHERE source = $2 AND category = $3",
+    [newName, source, oldName]
+  );
+}
+
+// ---------------------------------------------------------------------
 // Month debt payments — tracks debt payments made within a month so they
 // count as account outflows. Interest calc / balance updates stay in DebtsTab.
 // ---------------------------------------------------------------------
@@ -865,7 +936,7 @@ export async function wipeAllData() {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -885,6 +956,8 @@ export async function loadFullState() {
       db.select("SELECT * FROM goal_contributions"),
       db.select("SELECT * FROM month_debt_payments"),
       db.select("SELECT * FROM transfers"),
+      db.select("SELECT * FROM category_groups ORDER BY source, sort_order, name"),
+      db.select("SELECT * FROM category_group_members"),
     ]);
 
   const months = monthRows.map((m) => {
@@ -941,5 +1014,8 @@ export async function loadFullState() {
     id: c.id, debtId: c.debt_id, monthLabel: c.month_label, category: c.category, amount: c.amount,
   }));
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity };
+  const categoryGroups = categoryGroupRows.map((g) => ({ id: g.id, source: g.source, name: g.name, sortOrder: g.sort_order }));
+  const categoryGroupMembers = categoryGroupMemberRows.map((m) => ({ source: m.source, category: m.category, groupId: m.group_id }));
+
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers };
 }

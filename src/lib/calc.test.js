@@ -28,6 +28,8 @@ import {
   buildCsvReferenceBlock,
   reconcileTabOrder,
   categoryUsageReport,
+  groupCategoryRows,
+  mergeCategoryTotals,
   debtSpendingByCategory,
   debtMonthlyTotals,
   debtSpendByDebt,
@@ -633,6 +635,73 @@ describe("categoryUsageReport", () => {
   it("returns an empty list for no rows", () => {
     expect(categoryUsageReport([], [])).toEqual([]);
     expect(categoryUsageReport(undefined, undefined)).toEqual([]);
+  });
+});
+
+describe("mergeCategoryTotals", () => {
+  it("sums amounts for the same category name across every list given", () => {
+    const expenses = [{ category: "Groceries", total: 60 }, { category: "Gas", total: 40 }];
+    const card = [{ category: "Groceries", total: 20 }];
+    const debt = [{ category: "Shopping", total: 15 }];
+    expect(mergeCategoryTotals(expenses, card, debt)).toEqual([
+      { category: "Groceries", total: 80 },
+      { category: "Gas", total: 40 },
+      { category: "Shopping", total: 15 },
+    ]);
+  });
+
+  it("merges case-insensitively, keeping the first-seen casing for display", () => {
+    const a = [{ category: "groceries", total: 10 }];
+    const b = [{ category: "Groceries", total: 5 }];
+    expect(mergeCategoryTotals(a, b)).toEqual([{ category: "groceries", total: 15 }]);
+  });
+
+  it("sorts the merged result highest total first", () => {
+    const result = mergeCategoryTotals([{ category: "Small", total: 5 }, { category: "Big", total: 50 }]);
+    expect(result.map((r) => r.category)).toEqual(["Big", "Small"]);
+  });
+
+  it("handles empty/missing lists", () => {
+    expect(mergeCategoryTotals()).toEqual([]);
+    expect(mergeCategoryTotals([], undefined, [{ category: "X", total: 1 }])).toEqual([{ category: "X", total: 1 }]);
+  });
+});
+
+describe("groupCategoryRows", () => {
+  const rows = [
+    { category: "Groceries", count: 3, hasBudget: false },
+    { category: "Gas", count: 1, hasBudget: false },
+    { category: "Rent", count: 1, hasBudget: true },
+  ];
+  const groups = [{ id: "g1", name: "Food" }, { id: "g2", name: "Housing" }];
+  const members = [
+    { category: "Groceries", groupId: "g1" },
+    { category: "Rent", groupId: "g2" },
+  ];
+
+  it("buckets rows into their assigned group, in the given group order, and puts the rest in ungrouped", () => {
+    const result = groupCategoryRows(rows, groups, members);
+    expect(result.groups).toEqual([
+      { id: "g1", name: "Food", rows: [rows[0]] },
+      { id: "g2", name: "Housing", rows: [rows[2]] },
+    ]);
+    expect(result.ungrouped).toEqual([rows[1]]);
+  });
+
+  it("returns an empty group with no rows when nothing's assigned to it", () => {
+    const result = groupCategoryRows(rows, [{ id: "g1", name: "Food" }], []);
+    expect(result.groups).toEqual([{ id: "g1", name: "Food", rows: [] }]);
+    expect(result.ungrouped).toEqual(rows);
+  });
+
+  it("puts everything in ungrouped when there are no groups", () => {
+    const result = groupCategoryRows(rows, [], []);
+    expect(result.groups).toEqual([]);
+    expect(result.ungrouped).toEqual(rows);
+  });
+
+  it("handles missing inputs", () => {
+    expect(groupCategoryRows(undefined, undefined, undefined)).toEqual({ groups: [], ungrouped: [] });
   });
 });
 

@@ -3,7 +3,7 @@ import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download, Upload } from 
 import * as db from "../lib/db.js";
 import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible } from "./Shared.jsx";
+import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -18,6 +18,12 @@ function CardTab({ state, onChanged }) {
   const [newBudgetAmt, setNewBudgetAmt] = useState("");
   const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
   const cardIds = new Set(cardAccounts.map((a) => a.id));
+  // Card spending shares the "expenses" category namespace with the Months
+  // tab (both are expenses.category) — same source the Categories tab uses
+  // for its "Expense & Card categories" section, so groups made there apply
+  // here too.
+  const categoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const categoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
 
   // Pure aggregations — memoized (kept above the early return so hook order is
   // stable) so they don't re-run on every keystroke in the budget fields.
@@ -297,20 +303,15 @@ function CardTab({ state, onChanged }) {
             ))}
           </select>
         </div>
-        {categories.length === 0 && <p className="empty small">No card spending for {scopeLabel}.</p>}
-        {categories.map((c) => (
-          <div
-            className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
-            key={c.category}
-            onClick={() => setSelectedCat((s) => (s === c.category ? null : c.category))}
-          >
-            <span className="cat-name">{c.category}</span>
-            <div className="cat-bar-track">
-              <div className="cat-bar-fill" style={{ width: `${maxCat ? (c.total / maxCat) * 100 : 0}%` }} />
-            </div>
-            <span className="cat-amount mono">{money(c.total)}</span>
-          </div>
-        ))}
+        <GroupedCategoryList
+          categories={categories}
+          groups={categoryGroups}
+          members={categoryGroupMembers}
+          selectedCat={selectedCat}
+          onSelect={(cat) => setSelectedCat((s) => (s === cat ? null : cat))}
+          maxTotal={maxCat}
+          emptyLabel={`No card spending for ${scopeLabel}.`}
+        />
         {categories.length > 0 && (
           <div className="cat-row cat-total">
             <span className="cat-name">Total</span>

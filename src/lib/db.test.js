@@ -32,6 +32,13 @@ import {
   upsertCardBudget,
   upsertDebtBudget,
   renameCategory,
+  addCategoryGroup,
+  renameCategoryGroup,
+  deleteCategoryGroup,
+  reorderCategoryGroups,
+  setCategoryGroup,
+  getCategoryGroups,
+  getCategoryGroupMembers,
 } from "./db.js";
 
 let adapter;
@@ -350,5 +357,65 @@ describe("renameCategory", () => {
     const result = await renameCategory("expenses", "Gas", "Gas");
     expect(result).toEqual({ rowsRenamed: 0, budgetsMoved: 0 });
     expect(get("SELECT category FROM expenses").category).toBe("Gas");
+  });
+
+  it("carries a category's group membership along when it's renamed", async () => {
+    await addExpense("m", 1, { category: "Groceries", amount: 20, accountId: "a" });
+    const groupId = await addCategoryGroup("expenses", "Food");
+    await setCategoryGroup("expenses", "Groceries", groupId);
+
+    await renameCategory("expenses", "Groceries", "Grocery");
+
+    const members = await getCategoryGroupMembers("expenses");
+    expect(members).toEqual([{ source: "expenses", category: "Grocery", groupId }]);
+  });
+});
+
+describe("category groups", () => {
+  it("adds, renames, and lists groups scoped to one source, ordered by insertion", async () => {
+    const g1 = await addCategoryGroup("expenses", "Food");
+    const g2 = await addCategoryGroup("expenses", "Housing");
+    await addCategoryGroup("debtCharges", "Shopping"); // different source — shouldn't show up
+
+    let groups = await getCategoryGroups("expenses");
+    expect(groups.map((g) => g.name)).toEqual(["Food", "Housing"]);
+
+    await renameCategoryGroup(g1, "Groceries & Dining");
+    groups = await getCategoryGroups("expenses");
+    expect(groups.map((g) => g.name)).toEqual(["Groceries & Dining", "Housing"]);
+    expect(groups.map((g) => g.id)).toEqual([g1, g2]);
+  });
+
+  it("reorderCategoryGroups persists a new sort order", async () => {
+    const g1 = await addCategoryGroup("expenses", "Food");
+    const g2 = await addCategoryGroup("expenses", "Housing");
+    await reorderCategoryGroups([g2, g1]);
+    const groups = await getCategoryGroups("expenses");
+    expect(groups.map((g) => g.id)).toEqual([g2, g1]);
+  });
+
+  it("setCategoryGroup assigns and reassigns a category to a group, one group at a time", async () => {
+    const food = await addCategoryGroup("expenses", "Food");
+    const housing = await addCategoryGroup("expenses", "Housing");
+    await setCategoryGroup("expenses", "Groceries", food);
+    expect(await getCategoryGroupMembers("expenses")).toEqual([{ source: "expenses", category: "Groceries", groupId: food }]);
+
+    await setCategoryGroup("expenses", "Groceries", housing); // reassign
+    expect(await getCategoryGroupMembers("expenses")).toEqual([{ source: "expenses", category: "Groceries", groupId: housing }]);
+  });
+
+  it("setCategoryGroup with a falsy groupId ungroups the category", async () => {
+    const food = await addCategoryGroup("expenses", "Food");
+    await setCategoryGroup("expenses", "Groceries", food);
+    await setCategoryGroup("expenses", "Groceries", null);
+    expect(await getCategoryGroupMembers("expenses")).toEqual([]);
+  });
+
+  it("deleteCategoryGroup removes the group but ungroups (doesn't delete) its members", async () => {
+    const food = await addCategoryGroup("expenses", "Food");
+    await setCategoryGroup("expenses", "Groceries", food);
+    await deleteCategoryGroup(food);
+    expect(await getCategoryGroups("expenses")).toEqual([]);
+    expect(await getCategoryGroupMembers("expenses")).toEqual([]); // membership row is gone too — nothing dangling
   });
 });

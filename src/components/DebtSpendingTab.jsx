@@ -3,7 +3,7 @@ import { Landmark, Plus, Trash2, TrendingUp, Receipt, Download, Upload, Shopping
 import * as db from "../lib/db.js";
 import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, debtBudgetReport, buildDebtSpendingCsv, parseExpensesCsv, buildCsvReferenceBlock } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible } from "./Shared.jsx";
+import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -21,6 +21,8 @@ function DebtSpendingTab({ state, onChanged }) {
   const spendableDebts = state.debts.filter((d) => d.spendable);
   const debtIds = new Set(spendableDebts.map((d) => d.id));
   const charges = state.debtCharges || [];
+  const categoryGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
+  const categoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
 
   // Pure aggregations — memoized (above the early return so hook order stays
   // stable) so they don't re-run on every keystroke in the budget fields.
@@ -322,20 +324,15 @@ function DebtSpendingTab({ state, onChanged }) {
             ))}
           </select>
         </div>
-        {categories.length === 0 && <p className="empty small">No debt spending for {scopeLabel}{debtScopeLabel}.</p>}
-        {categories.map((c) => (
-          <div
-            className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
-            key={c.category}
-            onClick={() => setSelectedCat((s) => (s === c.category ? null : c.category))}
-          >
-            <span className="cat-name">{c.category}</span>
-            <div className="cat-bar-track">
-              <div className="cat-bar-fill" style={{ width: `${maxCat ? (c.total / maxCat) * 100 : 0}%` }} />
-            </div>
-            <span className="cat-amount mono">{money(c.total)}</span>
-          </div>
-        ))}
+        <GroupedCategoryList
+          categories={categories}
+          groups={categoryGroups}
+          members={categoryGroupMembers}
+          selectedCat={selectedCat}
+          onSelect={(cat) => setSelectedCat((s) => (s === cat ? null : cat))}
+          maxTotal={maxCat}
+          emptyLabel={`No debt spending for ${scopeLabel}${debtScopeLabel}.`}
+        />
         {categories.length > 0 && (
           <div className="cat-row cat-total">
             <span className="cat-name">Total</span>

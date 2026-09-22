@@ -814,6 +814,51 @@ export function categoryUsageReport(rows, budgetRows) {
     .sort((a, b) => a.category.localeCompare(b.category));
 }
 
+// Merges any number of {category, total}[] lists (e.g. spendingByCategory's
+// non-card and card results plus debtSpendingByCategory's) into one combined
+// list, summing amounts for the same category name across all of them.
+// Case-insensitive keyed (first-seen casing wins) — same convention as
+// spendingByCategory's own display-dedup — since the lists being merged can
+// come from independently-cased sources. Pure — no I/O.
+export function mergeCategoryTotals(...lists) {
+  const totals = {}; // lowercased category -> summed total
+  const display = {}; // lowercased category -> first-seen original casing
+  lists.forEach((rows) => {
+    (rows || []).forEach((r) => {
+      const raw = (r.category || "").trim();
+      if (!raw) return;
+      const key = raw.toLowerCase();
+      if (!(key in display)) display[key] = raw;
+      totals[key] = (totals[key] || 0) + (Number(r.total) || 0);
+    });
+  });
+  return Object.entries(totals)
+    .map(([key, total]) => ({ category: display[key], total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// Buckets categoryUsageReport()'s rows into their assigned group, for the
+// Categories tab's collapsible-group display. `groups` and `members` are
+// already scoped to one source (db.js's getCategoryGroups(source) /
+// getCategoryGroupMembers(source) or an equivalent filter of loadFullState's
+// state.categoryGroups/state.categoryGroupMembers). Groups come back in
+// `groups`' given order (already sort_order-sorted from the db); a category
+// with no membership row lands in `ungrouped`. Pure — no I/O.
+export function groupCategoryRows(rows, groups, members) {
+  const groupIdByCategory = {};
+  (members || []).forEach((m) => { groupIdByCategory[m.category] = m.groupId; });
+  const byGroupId = {};
+  (groups || []).forEach((g) => { byGroupId[g.id] = { id: g.id, name: g.name, rows: [] }; });
+  const ungrouped = [];
+  (rows || []).forEach((r) => {
+    const groupId = groupIdByCategory[r.category];
+    const bucket = groupId && byGroupId[groupId];
+    if (bucket) bucket.rows.push(r);
+    else ungrouped.push(r);
+  });
+  return { groups: (groups || []).map((g) => byGroupId[g.id]), ungrouped };
+}
+
 export const money = (n) => {
   const v = Number(n) || 0;
   const sign = v < 0 ? "-" : "";

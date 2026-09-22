@@ -358,6 +358,14 @@ export const css = `
   .collapsible.open .collapsible-title { color:var(--ink); }
   .collapsible-right { margin-left:auto; font-size:12.5px; color:var(--ink-soft); }
   .collapsible-body { padding:0 14px 14px; }
+  .cat-group { margin:0 0 10px; background:var(--paper); }
+  .cat-group .collapsible-head { padding:8px 12px; }
+  .cat-group .collapsible-body { padding:0 12px 10px; }
+  .cat-group-dropzone { border-radius:3px; transition:outline-color 0.1s; outline:1.5px dashed transparent; outline-offset:2px; }
+  .cat-group-dropzone.drag-over { outline-color:var(--accent); }
+  .cat-drag-handle { cursor:grab; color:var(--ink-soft); display:flex; }
+  .cat-drag-handle:active { cursor:grabbing; }
+  .cat-row-dragging { opacity:0.4; }
   .month-summary { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
   .ms-cell { display:flex; flex-direction:column; gap:1px; flex:1 1 90px; background:var(--paper); border:1px solid var(--paper-line); border-radius:5px; padding:8px 12px; }
   .ms-cell.ms-end { background:var(--card); border-color:var(--stamp); }

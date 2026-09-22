@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useContext, createContext } from "react";
 import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
-import { money } from "../lib/calc.js";
+import { money, groupCategoryRows } from "../lib/calc.js";
 
 // Drag-to-reorder for a card list — pointer-based (native HTML5 DnD is
 // unreliable in the WebKitGTK webview and renders a giant drag ghost). Mousedown
@@ -127,6 +127,54 @@ export function Collapsible({ title, icon, right, defaultOpen = false, className
       </button>
       {open && <div className="collapsible-body">{children}</div>}
     </div>
+  );
+}
+
+// The "spending by category" bar-list (Card/Debt Spending tabs), organized
+// into the same collapsible category groups the Categories tab manages —
+// `groups`/`members` are state.categoryGroups/state.categoryGroupMembers
+// already filtered to the right source ("expenses" for card spending,
+// "debtCharges" for debt spending — see groupCategoryRows in calc.js).
+// `categories` is a spendingByCategory()/debtSpendingByCategory() result
+// ({category, total}[]); `maxTotal` scales every row's bar against the same
+// reference so bars stay comparable across groups. Falls back to the old
+// flat list when no groups exist yet, so a tab with none defined looks
+// exactly as it did before this feature.
+export function GroupedCategoryList({ categories, groups, members, selectedCat, onSelect, maxTotal, emptyLabel = "Nothing to show here." }) {
+  if (!categories.length) return <p className="empty small">{emptyLabel}</p>;
+
+  const catRow = (c) => (
+    <div
+      className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
+      key={c.category}
+      onClick={() => onSelect(c.category)}
+    >
+      <span className="cat-name">{c.category}</span>
+      <div className="cat-bar-track">
+        <div className="cat-bar-fill" style={{ width: `${maxTotal ? (c.total / maxTotal) * 100 : 0}%` }} />
+      </div>
+      <span className="cat-amount mono">{money(c.total)}</span>
+    </div>
+  );
+
+  if (!(groups || []).length) return <>{categories.map(catRow)}</>;
+
+  const { groups: groupedRows, ungrouped } = groupCategoryRows(categories, groups, members);
+  const subtotal = (rows) => rows.reduce((s, c) => s + c.total, 0);
+
+  return (
+    <>
+      {groupedRows.map((g) => (
+        <Collapsible key={g.id} title={g.name} right={money(subtotal(g.rows))} className="cat-group" defaultOpen>
+          {g.rows.length === 0 ? <p className="empty small">No spending here.</p> : g.rows.map(catRow)}
+        </Collapsible>
+      ))}
+      {ungrouped.length > 0 && (
+        <Collapsible title="Ungrouped" right={money(subtotal(ungrouped))} className="cat-group" defaultOpen>
+          {ungrouped.map(catRow)}
+        </Collapsible>
+      )}
+    </>
   );
 }
 
