@@ -5,6 +5,17 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.40.0]
+
+### Added
+- **Budgeting & Planning: mid-month pace alerts.** A banner now flags any
+  budgeted category — expense, card, or debt spending — that's on pace to
+  blow past its target before the month ends, projected from this month's
+  day-of-month spend rate. Only appears for the real current calendar
+  month. This completes the Budgeting & Planning roadmap (consolidation,
+  trend context, multi-month planning grid, recurring goal
+  auto-contributions, what-if scenarios, and now pace alerts).
+
 ## [0.39.0]
 
 ### Added
