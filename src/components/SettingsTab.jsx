@@ -275,18 +275,24 @@ function SettingsTab({
         </div>
         {allTabs && (
           <div className="backup-folder" style={{ marginTop: 10, alignItems: "flex-start" }}>
-            <span className="small-label" style={{ flex: 1, paddingTop: 2 }}>Visible tabs</span>
+            <span className="small-label" style={{ flex: 1, paddingTop: 6 }}>Visible tabs</span>
             <div className="tab-visibility-grid">
-              {allTabs.filter((t) => t.id !== "months" && t.id !== "settings").map((t) => (
-                <label className="exclude-toggle" key={t.id}>
-                  <input
-                    type="checkbox"
-                    checked={!hiddenTabs.includes(t.id)}
-                    onChange={() => onToggleTabHidden(t.id)}
-                  />
-                  {t.label}
-                </label>
-              ))}
+              {allTabs.filter((t) => t.id !== "months" && t.id !== "settings").map((t) => {
+                const Icon = t.icon;
+                const visible = !hiddenTabs.includes(t.id);
+                return (
+                  <button
+                    type="button"
+                    key={t.id}
+                    className={`chip tab-visibility-chip${visible ? " active" : ""}`}
+                    onClick={() => onToggleTabHidden(t.id)}
+                    title={visible ? `Hide ${t.label} from the nav` : `Show ${t.label} in the nav`}
+                  >
+                    <Icon size={14} />
+                    {t.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
