@@ -9,6 +9,19 @@ const SHORTCUTS = [
   { keys: ["Enter"], desc: "Commit the field you're editing" },
   { keys: ["Shift", "scroll"], desc: "Scroll the whole page past a section" },
 ];
+
+// Buckets the visible-tabs chip list by TAB_DEFS' `group` field, excluding
+// Months/Settings (always visible, never shown here) — one row per group,
+// group order following first-appearance order in `allTabs`.
+function groupTabsForVisibility(allTabs) {
+  const groups = [];
+  allTabs.filter((t) => t.id !== "months" && t.id !== "settings").forEach((t) => {
+    let bucket = groups.find((g) => g.group === t.group);
+    if (!bucket) { bucket = { group: t.group, tabs: [] }; groups.push(bucket); }
+    bucket.tabs.push(t);
+  });
+  return groups;
+}
 import { closeDb } from "../lib/db.js";
 import { invoke } from "@tauri-apps/api/core";
 import { PROFILE_SLOTS, activeProfileDb, getProfiles, saveProfiles, addProfile, setActiveProfile, removeProfile } from "../lib/profiles.js";
@@ -275,32 +288,32 @@ function SettingsTab({
           </label>
         </div>
         {allTabs && (
-          <div className="backup-folder" style={{ marginTop: 10, alignItems: "flex-start" }}>
-            <span className="small-label" style={{ flex: 1, paddingTop: 6 }}>Visible tabs</span>
-            <div className="tab-visibility-grid">
-              {(() => {
-                let lastGroup = null;
-                return allTabs.filter((t) => t.id !== "months" && t.id !== "settings").map((t) => {
-                  const Icon = t.icon;
-                  const visible = !hiddenTabs.includes(t.id);
-                  const showHeading = t.group && t.group !== lastGroup;
-                  lastGroup = t.group;
-                  return (
-                    <React.Fragment key={t.id}>
-                      {showHeading && <span className="tab-visibility-heading">{t.group}</span>}
-                      <button
-                        type="button"
-                        className={`chip tab-visibility-chip${visible ? " active" : ""}`}
-                        onClick={() => onToggleTabHidden(t.id)}
-                        title={visible ? `Hide ${t.label} from the nav` : `Show ${t.label} in the nav`}
-                      >
-                        <Icon size={14} />
-                        {t.label}
-                      </button>
-                    </React.Fragment>
-                  );
-                });
-              })()}
+          <div style={{ marginTop: 14 }}>
+            <span className="small-label">Visible tabs</span>
+            <div className="tab-visibility-groups">
+              {groupTabsForVisibility(allTabs).map(({ group, tabs }) => (
+                <div className="tab-visibility-row" key={group}>
+                  <span className="tab-visibility-heading">{group}</span>
+                  <div className="tab-visibility-chips">
+                    {tabs.map((t) => {
+                      const Icon = t.icon;
+                      const visible = !hiddenTabs.includes(t.id);
+                      return (
+                        <button
+                          type="button"
+                          key={t.id}
+                          className={`chip tab-visibility-chip${visible ? " active" : ""}`}
+                          onClick={() => onToggleTabHidden(t.id)}
+                          title={visible ? `Hide ${t.label} from the nav` : `Show ${t.label} in the nav`}
+                        >
+                          <Icon size={14} />
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

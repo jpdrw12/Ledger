@@ -437,11 +437,13 @@ export const css = `
   .contribution-row { padding-left:14px; }
   .excluded-tag { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); border:1px solid var(--stamp); border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:middle; }
   .exclude-toggle { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); cursor:pointer; padding:7px 0; }
-  .tab-visibility-grid { display:flex; flex-wrap:wrap; align-items:center; gap:8px; flex:2; }
+  .tab-visibility-groups { margin-top:6px; }
+  .tab-visibility-row { display:flex; align-items:center; gap:12px; padding:7px 0; border-bottom:1px solid var(--paper-line); }
+  .tab-visibility-row:last-child { border-bottom:none; }
+  .tab-visibility-heading { flex:0 0 110px; font-size:10px; text-transform:uppercase; letter-spacing:0.4px; color:var(--ink-soft); }
+  .tab-visibility-chips { display:flex; flex-wrap:wrap; gap:8px; flex:1; }
   .tab-visibility-chip { opacity:0.55; }
   .tab-visibility-chip.active { opacity:1; }
-  .tab-visibility-heading { flex-basis:100%; font-size:10px; text-transform:uppercase; letter-spacing:0.4px; color:var(--ink-soft); margin-top:8px; }
-  .tab-visibility-heading:first-child { margin-top:0; }
   .cat-row.selectable { cursor:pointer; border-radius:3px; }
   .cat-row.selectable:hover { background:var(--card); }
   .cat-row.selected { background:var(--card); }
