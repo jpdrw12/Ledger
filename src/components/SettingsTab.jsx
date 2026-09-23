@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { FolderSync, Trash2, Archive, Sun, Moon, Monitor, Users, Plus, Download, RefreshCw, ChevronDown, ChevronRight, Compass, Keyboard } from "lucide-react";
 
 const SHORTCUTS = [
+  { keys: ["Ctrl", "K"], desc: "Jump to any tab (type to search)" },
   { keys: ["Ctrl", "Z"], desc: "Undo the last delete" },
   { keys: ["/"], desc: "Jump to the Months search" },
   { keys: ["N"], desc: "Add a new month (on the Months tab)" },
@@ -277,22 +278,29 @@ function SettingsTab({
           <div className="backup-folder" style={{ marginTop: 10, alignItems: "flex-start" }}>
             <span className="small-label" style={{ flex: 1, paddingTop: 6 }}>Visible tabs</span>
             <div className="tab-visibility-grid">
-              {allTabs.filter((t) => t.id !== "months" && t.id !== "settings").map((t) => {
-                const Icon = t.icon;
-                const visible = !hiddenTabs.includes(t.id);
-                return (
-                  <button
-                    type="button"
-                    key={t.id}
-                    className={`chip tab-visibility-chip${visible ? " active" : ""}`}
-                    onClick={() => onToggleTabHidden(t.id)}
-                    title={visible ? `Hide ${t.label} from the nav` : `Show ${t.label} in the nav`}
-                  >
-                    <Icon size={14} />
-                    {t.label}
-                  </button>
-                );
-              })}
+              {(() => {
+                let lastGroup = null;
+                return allTabs.filter((t) => t.id !== "months" && t.id !== "settings").map((t) => {
+                  const Icon = t.icon;
+                  const visible = !hiddenTabs.includes(t.id);
+                  const showHeading = t.group && t.group !== lastGroup;
+                  lastGroup = t.group;
+                  return (
+                    <React.Fragment key={t.id}>
+                      {showHeading && <span className="tab-visibility-heading">{t.group}</span>}
+                      <button
+                        type="button"
+                        className={`chip tab-visibility-chip${visible ? " active" : ""}`}
+                        onClick={() => onToggleTabHidden(t.id)}
+                        title={visible ? `Hide ${t.label} from the nav` : `Show ${t.label} in the nav`}
+                      >
+                        <Icon size={14} />
+                        {t.label}
+                      </button>
+                    </React.Fragment>
+                  );
+                });
+              })()}
             </div>
           </div>
         )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart } from "lucide-react";
 import * as db from "./lib/db.js";
-import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, money, reconcileTabOrder } from "./lib/calc.js";
+import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, allBudgetPaceAlerts, money, reconcileTabOrder } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton, ExpandContext, useDragList } from "./components/Shared.jsx";
@@ -9,6 +9,7 @@ import { activeProfileName, activeProfileDb, getProfiles, setActiveProfile, PROF
 import { resetAndSeedDemo } from "./lib/demo.js";
 import TourOverlay, { TOUR_STEPS } from "./components/TourOverlay.jsx";
 import UpdateModal from "./components/UpdateModal.jsx";
+import CommandPalette from "./components/CommandPalette.jsx";
 import { useToast } from "./components/Toast.jsx";
 import { checkForUpdate, installUpdate, restartApp, isNewer } from "./lib/update.js";
 import MonthsTab from "./components/MonthsTab.jsx";
@@ -32,20 +33,24 @@ const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "
 // JSX) so the sidebar/classic nav can be reordered — see tabOrder state and
 // the reorder-mode drag handlers below. `icon` is a component reference,
 // not a rendered element, so it can be instantiated fresh per render.
+// `group` (absent for Months/Settings, which are always visible and don't
+// appear in Settings → Visible tabs at all) is purely a display grouping for
+// that chip grid — it has no effect on nav order or behavior, which stays
+// driven entirely by tabOrder/hiddenTabs as before.
 const TAB_DEFS = [
   { id: "months", label: "Months", icon: ListChecks },
-  { id: "card", label: "Card Spending", icon: CreditCard, dataTour: "tab-card" },
-  { id: "bills", label: "Bill Templates", icon: Receipt, dataTour: "tab-bills" },
-  { id: "categories", label: "Categories", icon: Tag, dataTour: "tab-categories" },
-  { id: "goals", label: "Savings Goals", icon: PiggyBank, dataTour: "tab-goals" },
-  { id: "accounts", label: "Accounts", icon: Wallet, dataTour: "tab-accounts" },
-  { id: "debts", label: "Debts", icon: Landmark, dataTour: "tab-debts" },
-  { id: "debtspending", label: "Debt Spending", icon: ShoppingCart, dataTour: "tab-debtspending" },
-  { id: "budgeting", label: "Budgeting & Planning", icon: Target, dataTour: "tab-budgeting" },
-  { id: "investments", label: "Investments", icon: LineChart, dataTour: "tab-investments" },
-  { id: "insights", label: "Insights", icon: TrendingUp, dataTour: "tab-insights" },
-  { id: "report", label: "Report", icon: FileText, dataTour: "tab-report" },
-  { id: "backups", label: "Backups", icon: HardDrive, dataTour: "tab-backups" },
+  { id: "card", label: "Card Spending", icon: CreditCard, dataTour: "tab-card", group: "Spending" },
+  { id: "bills", label: "Bill Templates", icon: Receipt, dataTour: "tab-bills", group: "Spending" },
+  { id: "categories", label: "Categories", icon: Tag, dataTour: "tab-categories", group: "Spending" },
+  { id: "debtspending", label: "Debt Spending", icon: ShoppingCart, dataTour: "tab-debtspending", group: "Spending" },
+  { id: "accounts", label: "Accounts", icon: Wallet, dataTour: "tab-accounts", group: "Accounts & debts" },
+  { id: "debts", label: "Debts", icon: Landmark, dataTour: "tab-debts", group: "Accounts & debts" },
+  { id: "goals", label: "Savings Goals", icon: PiggyBank, dataTour: "tab-goals", group: "Planning" },
+  { id: "budgeting", label: "Budgeting & Planning", icon: Target, dataTour: "tab-budgeting", group: "Planning" },
+  { id: "investments", label: "Investments", icon: LineChart, dataTour: "tab-investments", group: "Planning" },
+  { id: "insights", label: "Insights", icon: TrendingUp, dataTour: "tab-insights", group: "Insights & reports" },
+  { id: "report", label: "Report", icon: FileText, dataTour: "tab-report", group: "Insights & reports" },
+  { id: "backups", label: "Backups", icon: HardDrive, dataTour: "tab-backups", group: "System" },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 const DEFAULT_TAB_ORDER = TAB_DEFS.map((t) => t.id);
@@ -292,6 +297,19 @@ export default function App() {
     };
   }, []);
   const { itemProps: tabItemProps, handleProps: tabHandleProps } = useDragList(tabOrder, setTabOrder);
+
+  // Global "jump to a tab" palette (Ctrl/Cmd+K) — see CommandPalette.jsx.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Which tabs are hidden from the nav (Settings → Appearance → Visible
   // tabs). "months" and "settings" can't be hidden — months is the default
@@ -997,6 +1015,11 @@ export default function App() {
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     return billStatus(state.months, today);
   }, [state]);
+  // Surfaced globally (not just on the Budgeting tab) so a category trending
+  // over budget this month is visible from wherever you happen to be —
+  // this was the whole point of pulling allBudgetPaceAlerts out of
+  // BudgetingTab.jsx into a shared calc.js function.
+  const paceAlerts = useMemo(() => (state ? allBudgetPaceAlerts(state) : []), [state]);
   const existingTags = useMemo(
     () =>
       state
@@ -1185,6 +1208,11 @@ export default function App() {
                   {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
                 </button>
               )}
+              {paceAlerts.length > 0 && (
+                <button className="due-chip" onClick={() => setTab("budgeting")} title="Go to Budgeting & Planning">
+                  <span className="due-chip-pace">{paceAlerts.length} trending over</span>
+                </button>
+              )}
               {TAB_HELP[tab] && (
                 <button className="help-btn" onClick={() => setShowHelp((v) => !v)} title="What's this tab?" aria-label="Tab help">?</button>
               )}
@@ -1227,6 +1255,11 @@ export default function App() {
                   {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
                   {overdue > 0 && dueSoon > 0 && " · "}
                   {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
+                </button>
+              )}
+              {paceAlerts.length > 0 && (
+                <button className="due-chip" onClick={() => setTab("budgeting")} title="Go to Budgeting & Planning">
+                  <span className="due-chip-pace">{paceAlerts.length} trending over</span>
                 </button>
               )}
               {hasUpdate && (
@@ -1399,6 +1432,13 @@ export default function App() {
           onExit={exitTour}
         />
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        tabs={orderedTabs.filter((t) => !hiddenTabs.includes(t.id))}
+        onSelect={(id) => { setTab(id); setPaletteOpen(false); }}
+        onClose={() => setPaletteOpen(false)}
+      />
 
       {showUpdateModal && hasUpdate && (
         <UpdateModal

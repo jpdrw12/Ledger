@@ -532,6 +532,30 @@ export function budgetPaceAlerts(rows, monthLabel, { now = new Date(), threshold
     .sort((a, b) => b.overBy - a.overBy);
 }
 
+// Pace alerts across all three budgeted sources (expense categories, card
+// spending, debt spending) for the app's global header — the same
+// computation BudgetingTab.jsx uses per-section, just run over the whole
+// `loadFullState()` shape and merged/sorted together so the header doesn't
+// need to know about category_budgets vs card_budgets vs debt_budgets. Pure
+// — no I/O; `now` is passed through to budgetPaceAlerts for testability.
+export function allBudgetPaceAlerts(state, { now } = {}) {
+  const months = state.months || [];
+  if (months.length === 0) return [];
+  const latestLabel = months[months.length - 1].monthLabel;
+  const cardAccountIds = new Set((state.accounts || []).filter((a) => a.excludeFromTotal).map((a) => a.id));
+  const spendableDebtIds = new Set((state.debts || []).filter((d) => d.spendable).map((d) => d.id));
+
+  const expenseBudgets = budgetReport(months, state.categoryBudgets);
+  const cardBudgetData = cardBudgetReport(months[months.length - 1], state.cardBudgets || [], cardAccountIds, state.bills);
+  const debtBudgetData = debtBudgetReport(state.debtCharges || [], latestLabel, state.debtBudgets || [], spendableDebtIds);
+
+  return [
+    ...budgetPaceAlerts(expenseBudgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual })), latestLabel, { now }).map((a) => ({ ...a, source: "Expense" })),
+    ...budgetPaceAlerts(cardBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel, { now }).map((a) => ({ ...a, source: "Card" })),
+    ...budgetPaceAlerts(debtBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel, { now }).map((a) => ({ ...a, source: "Debt" })),
+  ].sort((a, b) => b.overBy - a.overBy);
+}
+
 // The target a planning-grid cell shows/edits for one category+month: a
 // per-month override if one exists (category_budget_months), else the
 // single global target (category_budgets/card_budgets/debt_budgets) —

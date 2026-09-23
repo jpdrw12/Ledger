@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Target, CreditCard, Landmark, CalendarRange, Wand2, AlertTriangle } from "lucide-react";
 import * as db from "../lib/db.js";
-import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, budgetPaceAlerts, whatIfComparison, money } from "../lib/calc.js";
+import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, allBudgetPaceAlerts, whatIfComparison, money } from "../lib/calc.js";
 import { Collapsible, BudgetEditor, BudgetGrid, Sparkline } from "./Shared.jsx";
 
 // One home for every monthly budget target — expense categories, card
@@ -107,14 +107,10 @@ function BudgetingTab({ state, onChanged }) {
   };
 
   // --- Mid-month pace alerts ------------------------------------------------
-  // Only meaningful for the real current calendar month — budgetPaceAlerts
-  // itself returns [] for any other month label, so this is safe to compute
-  // even when latestLabel is a past/future/unparseable month.
-  const paceAlerts = [
-    ...budgetPaceAlerts(expenseBudgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual })), latestLabel).map((a) => ({ ...a, source: "Expense" })),
-    ...budgetPaceAlerts(cardBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel).map((a) => ({ ...a, source: "Card" })),
-    ...budgetPaceAlerts(debtBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel).map((a) => ({ ...a, source: "Debt" })),
-  ].sort((a, b) => b.overBy - a.overBy);
+  // Shared with the global header badge (App.jsx) via allBudgetPaceAlerts —
+  // see its comment in calc.js for why this now takes the whole state shape
+  // instead of each source's rows being assembled here.
+  const paceAlerts = allBudgetPaceAlerts(state);
 
   if (state.months.length === 0) {
     return (

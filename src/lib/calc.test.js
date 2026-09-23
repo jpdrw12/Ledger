@@ -27,6 +27,7 @@ import {
   buildCardCsv,
   budgetReport,
   netWorthSnapshot,
+  allBudgetPaceAlerts,
   investmentValueAsOf,
   investmentGrowth,
   investmentTotalsByMonth,
@@ -1166,6 +1167,33 @@ describe("budgetPaceAlerts", () => {
     ];
     const alerts = budgetPaceAlerts(rows2, "June 2026", { now: midJune });
     expect(alerts.map((a) => a.category)).toEqual(["B", "A"]);
+  });
+});
+
+describe("allBudgetPaceAlerts", () => {
+  const midJune = new Date(2026, 5, 15);
+  // 15 days into June: Groceries (400 budget, 300 spent) projects to 600, over.
+  const month = makeMonth("m1", { monthLabel: "June 2026", expensesPay1: [{ category: "Groceries", amount: 300, accountId: "a" }] });
+
+  it("merges pace alerts across expense/card/debt sources, tagged with source", () => {
+    const state = {
+      months: [month],
+      accounts: [{ id: "a" }],
+      categoryBudgets: [{ category: "Groceries", amount: 400 }],
+      cardBudgets: [],
+      debtBudgets: [],
+      debts: [],
+      debtCharges: [],
+      bills: [],
+    };
+    const alerts = allBudgetPaceAlerts(state, { now: midJune });
+    expect(alerts).toEqual([
+      { category: "Groceries", budget: 400, actual: 300, projected: 600, overBy: 200, source: "Expense" },
+    ]);
+  });
+
+  it("returns [] when there are no months", () => {
+    expect(allBudgetPaceAlerts({ months: [] }, { now: midJune })).toEqual([]);
   });
 });
 
