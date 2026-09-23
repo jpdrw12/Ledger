@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.44.0]
+
+### Added
+- Insights' "Consolidated ending balance over time" and "Forecast" charts
+  now show a second line for net worth including investments, once any
+  investment account exists — previously only the Report's Net worth chart
+  had this.
+
+### Fixed
+- Every in-app trend chart (Insights, Card Spending, Debt Spending,
+  Budgeting what-if, Investments dividends) no longer distorts — dots were
+  stretching into ellipses depending on the chart's actual rendered width.
+
+### Changed
+- Corner rounding is now a consistent 5-step scale across the app instead
+  of ~11 slightly-different one-off values; badges/chips/tags are now a
+  true pill shape regardless of their own size.
+
 ## [0.43.0]
 
 ### Added
