@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.42.0]
+
+### Added
+- **Command palette (Ctrl/Cmd+K).** Jump straight to any visible tab by
+  typing its name — a faster, more scalable alternative to hunting for the
+  right icon in the collapsed sidebar.
+- **Global pace-alert badge.** Budget pace alerts (a category trending over
+  its target this month) now show in the header from any tab, not just
+  Budgeting & Planning, with a click-through to it.
+
+### Changed
+- Settings → Appearance → Visible tabs now groups its chips under headings
+  (Spending, Accounts & debts, Planning, Insights & reports, System)
+  instead of one flat row.
+
 ## [0.41.2]
 
 ### Fixed
