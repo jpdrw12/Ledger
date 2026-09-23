@@ -54,6 +54,13 @@ import {
   updateDividend,
   deleteDividend,
   restoreDividend,
+  getCategoryGroupBudgets,
+  upsertCategoryGroupBudget,
+  deleteCategoryGroupBudget,
+  getCardGroupBudgets,
+  upsertCardGroupBudget,
+  getDebtGroupBudgets,
+  upsertDebtGroupBudget,
 } from "./db.js";
 
 let adapter;
@@ -588,5 +595,54 @@ describe("dividends", () => {
     await addDividend("June 2026", { amount: 25 });
     const state = await loadFullState();
     expect(state.dividends).toMatchObject([{ monthLabel: "June 2026", amount: 25 }]);
+  });
+});
+
+describe("group-level budgets", () => {
+  it("upserts and reads back category/card/debt group budgets, keyed by group id", async () => {
+    const groupId = await addCategoryGroup("expenses", "Food");
+    await upsertCategoryGroupBudget(groupId, 350);
+    await upsertCardGroupBudget(groupId, 200);
+    await upsertDebtGroupBudget(groupId, 75);
+
+    expect(await getCategoryGroupBudgets()).toEqual([{ groupId, amount: 350 }]);
+    expect(await getCardGroupBudgets()).toEqual([{ groupId, amount: 200 }]);
+    expect(await getDebtGroupBudgets()).toEqual([{ groupId, amount: 75 }]);
+  });
+
+  it("upserting again updates the amount rather than inserting a duplicate row", async () => {
+    const groupId = await addCategoryGroup("expenses", "Food");
+    await upsertCategoryGroupBudget(groupId, 350);
+    await upsertCategoryGroupBudget(groupId, 400);
+    const rows = await getCategoryGroupBudgets();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount).toBe(400);
+  });
+
+  it("deleteCategoryGroupBudget removes just that group's row", async () => {
+    const g1 = await addCategoryGroup("expenses", "Food");
+    const g2 = await addCategoryGroup("expenses", "Bills");
+    await upsertCategoryGroupBudget(g1, 350);
+    await upsertCategoryGroupBudget(g2, 500);
+    await deleteCategoryGroupBudget(g1);
+    expect(await getCategoryGroupBudgets()).toEqual([{ groupId: g2, amount: 500 }]);
+  });
+
+  it("deleting the group itself cascades to its budget row", async () => {
+    const groupId = await addCategoryGroup("expenses", "Food");
+    await upsertCategoryGroupBudget(groupId, 350);
+    await deleteCategoryGroup(groupId);
+    expect(await getCategoryGroupBudgets()).toEqual([]);
+  });
+
+  it("loadFullState exposes all three group-budget tables", async () => {
+    const groupId = await addCategoryGroup("expenses", "Food");
+    await upsertCategoryGroupBudget(groupId, 350);
+    await upsertCardGroupBudget(groupId, 200);
+    await upsertDebtGroupBudget(groupId, 75);
+    const state = await loadFullState();
+    expect(state.categoryGroupBudgets).toEqual([{ groupId, amount: 350 }]);
+    expect(state.cardGroupBudgets).toEqual([{ groupId, amount: 200 }]);
+    expect(state.debtGroupBudgets).toEqual([{ groupId, amount: 75 }]);
   });
 });

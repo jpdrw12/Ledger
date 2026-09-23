@@ -513,6 +513,19 @@ export default function App() {
     localStorage.setItem("ledger.uiScale", String(uiScale));
   }, [uiScale]);
 
+  // How long a hover has to linger before a delayed custom tooltip (e.g.
+  // the collapsed sidebar's account badges) appears — see --tooltip-delay
+  // in styles.js. Native title tooltips have their own OS/browser-controlled
+  // delay and aren't affected by this.
+  const [tooltipDelay, setTooltipDelayState] = useState(() => Number(localStorage.getItem("ledger.tooltipDelay")) || 700);
+  const setTooltipDelay = useCallback((ms) => {
+    setTooltipDelayState(ms);
+    localStorage.setItem("ledger.tooltipDelay", String(ms));
+  }, []);
+  useEffect(() => {
+    document.documentElement.style.setProperty("--tooltip-delay", `${tooltipDelay}ms`);
+  }, [tooltipDelay]);
+
   // Color theme — sets --hue/accent across the whole palette (see styles.js).
   useEffect(() => {
     document.documentElement.setAttribute("data-accent", accent);
@@ -1302,7 +1315,6 @@ export default function App() {
             title={`${name} — ${members.length} tabs. Click to ${expanded ? "collapse" : "expand"}. Hover + F2 to rename, Delete to ungroup.`}
           >
             <FolderClosed size={16} />
-            <span className="tab-group-badge">{members.length}</span>
             <span className="tab-label">{name}</span>
             {expanded ? <ChevronDown size={12} className="tab-group-chevron" /> : <ChevronRight size={12} className="tab-group-chevron" />}
           </button>
@@ -1565,6 +1577,8 @@ export default function App() {
           onThemeChange={setTheme}
           uiScale={uiScale}
           onScaleChange={setUiScale}
+          tooltipDelay={tooltipDelay}
+          onTooltipDelayChange={setTooltipDelay}
           onResetScale={() => setUiScale(75)}
           accent={accent}
           onAccentChange={setAccent}

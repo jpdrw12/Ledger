@@ -496,9 +496,9 @@ describe("buildReportHtml", () => {
     const html = buildReportHtml(state, ledger, {});
 
     expect(REPORT_SECTIONS.map((s) => s.key)).toEqual([
-      "networth", "months", "accounts", "spending", "card", "debtspending", "budgets", "bills", "goals", "debts", "combined",
+      "networth", "months", "accounts", "spending", "card", "debtspending", "budgets", "investments", "bills", "goals", "debts", "combined",
     ]);
-    ["<h2>Net worth", "<h2>Months", "<h2>Accounts", "<h2>Spending by category", "<h2>Card spending", "<h2>Debt spending", "<h2>Budgets", "<h2>Bills", "<h2>Savings goals", "<h2>Debts", "<h2>Combined categories"].forEach((h) =>
+    ["<h2>Net worth", "<h2>Months", "<h2>Accounts", "<h2>Spending by category", "<h2>Card spending", "<h2>Debt spending", "<h2>Budgets", "<h2>Investments & dividends", "<h2>Bills", "<h2>Savings goals", "<h2>Debts", "<h2>Combined categories"].forEach((h) =>
       expect(html).toContain(h)
     );
     expect(html).toContain("Your current setup");

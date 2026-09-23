@@ -318,10 +318,45 @@ export function monthlyExpenseTotals(months, filter, bills) {
   }));
 }
 
+// Builds the "group row" list shared by budgetReport/cardBudgetReport/
+// debtBudgetReport: one row per group that has its own budget set (a group
+// IS the budgetable unit once its categories are organized — see
+// migrations/0022_budget_groups.sql), with a `members` breakdown of each
+// category's own actual for BudgetRow's expandable detail. `groups` are
+// that source's category_groups rows, `groupMembers` its
+// category_group_members rows, `groupBudgets` are [{groupId, amount}] from
+// one of the three *_group_budgets tables. `actualKey` is "actual" (expense
+// categories) or "spent" (card/debt) — whichever key the caller's
+// individual-row shape already uses, so a group row stays shape-compatible
+// with the individual rows it's merged alongside. Pure — no I/O.
+function buildGroupBudgetRows(groups, groupMembers, groupBudgets, spentByCat, actualKey) {
+  const groupsById = new Map((groups || []).map((g) => [g.id, g]));
+  return (groupBudgets || [])
+    .map((gb) => {
+      const group = groupsById.get(gb.groupId);
+      if (!group) return null;
+      const memberCats = (groupMembers || []).filter((m) => m.groupId === gb.groupId).map((m) => m.category);
+      const members = memberCats.map((cat) => ({ category: cat, [actualKey]: spentByCat[cat.trim().toLowerCase()] || 0 }));
+      const actual = members.reduce((s, m) => s + m[actualKey], 0);
+      return { category: group.name, groupId: gb.groupId, budget: Number(gb.amount) || 0, [actualKey]: actual, members };
+    })
+    .filter(Boolean);
+}
+
+// Lowercased category names that belong to any group in `groupMembers` — a
+// grouped category is excluded from the individual-row list, since its
+// budgeting now happens at the group level via buildGroupBudgetRows.
+function groupedCategorySet(groupMembers) {
+  return new Set((groupMembers || []).map((m) => m.category.trim().toLowerCase()));
+}
+
 // Card-budget report for a single month: total allowance (budget row with the
 // reserved '' category) and per-category targets vs what was actually spent on
-// the card accounts that month. Pure — no I/O.
-export function cardBudgetReport(month, cardBudgets, cardIds, bills) {
+// the card accounts that month. `groups`/`groupMembers`/`groupBudgets`
+// (all optional — omit for the old flat-per-category behavior) roll a
+// grouped category into its group's single row instead of listing it on
+// its own; see buildGroupBudgetRows. Pure — no I/O.
+export function cardBudgetReport(month, cardBudgets, cardIds, bills, groups, groupMembers, groupBudgets) {
   const months = month ? [month] : [];
   const spentByCat = {}; // keyed by lowercased category
   let spentTotal = 0;
@@ -332,10 +367,12 @@ export function cardBudgetReport(month, cardBudgets, cardIds, bills) {
 
   const totalRow = (cardBudgets || []).find((b) => b.category === "");
   const total = totalRow ? { budget: Number(totalRow.amount) || 0, spent: spentTotal } : null;
-  const categories = (cardBudgets || [])
-    .filter((b) => b.category !== "")
-    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[(b.category || "").trim().toLowerCase()] || 0 }))
-    .sort((a, b) => a.category.localeCompare(b.category));
+  const grouped = groupedCategorySet(groupMembers);
+  const individual = (cardBudgets || [])
+    .filter((b) => b.category !== "" && !grouped.has((b.category || "").trim().toLowerCase()))
+    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[(b.category || "").trim().toLowerCase()] || 0 }));
+  const groupRows = buildGroupBudgetRows(groups, groupMembers, groupBudgets, spentByCat, "spent");
+  const categories = [...groupRows, ...individual].sort((a, b) => a.category.localeCompare(b.category));
   return { total, categories };
 }
 
@@ -487,7 +524,10 @@ export function withInvestmentTotals(series, realMonths, investmentValues, inves
 
 // Compares each budgeted category's spend in the latest month against its
 // monthly target. Returns rows sorted with over-budget first, then by overage.
-export function budgetReport(months, budgets) {
+// `groups`/`groupMembers`/`groupBudgets` (all optional — omit for the old
+// flat-per-category behavior) roll a grouped category into its group's
+// single row instead of listing it on its own; see buildGroupBudgetRows.
+export function budgetReport(months, budgets, groups, groupMembers, groupBudgets) {
   const latest = months[months.length - 1];
   const spend = {}; // keyed by lowercased category
   if (latest) {
@@ -496,12 +536,42 @@ export function budgetReport(months, budgets) {
       spend[key] = (spend[key] || 0) + (Number(e.amount) || 0);
     });
   }
-  return (budgets || [])
+  const grouped = groupedCategorySet(groupMembers);
+  const individual = (budgets || [])
+    .filter((b) => !grouped.has((b.category || "").trim().toLowerCase()))
     .map((b) => {
       const actual = spend[(b.category || "").trim().toLowerCase()] || 0;
       return { category: b.category, budget: b.amount, actual, remaining: b.amount - actual, over: actual > b.amount };
-    })
-    .sort((a, b) => (a.over === b.over ? b.actual - a.actual : a.over ? -1 : 1));
+    });
+  const groupRows = buildGroupBudgetRows(groups, groupMembers, groupBudgets, spend, "actual").map((r) => ({
+    ...r, remaining: r.budget - r.actual, over: r.actual > r.budget,
+  }));
+  return [...groupRows, ...individual].sort((a, b) => (a.over === b.over ? b.actual - a.actual : a.over ? -1 : 1));
+}
+
+// Reshapes a category-keyed snapshot list (categorySnapshotsByMonth /
+// debtCategorySnapshotsByLabel) so a grouped category's total rolls into
+// its group's total under the group's name as the key, while an ungrouped
+// category's own total passes through unchanged — lets
+// recentCategoryAverage/budgetOverUnderHistory work the same whether the
+// "category" they're asked about is actually a group name or a plain
+// category, without those two functions needing to know grouping exists.
+// Pure — no I/O.
+export function groupSnapshots(snapshots, groups, groupMembers) {
+  const groupsById = new Map((groups || []).map((g) => [g.id, g]));
+  const groupNameByCategory = new Map();
+  (groupMembers || []).forEach((m) => {
+    const group = groupsById.get(m.groupId);
+    if (group) groupNameByCategory.set(m.category.trim().toLowerCase(), group.name);
+  });
+  return (snapshots || []).map((snap) => {
+    const totals = {};
+    Object.entries(snap.totals || {}).forEach(([cat, val]) => {
+      const key = groupNameByCategory.get(cat.trim().toLowerCase()) || cat;
+      totals[key] = (totals[key] || 0) + val;
+    });
+    return { ...snap, totals };
+  });
 }
 
 // Average of a category's total across the last `count` snapshots (fewer if
@@ -569,9 +639,14 @@ export function allBudgetPaceAlerts(state, { now } = {}) {
   const cardAccountIds = new Set((state.accounts || []).filter((a) => a.excludeFromTotal).map((a) => a.id));
   const spendableDebtIds = new Set((state.debts || []).filter((d) => d.spendable).map((d) => d.id));
 
-  const expenseBudgets = budgetReport(months, state.categoryBudgets);
-  const cardBudgetData = cardBudgetReport(months[months.length - 1], state.cardBudgets || [], cardAccountIds, state.bills);
-  const debtBudgetData = debtBudgetReport(state.debtCharges || [], latestLabel, state.debtBudgets || [], spendableDebtIds);
+  const expenseGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const expenseMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
+  const debtGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
+  const debtMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
+
+  const expenseBudgets = budgetReport(months, state.categoryBudgets, expenseGroups, expenseMembers, state.categoryGroupBudgets);
+  const cardBudgetData = cardBudgetReport(months[months.length - 1], state.cardBudgets || [], cardAccountIds, state.bills, expenseGroups, expenseMembers, state.cardGroupBudgets);
+  const debtBudgetData = debtBudgetReport(state.debtCharges || [], latestLabel, state.debtBudgets || [], spendableDebtIds, debtGroups, debtMembers, state.debtGroupBudgets);
 
   return [
     ...budgetPaceAlerts(expenseBudgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual })), latestLabel, { now }).map((a) => ({ ...a, source: "Expense" })),
@@ -747,7 +822,10 @@ export function estimateMonthlyInterest(balance, apr) {
 // Debt-budget report for a single month label: total allowance (the reserved ''
 // category row) and per-category targets vs what was actually charged that month
 // on spendable debts. Pure — no I/O. Mirrors cardBudgetReport.
-export function debtBudgetReport(charges, monthLabel, debtBudgets, debtIds) {
+// `groups`/`groupMembers`/`groupBudgets` (all optional — omit for the old
+// flat-per-category behavior) roll a grouped category into its group's
+// single row instead of listing it on its own; see buildGroupBudgetRows.
+export function debtBudgetReport(charges, monthLabel, debtBudgets, debtIds, groups, groupMembers, groupBudgets) {
   const scoped = monthLabel == null ? (charges || []) : (charges || []).filter((c) => c.monthLabel === monthLabel);
   const spentByCat = {}; // keyed by lowercased category
   let spentTotal = 0;
@@ -758,10 +836,12 @@ export function debtBudgetReport(charges, monthLabel, debtBudgets, debtIds) {
 
   const totalRow = (debtBudgets || []).find((b) => b.category === "");
   const total = totalRow ? { budget: Number(totalRow.amount) || 0, spent: spentTotal } : null;
-  const categories = (debtBudgets || [])
-    .filter((b) => b.category !== "")
-    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[(b.category || "").trim().toLowerCase()] || 0 }))
-    .sort((a, b) => a.category.localeCompare(b.category));
+  const grouped = groupedCategorySet(groupMembers);
+  const individual = (debtBudgets || [])
+    .filter((b) => b.category !== "" && !grouped.has((b.category || "").trim().toLowerCase()))
+    .map((b) => ({ category: b.category, budget: Number(b.amount) || 0, spent: spentByCat[(b.category || "").trim().toLowerCase()] || 0 }));
+  const groupRows = buildGroupBudgetRows(groups, groupMembers, groupBudgets, spentByCat, "spent");
+  const categories = [...groupRows, ...individual].sort((a, b) => a.category.localeCompare(b.category));
   return { total, categories };
 }
 

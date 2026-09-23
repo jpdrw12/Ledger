@@ -41,6 +41,8 @@ const THEMES = [
 
 const SCALE_OPTIONS = [50, 60, 70, 75, 80, 90, 100, 110, 125, 150];
 const DEFAULT_SCALE = 75;
+const TOOLTIP_DELAY_OPTIONS = [0, 300, 500, 700, 1000, 1500];
+const DEFAULT_TOOLTIP_DELAY = 700;
 
 // Swatch colors mirror the per-theme accents in styles.js (data-accent).
 const ACCENTS = [
@@ -57,6 +59,7 @@ const ACCENTS = [
 function SettingsTab({
   theme, onThemeChange,
   uiScale, onScaleChange, onResetScale,
+  tooltipDelay, onTooltipDelayChange,
   accent, onAccentChange,
   containScroll, onContainScrollChange,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
@@ -71,6 +74,10 @@ function SettingsTab({
   const [profiles, setProfiles] = useState(getProfiles);
   const [newProfileName, setNewProfileName] = useState("");
   const [showChangelog, setShowChangelog] = useState(false);
+  // Whether the custom-delay number input is showing — starts true if the
+  // saved value isn't one of the presets (e.g. loaded from an earlier
+  // custom entry), otherwise only after explicitly picking "Custom…".
+  const [customDelayMode, setCustomDelayMode] = useState(() => !TOOLTIP_DELAY_OPTIONS.includes(tooltipDelay));
   const active = activeProfileDb();
 
   // Full history from the bundled changelog (works offline).
@@ -289,6 +296,37 @@ function SettingsTab({
             />
             Keep scrolling inside a section (don't scroll the page at its end)
           </label>
+        </div>
+        <div className="backup-folder" style={{ marginTop: 10 }}>
+          <span className="small-label" style={{ flex: 1 }}>Tooltip delay</span>
+          <select
+            value={customDelayMode ? "custom" : tooltipDelay}
+            onChange={(e) => {
+              if (e.target.value === "custom") setCustomDelayMode(true);
+              else { setCustomDelayMode(false); onTooltipDelayChange(Number(e.target.value)); }
+            }}
+          >
+            {TOOLTIP_DELAY_OPTIONS.map((ms) => (
+              <option key={ms} value={ms}>{ms === 0 ? "Instant" : `${ms}ms`}{ms === DEFAULT_TOOLTIP_DELAY ? " (default)" : ""}</option>
+            ))}
+            <option value="custom">Custom…</option>
+          </select>
+          {customDelayMode && (
+            <>
+              <input
+                className="day-input"
+                style={{ width: 90 }}
+                type="number"
+                min="0"
+                max="5000"
+                step="50"
+                value={tooltipDelay}
+                onChange={(e) => onTooltipDelayChange(Math.min(5000, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                title="Custom delay in milliseconds (max 5000)"
+              />
+              <span className="small-label">ms</span>
+            </>
+          )}
         </div>
         {allTabs && (
           <div style={{ marginTop: 14 }}>

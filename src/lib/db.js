@@ -619,6 +619,44 @@ export async function deleteDebtBudget(category) {
 }
 
 // ---------------------------------------------------------------------
+// Group-level budgets — once a category is organized into a group
+// (Categories tab), the group itself becomes the budgetable unit instead of
+// each member category individually. One row per group with a target set,
+// keyed by group_id rather than name so a rename never orphans it — see
+// migrations/0022_budget_groups.sql. `table` is always one of the three
+// hardcoded names below (never user input), so interpolating it directly
+// is safe, same as setOrder()/nextOrder() already do for a table name.
+// ---------------------------------------------------------------------
+async function getGroupBudgets(table) {
+  const db = await getDb();
+  const rows = await db.select(`SELECT * FROM ${table}`);
+  return rows.map((r) => ({ groupId: r.group_id, amount: r.amount }));
+}
+async function upsertGroupBudget(table, groupId, amount) {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO ${table} (group_id, amount) VALUES ($1, $2) ON CONFLICT(group_id) DO UPDATE SET amount = $2`,
+    [groupId, amount || 0]
+  );
+}
+async function deleteGroupBudget(table, groupId) {
+  const db = await getDb();
+  await db.execute(`DELETE FROM ${table} WHERE group_id = $1`, [groupId]);
+}
+
+export const getCategoryGroupBudgets = () => getGroupBudgets("category_group_budgets");
+export const upsertCategoryGroupBudget = (groupId, amount) => upsertGroupBudget("category_group_budgets", groupId, amount);
+export const deleteCategoryGroupBudget = (groupId) => deleteGroupBudget("category_group_budgets", groupId);
+
+export const getCardGroupBudgets = () => getGroupBudgets("card_group_budgets");
+export const upsertCardGroupBudget = (groupId, amount) => upsertGroupBudget("card_group_budgets", groupId, amount);
+export const deleteCardGroupBudget = (groupId) => deleteGroupBudget("card_group_budgets", groupId);
+
+export const getDebtGroupBudgets = () => getGroupBudgets("debt_group_budgets");
+export const upsertDebtGroupBudget = (groupId, amount) => upsertGroupBudget("debt_group_budgets", groupId, amount);
+export const deleteDebtGroupBudget = (groupId) => deleteGroupBudget("debt_group_budgets", groupId);
+
+// ---------------------------------------------------------------------
 // Per-month budget overrides (category_budget_months) — layered on top of
 // the single global target above. `kind` is 'category' | 'card' | 'debt',
 // matching which of category_budgets/card_budgets/debt_budgets the
@@ -1061,6 +1099,7 @@ export async function wipeAllData() {
     "additions", "bill_payments", "expenses", "pay_blocks", "months",
     "category_budgets", "card_budgets", "bills", "goals", "debts", "accounts",
     "dividends", "investment_values", "investment_accounts",
+    "category_group_budgets", "card_group_budgets", "debt_group_budgets",
   ];
   for (const t of tables) await db.execute(`DELETE FROM ${t}`);
 }
@@ -1068,7 +1107,7 @@ export async function wipeAllData() {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows, categoryBudgetMonthRows, investmentAccounts, investmentValues, dividends] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows, categoryBudgetMonthRows, investmentAccounts, investmentValues, dividends, categoryGroupBudgets, cardGroupBudgets, debtGroupBudgets] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -1094,6 +1133,9 @@ export async function loadFullState() {
       getInvestmentAccounts(),
       getInvestmentValues(),
       getDividends(),
+      getCategoryGroupBudgets(),
+      getCardGroupBudgets(),
+      getDebtGroupBudgets(),
     ]);
 
   const months = monthRows.map((m) => {
@@ -1154,5 +1196,5 @@ export async function loadFullState() {
   const categoryGroupMembers = categoryGroupMemberRows.map((m) => ({ source: m.source, category: m.category, groupId: m.group_id }));
   const categoryBudgetMonths = categoryBudgetMonthRows.map((r) => ({ kind: r.source, category: r.category, monthLabel: r.month_label, amount: r.amount }));
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers, categoryBudgetMonths, investmentAccounts, investmentValues, dividends };
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers, categoryBudgetMonths, investmentAccounts, investmentValues, dividends, categoryGroupBudgets, cardGroupBudgets, debtGroupBudgets };
 }

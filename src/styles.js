@@ -136,14 +136,23 @@ export const css = `
   .app.sidebar-collapsed .sidebar { overflow: visible; }
   .app.sidebar-collapsed .sb-balance { justify-content:center; position:relative; }
   /* Custom tooltip for collapsed account badges — avoids the native title
-     tooltip, which leaves a grey artifact in the WebKitGTK webview. */
-  .app.sidebar-collapsed .sb-balance:hover::after {
+     tooltip, which leaves a grey artifact in the WebKitGTK webview. Faded
+     in on a delay (matching how a native tooltip only appears after
+     lingering, rather than popping instantly on every pass of the mouse)
+     via opacity + transition-delay: the element exists at all times at
+     opacity:0 so the delayed transition has something to animate from —
+     :hover just reveals it after --tooltip-delay (Settings → Appearance,
+     0.7s default; set from App.jsx), while leaving reverts to the base
+     rule's undelayed transition so it disappears immediately. */
+  .app.sidebar-collapsed .sb-balance::after {
     content: attr(data-tip);
     position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%);
     background:var(--ink); color:var(--paper); font-size:11.5px; white-space:nowrap;
     padding:5px 9px; border-radius:var(--radius-md); z-index:100; pointer-events:none;
     box-shadow:0 2px 8px rgba(0,0,0,0.25);
+    opacity:0; transition:opacity .1s ease;
   }
+  .app.sidebar-collapsed .sb-balance:hover::after { opacity:1; transition-delay:var(--tooltip-delay, .7s); }
 
   .app-header { display:flex; gap:14px; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:16px; margin-bottom:16px; }
   .app-header h1 { font-family: Georgia, 'Iowan Old Style', serif; font-size:26px; margin:0 0 4px; letter-spacing:0.2px; }
@@ -223,8 +232,6 @@ export const css = `
   .tab-grip { color: var(--stamp); flex-shrink: 0; }
   .tab-group { position:relative; }
   .tab-group-btn { position:relative; }
-  .tab-group-badge { font-size:10px; font-weight:700; background:var(--stamp); color:var(--paper); border-radius:var(--radius-pill); padding:1px 5px; line-height:1.4; flex-shrink:0; }
-  .app.sidebar-collapsed .tab-group-badge { position:absolute; top:2px; right:2px; }
   .tab-group-chevron { margin-left:auto; flex-shrink:0; opacity:0.6; }
   .app.sidebar-collapsed .tab-group-chevron { display:none; }
   .tab-group-members { display:flex; flex-direction:column; gap:2px; padding-left:14px; margin-top:2px; }
@@ -433,6 +440,9 @@ export const css = `
   .cat-row-group:last-child { border-bottom:none; }
   .cat-row-group .cat-row { border-bottom:none; padding-bottom:2px; }
   .budget-trend-row { display:flex; align-items:center; gap:10px; padding:0 0 6px 152px; }
+  .cat-name-group { display:flex; align-items:center; gap:3px; background:none; border:none; padding:0; cursor:pointer; color:inherit; text-align:left; }
+  .budget-group-members { padding:0 0 8px 152px; display:flex; flex-direction:column; gap:3px; }
+  .budget-group-member { display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--ink-soft); max-width:260px; }
   .budget-history-dots { display:inline-flex; gap:3px; }
   .budget-history-dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--surplus); }
   .budget-history-dot.over { background:var(--deficit); }

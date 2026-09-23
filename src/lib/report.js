@@ -24,6 +24,9 @@ import {
   mergeCategoryTotals,
   billPaymentTotals,
   withInvestmentTotals,
+  investmentTotalsByMonth,
+  investmentGrowth,
+  dividendTotalsByMonth,
   money,
 } from "./calc.js";
 
@@ -450,6 +453,7 @@ export const REPORT_SECTIONS = [
   { key: "card", label: "Card spending" },
   { key: "debtspending", label: "Debt spending" },
   { key: "budgets", label: "Budgets vs. actual" },
+  { key: "investments", label: "Investments & dividends" },
   { key: "bills", label: "Bills — paid-this-range breakdown by bill/category, plus the recurring templates" },
   { key: "goals", label: "Savings goals" },
   { key: "debts", label: "Debts — current balances, payments logged in range, and applied history" },
@@ -823,7 +827,13 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
       )
     : `<p class="empty">No spendable debts set up.</p>`;
 
-  const budgets = budgetReport(rangeMonths, state.categoryBudgets);
+  const budgets = budgetReport(
+    rangeMonths,
+    state.categoryBudgets,
+    (state.categoryGroups || []).filter((g) => g.source === "expenses"),
+    (state.categoryGroupMembers || []).filter((m) => m.source === "expenses"),
+    state.categoryGroupBudgets
+  );
   const budgetSection = budgets.length
     ? table(
         [
@@ -835,6 +845,44 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
         budgets
       )
     : `<p class="empty">No category budgets set. (Budgets compare against the most recent month in the selected range.)</p>`;
+
+  // Investments & dividends. Values are carried-forward month to month (see
+  // investmentValueAsOf in calc.js), so growth/trend are computed against
+  // the full history up to the range end (uptoMonths) — same reasoning as
+  // account balances elsewhere in this report — then displayed rows are
+  // filtered down to just the months in the selected range.
+  const investAccountRows = investmentAccounts.map((a) => {
+    const growthSeries = investmentGrowth(state.investmentValues, a.id, uptoMonths);
+    const inRange = growthSeries.filter((r) => rangeLabels.has(r.label));
+    const latest = growthSeries.length ? growthSeries[growthSeries.length - 1] : null;
+    const rangeGrowth = inRange.reduce((s, r) => s + r.growth, 0);
+    return { name: a.name, value: latest ? latest.value : 0, rangeGrowth };
+  });
+  const investAccountsSection = investAccountRows.length
+    ? table(
+        [
+          { key: "name", label: "Account" },
+          { key: "value", label: "Latest value", num: true, render: (r) => money(r.value) },
+          { key: "rangeGrowth", label: "Change this range", num: true, render: (r) => money(r.rangeGrowth), cls: (r) => amtClass(r.rangeGrowth) },
+        ],
+        investAccountRows
+      )
+    : `<p class="empty">No investment accounts recorded.</p>`;
+  const investTotalsInRange = investmentAccounts.length
+    ? investmentTotalsByMonth(uptoMonths, state.investmentValues, investmentAccounts).filter((r) => rangeLabels.has(r.label))
+    : [];
+  const investTotalChart = investTotalsInRange.length >= 2 ? lineChartSvg(investTotalsInRange, new Set(), { ariaLabel: "Investment total" }) : "";
+  const investTotalsSection = investTotalsInRange.length
+    ? table([{ key: "label", label: "Month" }, { key: "value", label: "Total", num: true, render: (r) => money(r.value) }], investTotalsInRange)
+    : `<p class="empty">No investment values recorded in this range.</p>`;
+
+  const dividendRows = dividendTotalsByMonth(rangeMonths, state.dividends || []);
+  const dividendTotal = dividendRows.reduce((s, r) => s + r.value, 0);
+  const dividendChart = dividendRows.filter((r) => r.value > 0).length >= 2 ? lineChartSvg(dividendRows, new Set(), { ariaLabel: "Dividends" }) : "";
+  const dividendSection = dividendRows.length
+    ? table([{ key: "label", label: "Month" }, { key: "value", label: "Dividends", num: true, render: (r) => money(r.value) }], dividendRows) +
+      `<p style="text-align:right;font-weight:700;margin-top:6px;">Total dividends this range: ${money(dividendTotal)}</p>`
+    : `<p class="empty">No dividends logged in this range.</p>`;
 
   // Everything spent or charged this range, in one place — regular
   // expenses, card spending, and debt spending combined by category name.
@@ -915,6 +963,16 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   <section>
     <h2>Budgets vs. actual</h2>
     ${budgetSection}
+  </section>`);
+  if (on("investments")) rangeBlocks.push(`
+  <section>
+    <h2>Investments & dividends</h2>
+    <h3>Accounts</h3>
+    ${investAccountsSection}
+    ${investTotalChart ? `<h3>Total over time</h3>${investTotalChart}${investTotalsSection}` : ""}
+    <h3>Dividends</h3>
+    ${dividendChart}
+    ${dividendSection}
   </section>`);
 
   const setupBlocks = [];

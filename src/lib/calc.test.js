@@ -29,6 +29,7 @@ import {
   netWorthSnapshot,
   allBudgetPaceAlerts,
   reconcileTabGroups,
+  groupSnapshots,
   investmentValueAsOf,
   investmentGrowth,
   investmentTotalsByMonth,
@@ -318,6 +319,68 @@ describe("cardBudgetReport", () => {
     });
     const r = cardBudgetReport(mixedCaseMonth, [{ category: "Groceries", amount: 300 }], cardIds);
     expect(r.categories).toEqual([{ category: "Groceries", budget: 300, spent: 50 }]);
+  });
+
+  describe("group-aware budgeting", () => {
+    const groups = [{ id: "g1", source: "expenses", name: "Food" }];
+    const groupMembers = [
+      { source: "expenses", category: "Groceries", groupId: "g1" },
+      { source: "expenses", category: "Gas", groupId: "g1" },
+    ];
+    const groupBudgets = [{ groupId: "g1", amount: 350 }];
+
+    it("rolls grouped categories into one group row instead of listing them individually", () => {
+      const r = cardBudgetReport(month, budgets, cardIds, null, groups, groupMembers, groupBudgets);
+      expect(r.categories).toEqual([
+        {
+          category: "Food",
+          groupId: "g1",
+          budget: 350,
+          spent: 305, // 210 groceries + 95 gas
+          members: [
+            { category: "Groceries", spent: 210 },
+            { category: "Gas", spent: 95 },
+          ],
+        },
+      ]);
+    });
+
+    it("leaves an ungrouped category with its own individual row", () => {
+      const soloMonth = makeMonth("m1", { expensesPay1: [{ id: "e1", category: "Streaming", amount: 15, accountId: "card" }] });
+      const soloBudgets = [{ category: "Streaming", amount: 20 }, { category: "Groceries", amount: 300 }];
+      const r = cardBudgetReport(soloMonth, soloBudgets, cardIds, null, groups, groupMembers, groupBudgets);
+      // Groceries is grouped (rolls into Food, $0 spent this month); Streaming stays individual.
+      expect(r.categories.find((c) => c.category === "Streaming")).toEqual({ category: "Streaming", budget: 20, spent: 15 });
+      expect(r.categories.find((c) => c.category === "Food")).toMatchObject({ budget: 350, spent: 0 });
+    });
+
+    it("a group with no budget set doesn't appear as a row at all", () => {
+      const r = cardBudgetReport(month, budgets, cardIds, null, groups, groupMembers, []);
+      expect(r.categories.find((c) => c.category === "Food")).toBeUndefined();
+    });
+  });
+});
+
+describe("groupSnapshots", () => {
+  const groups = [{ id: "g1", source: "expenses", name: "Food" }];
+  const groupMembers = [
+    { source: "expenses", category: "Groceries", groupId: "g1" },
+    { source: "expenses", category: "Gas", groupId: "g1" },
+  ];
+  const snapshots = [
+    { label: "Mar", totals: { Groceries: 100, Gas: 40, Streaming: 15 } },
+    { label: "Apr", totals: { Groceries: 120 } },
+  ];
+
+  it("sums grouped categories under the group's name, leaves ungrouped categories alone", () => {
+    expect(groupSnapshots(snapshots, groups, groupMembers)).toEqual([
+      { label: "Mar", totals: { Food: 140, Streaming: 15 } },
+      { label: "Apr", totals: { Food: 120 } },
+    ]);
+  });
+
+  it("passes snapshots through unchanged when there are no groups", () => {
+    expect(groupSnapshots(snapshots, [], [])).toEqual(snapshots);
   });
 });
 

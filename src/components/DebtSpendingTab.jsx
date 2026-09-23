@@ -40,7 +40,7 @@ function DebtSpendingTab({ state, onChanged, onGoToBudgeting }) {
       maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
       totalSpend: cats.reduce((s, c) => s + c.total, 0),
       budgetLabel: bLabel,
-      budgets: debtBudgetReport(charges, bLabel, state.debtBudgets || [], ids),
+      budgets: debtBudgetReport(charges, bLabel, state.debtBudgets || [], ids, categoryGroups, categoryGroupMembers, state.debtGroupBudgets),
     };
   }, [state, chartMonth, debtFilter]);
 
@@ -324,7 +324,7 @@ function DebtSpendingTab({ state, onChanged, onGoToBudgeting }) {
       <Collapsible title="Debt spending budget" icon={<Landmark size={13} />} right={budgetLabel || null}>
         <BudgetProgressList
           allowance={budgets.total ? { budget: budgets.total.budget, actual: budgets.total.spent } : null}
-          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent }))}
+          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, members: b.members, memberActualKey: "spent" }))}
           emptyLabel="No debt spending budget set yet."
         />
         {onGoToBudgeting && (

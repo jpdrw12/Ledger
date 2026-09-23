@@ -190,13 +190,21 @@ export function GroupedCategoryList({ categories, groups, members, selectedCat, 
 // target would have been blown lately") right where a target gets set. The
 // read-only BudgetProgressList (used on Card/Debt Spending/Insights) omits
 // both to stay a plain glance.
-function BudgetRow({ label, budget, actual, onSave, onDelete, recentAvg, history }) {
+function BudgetRow({ label, budget, actual, onSave, onDelete, recentAvg, history, members, memberActualKey }) {
+  const [expanded, setExpanded] = useState(false);
   const over = actual > budget;
   const pct = budget > 0 ? Math.min(100, (actual / budget) * 100) : 0;
+  const hasMembers = members && members.length > 0;
   return (
     <div className="cat-row-group">
       <div className="cat-row">
-        <span className="cat-name">{label}</span>
+        {hasMembers ? (
+          <button type="button" className="cat-name cat-name-group" onClick={() => setExpanded((v) => !v)} title="A category group — its budget is the sum of every category in it">
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {label}
+          </button>
+        ) : (
+          <span className="cat-name">{label}</span>
+        )}
         <div className="cat-bar-track" title={`${money(actual)} of ${money(budget)}`}>
           <div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
         </div>
@@ -210,6 +218,16 @@ function BudgetRow({ label, budget, actual, onSave, onDelete, recentAvg, history
           </button>
         )}
       </div>
+      {hasMembers && expanded && (
+        <div className="budget-group-members">
+          {members.map((m) => (
+            <div className="budget-group-member" key={m.category}>
+              <span className="cat-name">{m.category}</span>
+              <span className="mono">{money(m[memberActualKey || "actual"] || 0)}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {(recentAvg != null || history) && (
         <div className="budget-trend-row">
           {recentAvg != null && <span className="small-label">Recent avg: {money(recentAvg)}/mo</span>}
@@ -280,8 +298,10 @@ export function BudgetEditor({
           actual={b.actual}
           recentAvg={b.recentAvg}
           history={b.history}
-          onSave={(amt) => onSaveRow(b.category, amt)}
-          onDelete={() => onDeleteRow(b.category)}
+          members={b.members}
+          memberActualKey={b.memberActualKey}
+          onSave={(amt) => onSaveRow(b.category, amt, b.groupId)}
+          onDelete={() => onDeleteRow(b.category, b.groupId)}
         />
       ))}
       <div className="cat-row budget-add">
@@ -309,7 +329,7 @@ export function BudgetProgressList({ allowance, rows, emptyLabel = "No budgets s
     <>
       {allowance && <BudgetRow label="Allowance" budget={allowance.budget} actual={allowance.actual} />}
       {rows.map((b) => (
-        <BudgetRow key={b.category} label={b.category} budget={b.budget} actual={b.actual} />
+        <BudgetRow key={b.category} label={b.category} budget={b.budget} actual={b.actual} members={b.members} memberActualKey={b.memberActualKey} />
       ))}
     </>
   );

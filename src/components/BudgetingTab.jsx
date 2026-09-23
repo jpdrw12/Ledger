@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Target, CreditCard, Landmark, CalendarRange, Wand2, AlertTriangle } from "lucide-react";
 import * as db from "../lib/db.js";
-import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, allBudgetPaceAlerts, whatIfComparison, money } from "../lib/calc.js";
+import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, groupSnapshots, allBudgetPaceAlerts, whatIfComparison, money } from "../lib/calc.js";
 import { Collapsible, BudgetEditor, BudgetGrid, Sparkline } from "./Shared.jsx";
 
 // One home for every monthly budget target — expense categories, card
@@ -28,17 +28,34 @@ function BudgetingTab({ state, onChanged }) {
   const endBaseline = whatIf.rows.length ? whatIf.rows[whatIf.rows.length - 1].baseline : 0;
   const endScenario = whatIf.rows.length ? whatIf.rows[whatIf.rows.length - 1].scenario : 0;
 
-  // --- Expense categories (category_budgets) -----------------------------
+  // --- Category groups — shared by expense/card (both source="expenses",
+  // since card spending is just expenses on a card-flagged account) and
+  // debt (source="debtCharges"). Once a category is grouped, it's the
+  // group that gets budgeted, not the category — see calc.js's
+  // buildGroupBudgetRows and migrations/0022_budget_groups.sql.
+  const expenseGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const expenseGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
+  const debtGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
+  const debtGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
+  const findGroupByName = (groups, name) => groups.find((g) => g.name.trim().toLowerCase() === (name || "").trim().toLowerCase());
+
+  // --- Expense categories (category_budgets / category_group_budgets) ----
   const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
-  const expenseBudgets = budgetReport(state.months, state.categoryBudgets);
-  const expenseCategorySuggestions = spendingByCategory(state.months, { exclude: cardAccountIds }).map((c) => c.category);
-  const expenseSnapshots = categorySnapshotsByMonth(state.months, { exclude: cardAccountIds });
-  const saveExpenseBudget = async (category, amount) => {
-    await db.upsertCategoryBudget(category, amount);
+  const expenseBudgets = budgetReport(state.months, state.categoryBudgets, expenseGroups, expenseGroupMembers, state.categoryGroupBudgets);
+  const expenseCategorySuggestions = [...expenseGroups.map((g) => g.name), ...spendingByCategory(state.months, { exclude: cardAccountIds }).map((c) => c.category)];
+  const expenseSnapshots = groupSnapshots(categorySnapshotsByMonth(state.months, { exclude: cardAccountIds }), expenseGroups, expenseGroupMembers);
+  // A row that came from buildGroupBudgetRows carries its groupId; the
+  // "Add budget" flow (onAddRow) has no row to read one from, so it
+  // resolves the typed text against known group names itself instead.
+  const saveExpenseBudget = async (category, amount, groupId) => {
+    const gid = groupId || findGroupByName(expenseGroups, category)?.id;
+    if (gid) await db.upsertCategoryGroupBudget(gid, amount);
+    else await db.upsertCategoryBudget(category, amount);
     onChanged();
   };
-  const deleteExpenseBudget = async (category) => {
-    await db.deleteCategoryBudget(category);
+  const deleteExpenseBudget = async (category, groupId) => {
+    if (groupId) await db.deleteCategoryGroupBudget(groupId);
+    else await db.deleteCategoryBudget(category);
     onChanged();
   };
   const expenseOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "category");
@@ -47,30 +64,36 @@ function BudgetingTab({ state, onChanged }) {
     onChanged();
   };
 
-  // --- Card spending (card_budgets) ---------------------------------------
+  // --- Card spending (card_budgets / card_group_budgets) ------------------
   const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
-  const cardBudgetData = cardBudgetReport(latestMonth, state.cardBudgets || [], cardAccountIds, state.bills);
-  const cardCategorySuggestions = Array.from(
-    new Set(
-      state.months.flatMap((m) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])])
-        .filter((e) => cardAccountIds.has(e.accountId))
-        .map((e) => e.category)
-        .filter(Boolean)
-    )
-  ).sort();
-  const cardSnapshots = categorySnapshotsByMonth(state.months, { include: cardAccountIds }, state.bills);
+  const cardBudgetData = cardBudgetReport(latestMonth, state.cardBudgets || [], cardAccountIds, state.bills, expenseGroups, expenseGroupMembers, state.cardGroupBudgets);
+  const cardCategorySuggestions = [
+    ...expenseGroups.map((g) => g.name),
+    ...Array.from(
+      new Set(
+        state.months.flatMap((m) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])])
+          .filter((e) => cardAccountIds.has(e.accountId))
+          .map((e) => e.category)
+          .filter(Boolean)
+      )
+    ).sort(),
+  ];
+  const cardSnapshots = groupSnapshots(categorySnapshotsByMonth(state.months, { include: cardAccountIds }, state.bills), expenseGroups, expenseGroupMembers);
   const cardAllowance = (state.cardBudgets || []).find((b) => b.category === "");
   const saveCardAllowance = async (amount) => {
     if (amount > 0) await db.upsertCardBudget("", amount);
     else if (cardAllowance) await db.deleteCardBudget("");
     onChanged();
   };
-  const saveCardBudget = async (category, amount) => {
-    await db.upsertCardBudget(category, amount);
+  const saveCardBudget = async (category, amount, groupId) => {
+    const gid = groupId || findGroupByName(expenseGroups, category)?.id;
+    if (gid) await db.upsertCardGroupBudget(gid, amount);
+    else await db.upsertCardBudget(category, amount);
     onChanged();
   };
-  const deleteCardBudget = async (category) => {
-    await db.deleteCardBudget(category);
+  const deleteCardBudget = async (category, groupId) => {
+    if (groupId) await db.deleteCardGroupBudget(groupId);
+    else await db.deleteCardBudget(category);
     onChanged();
   };
   const cardOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "card");
@@ -79,25 +102,28 @@ function BudgetingTab({ state, onChanged }) {
     onChanged();
   };
 
-  // --- Debt spending (debt_budgets) ---------------------------------------
+  // --- Debt spending (debt_budgets / debt_group_budgets) ------------------
   const spendableDebts = (state.debts || []).filter((d) => d.spendable);
   const debtIds = new Set(spendableDebts.map((d) => d.id));
   const debtCharges = state.debtCharges || [];
-  const debtBudgetData = debtBudgetReport(debtCharges, latestLabel, state.debtBudgets || [], debtIds);
-  const debtCategorySuggestions = Array.from(new Set(debtCharges.map((c) => c.category).filter(Boolean))).sort();
-  const debtSnapshots = debtCategorySnapshotsByLabel(debtCharges, state.months.map((m) => m.monthLabel));
+  const debtBudgetData = debtBudgetReport(debtCharges, latestLabel, state.debtBudgets || [], debtIds, debtGroups, debtGroupMembers, state.debtGroupBudgets);
+  const debtCategorySuggestions = [...debtGroups.map((g) => g.name), ...Array.from(new Set(debtCharges.map((c) => c.category).filter(Boolean))).sort()];
+  const debtSnapshots = groupSnapshots(debtCategorySnapshotsByLabel(debtCharges, state.months.map((m) => m.monthLabel)), debtGroups, debtGroupMembers);
   const debtAllowance = (state.debtBudgets || []).find((b) => b.category === "");
   const saveDebtAllowance = async (amount) => {
     if (amount > 0) await db.upsertDebtBudget("", amount);
     else if (debtAllowance) await db.deleteDebtBudget("");
     onChanged();
   };
-  const saveDebtBudget = async (category, amount) => {
-    await db.upsertDebtBudget(category, amount);
+  const saveDebtBudget = async (category, amount, groupId) => {
+    const gid = groupId || findGroupByName(debtGroups, category)?.id;
+    if (gid) await db.upsertDebtGroupBudget(gid, amount);
+    else await db.upsertDebtBudget(category, amount);
     onChanged();
   };
-  const deleteDebtBudget = async (category) => {
-    await db.deleteDebtBudget(category);
+  const deleteDebtBudget = async (category, groupId) => {
+    if (groupId) await db.deleteDebtGroupBudget(groupId);
+    else await db.deleteDebtBudget(category);
     onChanged();
   };
   const debtOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "debt");
@@ -148,6 +174,9 @@ function BudgetingTab({ state, onChanged }) {
         <BudgetEditor
           rows={expenseBudgets.map((b) => ({
             category: b.category,
+            groupId: b.groupId,
+            members: b.members,
+            memberActualKey: "actual",
             budget: b.budget,
             actual: b.actual,
             recentAvg: recentCategoryAverage(expenseSnapshots, b.category),
@@ -181,6 +210,9 @@ function BudgetingTab({ state, onChanged }) {
             onSaveAllowance={saveCardAllowance}
             rows={cardBudgetData.categories.map((b) => ({
               category: b.category,
+              groupId: b.groupId,
+              members: b.members,
+              memberActualKey: "spent",
               budget: b.budget,
               actual: b.spent,
               recentAvg: recentCategoryAverage(cardSnapshots, b.category),
@@ -215,6 +247,9 @@ function BudgetingTab({ state, onChanged }) {
             onSaveAllowance={saveDebtAllowance}
             rows={debtBudgetData.categories.map((b) => ({
               category: b.category,
+              groupId: b.groupId,
+              members: b.members,
+              memberActualKey: "spent",
               budget: b.budget,
               actual: b.spent,
               recentAvg: recentCategoryAverage(debtSnapshots, b.category),

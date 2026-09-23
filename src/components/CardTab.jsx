@@ -39,7 +39,7 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
       maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
       totalSpend: cats.reduce((s, c) => s + c.total, 0),
       budgetMonth: bMonth,
-      budgets: cardBudgetReport(bMonth, state.cardBudgets || [], ids, state.bills),
+      budgets: cardBudgetReport(bMonth, state.cardBudgets || [], ids, state.bills, categoryGroups, categoryGroupMembers, state.cardGroupBudgets),
     };
   }, [state, chartMonth]);
 
@@ -303,7 +303,7 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
       <Collapsible title="Card budget" icon={<CreditCard size={13} />} right={budgetMonth ? budgetMonth.monthLabel : null}>
         <BudgetProgressList
           allowance={budgets.total ? { budget: budgets.total.budget, actual: budgets.total.spent } : null}
-          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent }))}
+          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, members: b.members, memberActualKey: "spent" }))}
           emptyLabel="No card budget set yet."
         />
         {onGoToBudgeting && (

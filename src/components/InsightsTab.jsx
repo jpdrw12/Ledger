@@ -20,7 +20,13 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
       // Sparkline knows to skip the second line entirely rather than plot a
       // flat $0 one — see withInvestmentTotals's comment in calc.js.
       seriesWithInvest: withInvestmentTotals(s, state.months, state.investmentValues, state.investmentAccounts),
-      budgets: budgetReport(state.months, state.categoryBudgets),
+      budgets: budgetReport(
+        state.months,
+        state.categoryBudgets,
+        (state.categoryGroups || []).filter((g) => g.source === "expenses"),
+        (state.categoryGroupMembers || []).filter((m) => m.source === "expenses"),
+        state.categoryGroupBudgets
+      ),
       latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
       nw: netWorthSnapshot(state.months, ledger, state.debts),
       avgNet: averageNetChange(state.months, ledger),
@@ -184,7 +190,7 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
       <Collapsible title="Budgets" icon={<Target size={13} />} right={latestLabel ? `vs ${latestLabel}` : null}>
         <BudgetProgressList
           allowance={null}
-          rows={budgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual }))}
+          rows={budgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual, members: b.members, memberActualKey: "actual" }))}
           emptyLabel="No budgets set yet."
         />
         {onGoToBudgeting && (
