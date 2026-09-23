@@ -18,7 +18,7 @@ const SHORTCUTS = [
 // group order following first-appearance order in `allTabs`.
 function groupTabsForVisibility(allTabs) {
   const groups = [];
-  allTabs.filter((t) => t.id !== "months" && t.id !== "settings").forEach((t) => {
+  allTabs.filter((t) => t.id !== "overview" && t.id !== "settings").forEach((t) => {
     let bucket = groups.find((g) => g.group === t.group);
     if (!bucket) { bucket = { group: t.group, tabs: [] }; groups.push(bucket); }
     bucket.tabs.push(t);
@@ -232,7 +232,10 @@ function SettingsTab({
           <span className="small-label" style={{ flex: 1 }}>Layout</span>
           <div className="seg-group">
             <button className={"seg-btn" + (layout === "sidebar" ? " selected" : "")} onClick={() => onLayoutChange("sidebar")}>Sidebar</button>
+            <button className={"seg-btn" + (layout === "grouped" ? " selected" : "")} onClick={() => onLayoutChange("grouped")}>Grouped</button>
             <button className={"seg-btn" + (layout === "classic" ? " selected" : "")} onClick={() => onLayoutChange("classic")}>Classic</button>
+            <button className={"seg-btn" + (layout === "minimal" ? " selected" : "")} onClick={() => onLayoutChange("minimal")}>Minimal</button>
+            <button className={"seg-btn" + (layout === "tabstrip" ? " selected" : "")} onClick={() => onLayoutChange("tabstrip")}>Tab strip</button>
           </div>
         </div>
         <div className="backup-folder" style={{ marginTop: 10 }}>

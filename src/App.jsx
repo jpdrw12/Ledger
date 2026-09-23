@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed, LayoutDashboard, Search } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, allBudgetPaceAlerts, money, reconcileTabOrder, reconcileTabGroups } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -12,6 +12,7 @@ import UpdateModal from "./components/UpdateModal.jsx";
 import CommandPalette from "./components/CommandPalette.jsx";
 import { useToast } from "./components/Toast.jsx";
 import { checkForUpdate, installUpdate, restartApp, isNewer } from "./lib/update.js";
+import OverviewTab from "./components/OverviewTab.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
 import CardTab from "./components/CardTab.jsx";
 import BillsTab from "./components/BillsTab.jsx";
@@ -38,7 +39,8 @@ const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "
 // that chip grid — it has no effect on nav order or behavior, which stays
 // driven entirely by tabOrder/hiddenTabs as before.
 const TAB_DEFS = [
-  { id: "months", label: "Months", icon: ListChecks },
+  { id: "overview", label: "Overview", icon: LayoutDashboard, dataTour: "tab-overview", group: "Core" },
+  { id: "months", label: "Months", icon: ListChecks, group: "Core" },
   { id: "card", label: "Card Spending", icon: CreditCard, dataTour: "tab-card", group: "Spending" },
   { id: "bills", label: "Bill Templates", icon: Receipt, dataTour: "tab-bills", group: "Spending" },
   { id: "categories", label: "Categories", icon: Tag, dataTour: "tab-categories", group: "Spending" },
@@ -55,6 +57,13 @@ const TAB_DEFS = [
 ];
 const DEFAULT_TAB_ORDER = TAB_DEFS.map((t) => t.id);
 
+// The five nav shells (Settings → Appearance → Layout): "sidebar" (icon
+// rail, ad-hoc drag-to-group), "classic" (stacked header + horizontal
+// tabs), "grouped" (labeled rail with permanent section headers, no ad-hoc
+// grouping), "minimal" (thin top bar, nav entirely via the Ctrl/Cmd+K
+// palette), "tabstrip" (thin top bar + a scrollable horizontal tab row).
+const VALID_LAYOUTS = ["sidebar", "classic", "grouped", "minimal", "tabstrip"];
+
 // Reads a saved tab order from localStorage; see reconcileTabOrder() in
 // calc.js for how it tolerates tabs added/removed since the save.
 function loadTabOrder() {
@@ -69,6 +78,7 @@ function loadTabOrder() {
 // Per-tab quick-reference help, shown by the "?" button. Concise; the full
 // walkthrough is the interactive guide in Settings.
 const TAB_HELP = {
+  overview: { title: "Overview", body: "A dashboard glance at the whole ledger — net worth trend, anything trending over budget, upcoming bills, and savings goal progress. Every widget links to its real tab; nothing is edited here." },
   months: { title: "Months", body: "Your month-by-month budget. Open a month to log income, pay bills, and record expenses across the two pays — balances carry forward automatically." },
   card: { title: "Card Spending", body: "Track spending on a card account separately from your consolidated total. Load the card with a transfer on the Months tab, then log purchases here." },
   bills: { title: "Bill Templates", body: "Define recurring bills once. Mark a bill auto-add and it drops into every new month at its due date." },
@@ -263,7 +273,7 @@ export default function App() {
   const { confirm, toast, undoLast } = useToast();
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [tab, setTab] = useState("months");
+  const [tab, setTab] = useState("overview");
   const [openMonth, setOpenMonth] = useState(null);
   const [backups, setBackups] = useState([]);
   const [archives, setArchives] = useState([]);
@@ -302,7 +312,10 @@ export default function App() {
   useEffect(() => {
     sessionStorage.removeItem("ledger.skipPicker");
   }, []);
-  const [layout, setLayoutState] = useState(() => (localStorage.getItem("ledger.layout") === "classic" ? "classic" : "sidebar"));
+  const [layout, setLayoutState] = useState(() => {
+    const saved = localStorage.getItem("ledger.layout");
+    return VALID_LAYOUTS.includes(saved) ? saved : "sidebar";
+  });
   const setLayout = useCallback((v) => {
     setLayoutState(v);
     localStorage.setItem("ledger.layout", v);
@@ -361,21 +374,21 @@ export default function App() {
   }, []);
 
   // Which tabs are hidden from the nav (Settings → Appearance → Visible
-  // tabs). "months" and "settings" can't be hidden — months is the default
-  // landing tab and settings is the only way back to this toggle. Reconciled
-  // the same way as tabOrder: an id from an older/removed tab is dropped
-  // silently rather than left dangling.
+  // tabs). "overview" and "settings" can't be hidden — overview is the
+  // default landing tab and settings is the only way back to this toggle.
+  // Reconciled the same way as tabOrder: an id from an older/removed tab is
+  // dropped silently rather than left dangling.
   const [hiddenTabs, setHiddenTabsState] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("ledger.hiddenTabs") || "[]");
       const known = new Set(DEFAULT_TAB_ORDER);
-      return Array.isArray(saved) ? saved.filter((id) => known.has(id) && id !== "months" && id !== "settings") : [];
+      return Array.isArray(saved) ? saved.filter((id) => known.has(id) && id !== "overview" && id !== "settings") : [];
     } catch {
       return [];
     }
   });
   const toggleTabHidden = useCallback((id) => {
-    if (id === "months" || id === "settings") return;
+    if (id === "overview" || id === "settings") return;
     setHiddenTabsState((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
       localStorage.setItem("ledger.hiddenTabs", JSON.stringify(next));
@@ -385,7 +398,7 @@ export default function App() {
   // If the tab currently open just got hidden, land somewhere still visible
   // rather than leaving the person stranded on a screen with no nav entry.
   useEffect(() => {
-    if (hiddenTabs.includes(tab)) setTab("months");
+    if (hiddenTabs.includes(tab)) setTab("overview");
   }, [hiddenTabs, tab]);
 
   // Sidebar-only tab groups (Shift+drag a tab onto another to group them;
@@ -1263,10 +1276,27 @@ export default function App() {
   // and dragging — see useDragList above); while reorderMode is active,
   // clicking is disabled so a drag's mouseup doesn't also switch tabs.
   const orderedTabs = tabOrder.map((id) => TAB_DEFS.find((t) => t.id === id)).filter(Boolean);
+  // Overview is always pinned first in every layout's nav (never draggable,
+  // never grouped alongside the rest) — rendered as a fixed lead item, then
+  // skipped when the reorderable loop below reaches its slot in tabOrder.
+  const overviewDef = TAB_DEFS.find((t) => t.id === "overview");
+  const overviewHidden = hiddenTabs.includes("overview");
+  const OverviewIcon = overviewDef.icon;
+  const overviewButton = !overviewHidden ? (
+    <TabButton
+      key="overview"
+      active={tab === "overview"}
+      onClick={() => setTab("overview")}
+      icon={<OverviewIcon size={16} />}
+      label={overviewDef.label}
+      dataTour={overviewDef.dataTour}
+    />
+  ) : null;
   const tabNav = (
     <>
+      {overviewButton}
       {orderedTabs.map((t, i) => {
-        if (hiddenTabs.includes(t.id)) return null;
+        if (t.id === "overview" || hiddenTabs.includes(t.id)) return null;
         const Icon = t.icon;
         return (
           <TabButton
@@ -1291,8 +1321,8 @@ export default function App() {
   // walking tabOrder; later members of the same group are skipped here, not
   // reordered — no contiguity is enforced on tabOrder itself.
   const renderedGroupIds = new Set();
-  const sidebarTabNav = orderedTabs.map((t, i) => {
-    if (hiddenTabs.includes(t.id)) return null;
+  const sidebarTabNav = [overviewButton, ...orderedTabs.map((t, i) => {
+    if (t.id === "overview" || hiddenTabs.includes(t.id)) return null;
     const groupId = tabGroups.membership[t.id];
     if (groupId) {
       if (renderedGroupIds.has(groupId)) return null;
@@ -1377,16 +1407,81 @@ export default function App() {
         <span className="tab-label">{t.label}</span>
       </button>
     );
-  });
+  })];
+
+  // "grouped" layout's nav: same tabs as the sidebar, but always clustered
+  // under their TAB_DEFS `group` (Settings → Visible tabs uses the same
+  // field) — sorted group-then-tab so each heading appears exactly once,
+  // regardless of any custom tabOrder position (that ordering matters for
+  // "sidebar"'s free drag-reorder; "grouped" trades that flexibility for a
+  // guaranteed-tidy always-sectioned rail, so it doesn't use useDragList at
+  // all — no reorder mode, no Shift-drag tab groups here).
+  const groupedTabNav = (() => {
+    const byGroup = new Map();
+    const groupOrder = [];
+    orderedTabs.forEach((t) => {
+      if (hiddenTabs.includes(t.id)) return;
+      const g = t.group || "";
+      if (!byGroup.has(g)) { byGroup.set(g, []); groupOrder.push(g); }
+      // Overview always leads its group (Core), regardless of tabOrder.
+      if (t.id === "overview") byGroup.get(g).unshift(t);
+      else byGroup.get(g).push(t);
+    });
+    // Core always leads the whole rail, regardless of tabOrder.
+    groupOrder.sort((a, b) => (a === "Core" ? -1 : b === "Core" ? 1 : 0));
+    const out = [];
+    groupOrder.forEach((g) => {
+      if (g) out.push(<div className="nav-group-heading" key={`h-${g}`}>{g}</div>);
+      byGroup.get(g).forEach((t) => {
+        const Icon = t.icon;
+        out.push(
+          <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)} icon={<Icon size={16} />} label={t.label} dataTour={t.dataTour} />
+        );
+      });
+    });
+    return out;
+  })();
 
   const classic = layout === "classic";
+  const hasSidebar = layout === "sidebar" || layout === "grouped";
+  const minimal = layout === "minimal";
+  const tabstrip = layout === "tabstrip";
+  const currentTabLabel = (TAB_DEFS.find((t) => t.id === tab) || {}).label || "";
+
+  // The due/pace/update/help status cluster is identical across the minimal
+  // and tabstrip topbars (and close to the sidebar-family topbar's) — kept
+  // as one fragment so the four layouts can't quietly drift out of sync.
+  const statusCluster = (
+    <>
+      {(overdue > 0 || dueSoon > 0) && (
+        <button className="due-chip" onClick={() => setTab("months")} title="Go to Months">
+          {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
+          {overdue > 0 && dueSoon > 0 && " · "}
+          {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
+        </button>
+      )}
+      {paceAlerts.length > 0 && (
+        <button className="due-chip" onClick={() => setTab("budgeting")} title="Go to Budgeting & Planning">
+          <span className="due-chip-pace">{paceAlerts.length} trending over</span>
+        </button>
+      )}
+      {hasUpdate && (
+        <button className="update-badge" onClick={() => setShowUpdateModal(true)} title={`Update available: v${updateInfo.latestVersion}`}>
+          ↑ v{updateInfo.latestVersion}
+        </button>
+      )}
+      {TAB_HELP[tab] && (
+        <button className="help-btn" onClick={() => setShowHelp((v) => !v)} title="What's this tab?" aria-label="Tab help">?</button>
+      )}
+    </>
+  );
 
   return (
     <ExpandContext.Provider value={expandSections}>
-    <div className={`app layout-${layout} ${!classic && sidebarCollapsed ? "sidebar-collapsed" : ""}`.trim()}>
+    <div className={`app layout-${layout} ${hasSidebar && sidebarCollapsed ? "sidebar-collapsed" : ""}`.trim()}>
       <style>{css}</style>
 
-      {!classic && (
+      {hasSidebar && (
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-icon"><BookOpen size={22} strokeWidth={1.5} /></span>
@@ -1401,7 +1496,11 @@ export default function App() {
             {sidebarCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
           </button>
         </div>
-        <nav className={`tabs ${reorderMode ? "reorder-mode" : ""}`} data-tour="tabs" title="Hold Alt to reorder, Shift-drag onto another tab to group">{sidebarTabNav}</nav>
+        {layout === "grouped" ? (
+          <nav className="tabs" data-tour="tabs">{groupedTabNav}</nav>
+        ) : (
+          <nav className={`tabs ${reorderMode ? "reorder-mode" : ""}`} data-tour="tabs" title="Hold Alt to reorder, Shift-drag onto another tab to group">{sidebarTabNav}</nav>
+        )}
         <div className="sidebar-balances" data-tour="accounts-panel">
           {state.accounts.map((a) => {
             const bal = balances[a.id] || 0;
@@ -1428,7 +1527,7 @@ export default function App() {
       <main className="app-main">
         {busy && state && <div className="saving-pill">Saving…</div>}
 
-        {classic ? (
+        {classic && (
           <>
             <header className="app-header">
               <BookOpen size={26} strokeWidth={1.5} />
@@ -1482,7 +1581,9 @@ export default function App() {
             </div>
             <nav className={`tabs ${reorderMode ? "reorder-mode" : ""}`} data-tour="tabs" title="Hold Alt and drag a tab to reorder">{tabNav}</nav>
           </>
-        ) : (
+        )}
+
+        {hasSidebar && (
           <div className="topbar">
             <div className="topbar-total" data-tour="total">
               <span className="topbar-total-label">Consolidated</span>
@@ -1492,29 +1593,33 @@ export default function App() {
               )}
             </div>
             <div className="topbar-status">
-              {(overdue > 0 || dueSoon > 0) && (
-                <button className="due-chip" onClick={() => setTab("months")} title="Go to Months">
-                  {overdue > 0 && <span className="due-chip-over">{overdue} overdue</span>}
-                  {overdue > 0 && dueSoon > 0 && " · "}
-                  {dueSoon > 0 && <span className="due-chip-soon">{dueSoon} due soon</span>}
-                </button>
-              )}
-              {paceAlerts.length > 0 && (
-                <button className="due-chip" onClick={() => setTab("budgeting")} title="Go to Budgeting & Planning">
-                  <span className="due-chip-pace">{paceAlerts.length} trending over</span>
-                </button>
-              )}
-              {hasUpdate && (
-                <button className="update-badge" onClick={() => setShowUpdateModal(true)} title={`Update available: v${updateInfo.latestVersion}`}>
-                  ↑ v{updateInfo.latestVersion}
-                </button>
-              )}
-              {TAB_HELP[tab] && (
-                <button className="help-btn" onClick={() => setShowHelp((v) => !v)} title="What's this tab?" aria-label="Tab help">?</button>
-              )}
+              {statusCluster}
               <span className="app-version">v{APP_VERSION}</span>
             </div>
           </div>
+        )}
+
+        {minimal && (
+          <div className="minimal-topbar" data-tour="total">
+            <span className="minimal-brand"><BookOpen size={16} strokeWidth={1.5} /> {activeProfileName()}'s Ledger</span>
+            <span className="minimal-current-tab">{currentTabLabel}</span>
+            <button type="button" className="minimal-palette-trigger" onClick={() => setPaletteOpen(true)}>
+              <Search size={13} /> Jump to a tab… <span className="kbd-hint">⌘K</span>
+            </button>
+            <span className={`minimal-total mono ${consolidated < 0 ? "deficit" : "surplus"}`}>{money(consolidated)}</span>
+            {statusCluster}
+          </div>
+        )}
+
+        {tabstrip && (
+          <>
+            <div className="minimal-topbar" data-tour="total">
+              <span className="minimal-brand"><BookOpen size={16} strokeWidth={1.5} /> {activeProfileName()}'s Ledger</span>
+              <span className={`minimal-total mono ${consolidated < 0 ? "deficit" : "surplus"}`} style={{ marginLeft: "auto" }}>{money(consolidated)}</span>
+              {statusCluster}
+            </div>
+            <nav className="tabstrip-row" data-tour="tabs">{tabNav}</nav>
+          </>
         )}
 
         {!tourActive && state.months.length === 0 && (
@@ -1536,6 +1641,18 @@ export default function App() {
           </div>
         )}
 
+      {tab === "overview" && (
+        <OverviewTab
+          state={state}
+          ledger={ledger}
+          balances={balances}
+          consolidated={consolidated}
+          paceAlerts={paceAlerts}
+          goalBalances={goalBalances}
+          onGoTo={setTab}
+          onAddMonth={handleAddMonth}
+        />
+      )}
       {tab === "months" && (
         <MonthsTab
           months={state.months}

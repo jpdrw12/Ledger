@@ -5,6 +5,25 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.46.0]
+
+### Added
+- **Overview tab** — a new dashboard landing page (default on launch):
+  consolidated total, a pace-alert banner, the net worth trend, quick
+  actions, upcoming bills, a budget snapshot, savings goals, account
+  balances, debts, investments (portfolio value + recent dividends), card
+  spending, debt spending, and top spending categories this month — each
+  card links through to its real tab. Cards for accounts/debts/investments/
+  card/debt-spending only appear when there's data for them.
+- **Two new nav layouts**, alongside the existing Sidebar and Classic
+  (Settings → Appearance → Layout):
+  - **Grouped** — a sidebar rail with permanent section headings (no
+    ad-hoc drag-to-group); Overview always leads the Core section.
+  - **Minimal** — a thin top bar with a "Jump to a tab…" trigger for the
+    Ctrl/Cmd+K command palette, no persistent tab list.
+  - **Tab strip** — a thin top bar plus a scrollable horizontal tab row.
+  - Overview is now always pinned first in every layout's nav.
+
 ## [0.45.0]
 
 ### Added

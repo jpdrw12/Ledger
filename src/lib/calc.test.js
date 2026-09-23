@@ -28,6 +28,7 @@ import {
   budgetReport,
   netWorthSnapshot,
   allBudgetPaceAlerts,
+  allBudgetSnapshot,
   reconcileTabGroups,
   groupSnapshots,
   investmentValueAsOf,
@@ -37,6 +38,7 @@ import {
   investmentTotalsForSeries,
   withInvestmentTotals,
   billStatus,
+  upcomingBills,
   parseCsv,
   parseExpensesCsv,
   parseActivityCsv,
@@ -1003,6 +1005,37 @@ describe("billStatus", () => {
   });
 });
 
+describe("upcomingBills", () => {
+  const today = "2026-06-15";
+  const bills = [{ id: "b1", name: "Rent" }, { id: "b2", name: "Internet" }];
+  const months = [
+    makeMonth("m1", {
+      billPayments: [
+        { id: "p1", billId: "b1", dueDate: "2026-06-30", paid: false, amountPaid: 1450 },
+        { id: "p2", billId: "b2", dueDate: "2026-06-10", paid: false, amountPaid: 80 },
+        { id: "p3", billId: "b1", dueDate: "2026-06-01", paid: true, amountPaid: 1450 }, // paid, excluded
+        { id: "p4", billId: "b2", dueDate: null, paid: false, amountPaid: 80 }, // no due date, excluded
+      ],
+    }),
+  ];
+
+  it("returns unpaid bills with a due date, soonest first, flagging overdue ones", () => {
+    expect(upcomingBills(months, bills, today)).toEqual([
+      { id: "p2", name: "Internet", amount: 80, dueDate: "2026-06-10", overdue: true },
+      { id: "p1", name: "Rent", amount: 1450, dueDate: "2026-06-30", overdue: false },
+    ]);
+  });
+
+  it("respects the limit", () => {
+    expect(upcomingBills(months, bills, today, 1)).toHaveLength(1);
+  });
+
+  it("falls back to a generic name when the bill template is missing", () => {
+    const orphan = [makeMonth("m1", { billPayments: [{ id: "p1", billId: "gone", dueDate: "2026-06-20", paid: false, amountPaid: 10 }] })];
+    expect(upcomingBills(orphan, [], today)[0].name).toBe("Bill");
+  });
+});
+
 describe("netWorthSnapshot", () => {
   it("computes assets (latest ending balance) minus total debts", () => {
     const months = [makeMonth("m1", { pay1: { income: 1000, incomeAccountId: "a", additions: [] }, pay2: { income: 0, incomeAccountId: "b", additions: [] } })];
@@ -1311,6 +1344,37 @@ describe("allBudgetPaceAlerts", () => {
 
   it("returns [] when there are no months", () => {
     expect(allBudgetPaceAlerts({ months: [] }, { now: midJune })).toEqual([]);
+  });
+});
+
+describe("allBudgetSnapshot", () => {
+  const month = makeMonth("m1", { monthLabel: "June 2026", expensesPay1: [{ category: "Groceries", amount: 300, accountId: "a" }, { category: "Gas", amount: 45, accountId: "a" }] });
+  const state = {
+    months: [month],
+    accounts: [{ id: "a" }],
+    categoryBudgets: [{ category: "Groceries", amount: 400 }, { category: "Gas", amount: 50 }],
+    cardBudgets: [],
+    debtBudgets: [],
+    debts: [],
+    debtCharges: [],
+    bills: [],
+  };
+
+  it("sorts every budgeted row by how much of its target is used, highest first", () => {
+    // Gas: 45/50 = 90%; Groceries: 300/400 = 75%.
+    expect(allBudgetSnapshot(state)).toEqual([
+      { category: "Gas", budget: 50, actual: 45, source: "Expense" },
+      { category: "Groceries", budget: 400, actual: 300, source: "Expense" },
+    ]);
+  });
+
+  it("excludes rows with no budget set", () => {
+    const noBudget = { ...state, categoryBudgets: [] };
+    expect(allBudgetSnapshot(noBudget)).toEqual([]);
+  });
+
+  it("returns [] when there are no months", () => {
+    expect(allBudgetSnapshot({ months: [] })).toEqual([]);
   });
 });
 

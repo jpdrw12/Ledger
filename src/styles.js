@@ -100,6 +100,31 @@ export const css = `
   .layout-classic .tab-btn .tab-label { display:inline; }
   .screen-loading { padding: 60px 20px; text-align: center; font-family: ui-sans-serif, system-ui; }
 
+  /* "grouped" layout: same sidebar rail as "sidebar", but the nav list is
+     always clustered under permanent section headings (no ad-hoc drag-to-
+     group). Reuses .sidebar/.tabs/.tab-btn — only the heading is new. */
+  .nav-group-heading { font-size:10px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-soft); font-weight:600; padding:12px 10px 4px; }
+  .nav-group-heading:first-child { padding-top:2px; }
+
+  /* "minimal" and "tabstrip" layouts: no sidebar column at all, single
+     block-flow main column, thin top bar. */
+  .app.layout-minimal, .app.layout-tabstrip { display:block; overflow-y:auto; padding:0; }
+  .app.layout-minimal .app-main, .app.layout-tabstrip .app-main { height:auto; overflow:visible; padding:18px 24px 60px; }
+  .minimal-topbar { display:flex; align-items:center; gap:14px; padding:12px 24px; border-bottom:2px solid var(--ink); background:var(--card); position:sticky; top:0; z-index:20; }
+  .minimal-brand { display:flex; align-items:center; gap:7px; font-family: Georgia, 'Iowan Old Style', serif; font-size:14.5px; flex-shrink:0; }
+  .minimal-current-tab { font-size:12.5px; color:var(--ink-soft); padding-left:14px; border-left:1px solid var(--paper-line); }
+  .minimal-palette-trigger { display:flex; align-items:center; gap:7px; background:var(--paper); border:1px solid var(--paper-line); border-radius:var(--radius-pill); padding:6px 12px; font-size:12.5px; color:var(--ink-soft); cursor:pointer; margin-left:auto; }
+  .minimal-palette-trigger:hover { border-color:var(--accent); color:var(--ink); }
+  .minimal-palette-trigger .kbd-hint { font-size:10.5px; opacity:0.6; }
+  .minimal-total { font-size:14px; font-weight:700; }
+
+  /* "tabstrip" layout: the minimal bar plus a scrollable horizontal row of
+     the same icon+label tabs Classic uses, with a fade hint at each edge
+     when the row overflows. */
+  .tabstrip-row { display:flex; gap:4px; overflow-x:auto; padding:8px 24px; border-bottom:1px solid var(--paper-line); background:var(--card); position:sticky; top:49px; z-index:19; -webkit-mask-image:linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent); mask-image:linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent); }
+  .tabstrip-row .tab-btn { width:auto; flex-shrink:0; border-radius:var(--radius-pill); padding:7px 13px; }
+  .tabstrip-row .tab-btn .tab-label { display:inline; }
+
   /* Layout shell: sticky sidebar rail + scrolling main column. */
   .sidebar { height:100%; overflow-y:auto; display:flex; flex-direction:column; background:var(--card); border-right:1px solid var(--paper-line); padding:16px 10px; z-index:20; }
   .brand { display:flex; align-items:center; gap:8px; padding:4px 4px 14px; }
@@ -384,6 +409,12 @@ export const css = `
   .history-total-row td:first-child { text-align:left; }
 
   .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:var(--radius-sm); padding:14px; margin-bottom:18px; }
+  .overview-eyebrow { font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
+  .overview-heading { margin:4px 0 0; font-size:26px; font-family: Georgia, serif; }
+  .overview-grid-top { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:2px; }
+  .overview-grid-bottom { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:16px; margin-top:16px; }
+  .overview-card-wide { display:flex; flex-direction:column; }
+  .overview-card-label { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
   .collapsible { background:var(--card); border:1px solid var(--paper-line); border-radius:var(--radius-sm); margin-bottom:12px; }
   .collapsible-head { display:flex; align-items:center; gap:8px; width:100%; background:none; border:none; cursor:pointer; padding:11px 14px; color:var(--ink); text-align:left; }
   .collapsible-title { display:flex; align-items:center; gap:6px; font-size:12.5px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-soft); }

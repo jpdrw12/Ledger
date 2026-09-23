@@ -432,6 +432,29 @@ export function billStatus(months, todayStr, window = 7) {
   return { overdue, dueSoon };
 }
 
+// The actual unpaid-bill rows behind billStatus's counts, joined with their
+// bill template for a name/category, soonest due date first — for the
+// Overview tab's "Upcoming bills" widget (billStatus itself only counts,
+// doesn't say which bills). Pure — no I/O.
+export function upcomingBills(months, bills, todayStr, limit = 6) {
+  const billsById = new Map((bills || []).map((b) => [b.id, b]));
+  const rows = [];
+  (months || []).forEach((m) => {
+    (m.billPayments || []).forEach((bp) => {
+      if (bp.paid || !bp.dueDate) return;
+      const bill = billsById.get(bp.billId);
+      rows.push({
+        id: bp.id,
+        name: bill?.name || "Bill",
+        amount: Number(bp.amountPaid) || 0,
+        dueDate: bp.dueDate,
+        overdue: bp.dueDate < todayStr,
+      });
+    });
+  });
+  return rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, limit);
+}
+
 // Current net worth: latest consolidated account balance (assets) minus the
 // total of all debt balances. Per-month history isn't derivable — debts only
 // store a current balance — so this is a present-day snapshot.
@@ -653,6 +676,38 @@ export function allBudgetPaceAlerts(state, { now } = {}) {
     ...budgetPaceAlerts(cardBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel, { now }).map((a) => ({ ...a, source: "Card" })),
     ...budgetPaceAlerts(debtBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent })), latestLabel, { now }).map((a) => ({ ...a, source: "Debt" })),
   ].sort((a, b) => b.overBy - a.overBy);
+}
+
+// Every budgeted row (expense/card/debt, group or individual) merged into
+// one list, sorted by how much of its target is used up — highest first —
+// for the Overview tab's "Budget snapshot" widget, which just wants "what's
+// closest to (or over) its limit" rather than allBudgetPaceAlerts' stricter
+// "only the real current month, only genuinely over pace" alerting. Shares
+// the same three report calls (see allBudgetPaceAlerts's comment on why
+// card/debt group data comes from the "expenses"/"debtCharges" namespaces).
+// Pure — no I/O.
+export function allBudgetSnapshot(state) {
+  const months = state.months || [];
+  if (months.length === 0) return [];
+  const latestLabel = months[months.length - 1].monthLabel;
+  const cardAccountIds = new Set((state.accounts || []).filter((a) => a.excludeFromTotal).map((a) => a.id));
+  const spendableDebtIds = new Set((state.debts || []).filter((d) => d.spendable).map((d) => d.id));
+
+  const expenseGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const expenseMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
+  const debtGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
+  const debtMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
+
+  const expenseBudgets = budgetReport(months, state.categoryBudgets, expenseGroups, expenseMembers, state.categoryGroupBudgets);
+  const cardBudgetData = cardBudgetReport(months[months.length - 1], state.cardBudgets || [], cardAccountIds, state.bills, expenseGroups, expenseMembers, state.cardGroupBudgets);
+  const debtBudgetData = debtBudgetReport(state.debtCharges || [], latestLabel, state.debtBudgets || [], spendableDebtIds, debtGroups, debtMembers, state.debtGroupBudgets);
+
+  const rows = [
+    ...expenseBudgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual, source: "Expense" })),
+    ...cardBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, source: "Card" })),
+    ...debtBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, source: "Debt" })),
+  ].filter((r) => r.budget > 0);
+  return rows.sort((a, b) => b.actual / b.budget - a.actual / a.budget);
 }
 
 // The target a planning-grid cell shows/edits for one category+month: a
