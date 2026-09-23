@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.43.0]
+
+### Added
+- **Sidebar tab groups.** Shift-drag a tab onto another to group them (drops
+  as a single stacked icon with a member count, click to expand); hover a
+  group and press F2 to rename it, Delete to ungroup. Sidebar layout only.
+
+### Changed
+- Settings → Appearance → Visible tabs is now inline group rows instead of
+  stacked full-width headings — fills the available width instead of
+  wrapping awkwardly.
+
 ## [0.42.0]
 
 ### Added
