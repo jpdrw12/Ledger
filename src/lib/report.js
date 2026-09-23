@@ -23,7 +23,7 @@ import {
   groupCategoryRows,
   mergeCategoryTotals,
   billPaymentTotals,
-  investmentTotalsByMonth,
+  withInvestmentTotals,
   money,
 } from "./calc.js";
 
@@ -495,19 +495,14 @@ export function buildReportHtml(state, ledger, { fromMonthId, toMonthId, theme =
   const netWorthSeries = forecast
     ? monthlyEndingBalances(forecast.months, forecast.ledger).map((s) => ({ ...s, value: s.value - currentDebtTotal }))
     : [];
-  // Investments-included second line: real months use their own recorded
-  // (carried-forward) investment total; projected months hold the latest
-  // known total flat, same "can't project it, so keep it constant" approach
-  // already used for currentDebtTotal above. Omitted entirely (both the
-  // series and the legend entry) when no investment accounts exist, so a
-  // ledger that's never used the feature sees no change to this chart.
+  // Investments-included second line: withInvestmentTotals holds real
+  // months to their own recorded (carried-forward) investment total and
+  // projected months flat at the latest known total — see its comment in
+  // calc.js. Returns null (omitting both the series and the legend entry)
+  // when no investment accounts exist, so a ledger that's never used the
+  // feature sees no change to this chart.
   const investmentAccounts = state.investmentAccounts || [];
-  const investTotals = investmentAccounts.length ? investmentTotalsByMonth(months, state.investmentValues, investmentAccounts) : [];
-  const latestInvestTotal = investTotals.length ? investTotals[investTotals.length - 1].value : 0;
-  const investById = new Map(investTotals.map((r) => [r.id, r.value]));
-  const netWorthWithInvestSeries = investmentAccounts.length
-    ? netWorthSeries.map((s) => ({ ...s, value: s.value + (investById.has(s.id) ? investById.get(s.id) : latestInvestTotal) }))
-    : null;
+  const netWorthWithInvestSeries = withInvestmentTotals(netWorthSeries, months, state.investmentValues, investmentAccounts);
   const netWorthChart = lineChartSvg(netWorthSeries, projectedIdSet, {
     ariaLabel: "Net worth history and forecast",
     series2: netWorthWithInvestSeries,

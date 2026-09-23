@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Download, TrendingUp, Receipt, Target } from "lucide-react";
-import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, money } from "../lib/calc.js";
+import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, withInvestmentTotals, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
 import { Sparkline, Collapsible, BudgetProgressList } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
@@ -12,13 +12,20 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
   const [catMonth, setCatMonth] = useState("all"); // scope the spending-by-category chart
 
   // These pure aggregations only depend on state/ledger/horizon.
-  const { series, budgets, latestLabel, nw, avgNet } = useMemo(() => ({
-    series: monthlyEndingBalances(state.months, ledger),
-    budgets: budgetReport(state.months, state.categoryBudgets),
-    latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
-    nw: netWorthSnapshot(state.months, ledger, state.debts),
-    avgNet: averageNetChange(state.months, ledger),
-  }), [state, ledger]);
+  const { series, seriesWithInvest, budgets, latestLabel, nw, avgNet } = useMemo(() => {
+    const s = monthlyEndingBalances(state.months, ledger);
+    return {
+      series: s,
+      // null (not an empty array) when there are no investment accounts, so
+      // Sparkline knows to skip the second line entirely rather than plot a
+      // flat $0 one — see withInvestmentTotals's comment in calc.js.
+      seriesWithInvest: withInvestmentTotals(s, state.months, state.investmentValues, state.investmentAccounts),
+      budgets: budgetReport(state.months, state.categoryBudgets),
+      latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
+      nw: netWorthSnapshot(state.months, ledger, state.debts),
+      avgNet: averageNetChange(state.months, ledger),
+    };
+  }, [state, ledger]);
 
   // Spending by category, scoped to the selected month (or all months).
   const { scopedCategories, scopedTotal, scopedMax, catScopeLabel } = useMemo(() => {
@@ -34,13 +41,20 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
   }, [state, catMonth]);
 
   // Forecast: projected months appended after the real ones (never persisted).
-  const { forecastSeries, projectedSet, projectedRows, firstNegative } = useMemo(() => {
+  const { forecastSeries, forecastSeriesWithInvest, projectedSet, projectedRows, firstNegative } = useMemo(() => {
     const forecast = projectLedger(state.months, state.accounts, state.bills, { count: horizon });
     const pSet = new Set(forecast.projectedIds);
     const rows = forecast.months
       .filter((m) => pSet.has(m.id))
       .map((m) => ({ id: m.id, label: m.monthLabel, value: forecast.ledger[m.id].consolidatedCarryOut }));
-    return { forecastSeries: monthlyEndingBalances(forecast.months, forecast.ledger), projectedSet: pSet, projectedRows: rows, firstNegative: rows.find((r) => r.value < 0) };
+    const fSeries = monthlyEndingBalances(forecast.months, forecast.ledger);
+    return {
+      forecastSeries: fSeries,
+      forecastSeriesWithInvest: withInvestmentTotals(fSeries, state.months, state.investmentValues, state.investmentAccounts),
+      projectedSet: pSet,
+      projectedRows: rows,
+      firstNegative: rows.find((r) => r.value < 0),
+    };
   }, [state, horizon]);
 
   const handleExport = async () => {
@@ -90,7 +104,7 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
             </span>
           </p>
         )}
-        <Sparkline series={series} />
+        <Sparkline series={series} series2={seriesWithInvest} series2Label="Incl. investments" />
         {series.length >= 2 && (
           <div className="spark-legend">
             <span>{series[0].label}: <span className="mono">{money(series[0].value)}</span></span>
@@ -113,7 +127,7 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
                 ))}
               </select>
             </div>
-            <Sparkline series={forecastSeries} projectedIds={projectedSet} />
+            <Sparkline series={forecastSeries} projectedIds={projectedSet} series2={forecastSeriesWithInvest} series2Label="Incl. investments" />
             <div className="forecast-table">
               {projectedRows.map((r) => (
                 <div className="ledger-row" key={r.id}>

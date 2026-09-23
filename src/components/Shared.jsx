@@ -453,13 +453,25 @@ export function MonthSection({ icon, title, hint, total, totalClass, children })
 
 // Inline SVG line chart of a per-month series. `projectedIds` (optional) marks
 // forecast points: their line is dashed from the last real point, with a divider
-// at the boundary.
-export function Sparkline({ series, projectedIds }) {
+// at the boundary. `series2`/`series2Label` (optional) overlay a second line —
+// same x-axis, same length/ids as `series` (e.g. net worth including
+// investments) — as a dashed, distinct-colored line with its own small dots
+// and a one-line legend; there's no report.js-style per-point value labels
+// here, this component never had those.
+//
+// No preserveAspectRatio="none" — the .sparkline CSS gives the element an
+// aspect-ratio matching this viewBox instead of a fixed height, so the
+// default uniform scaling neither stretches/squishes the dots into ellipses
+// nor letterboxes; see that rule's comment in styles.js. An earlier version
+// of this component used "none" with a fixed-height container, which is
+// exactly the same distortion bug already fixed once in report.js's chart.
+export function Sparkline({ series, projectedIds, series2, series2Label }) {
   const W = 640, H = 120, pad = 8;
   if (series.length < 2) return <p className="empty small">Need at least two months to chart a trend.</p>;
 
   const proj = projectedIds || new Set();
-  const values = series.map((s) => s.value);
+  const hasSeries2 = series2 && series2.length === series.length;
+  const values = series.map((s) => s.value).concat(hasSeries2 ? series2.map((s) => s.value) : []);
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const span = max - min || 1;
@@ -471,19 +483,34 @@ export function Sparkline({ series, projectedIds }) {
   const pt = (s, i) => `${x(i)},${y(s.value)}`;
   const realLine = (firstProj === -1 ? series : series.slice(0, firstProj)).map((s, i) => pt(s, i)).join(" ");
   const projLine = firstProj <= 0 ? "" : series.slice(firstProj - 1).map((s, k) => pt(s, firstProj - 1 + k)).join(" ");
+  const line2 = hasSeries2 ? series2.map((s, i) => pt(s, i)).join(" ") : "";
 
   return (
-    <svg className="sparkline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Trend">
-      <line x1={pad} y1={zeroY} x2={W - pad} y2={zeroY} className="spark-zero" />
-      {firstProj > 0 && <line x1={x(firstProj - 1)} y1={pad} x2={x(firstProj - 1)} y2={H - pad} className="spark-divider" />}
-      <polyline className="spark-line" points={realLine} fill="none" />
-      {projLine && <polyline className="spark-line spark-line-projected" points={projLine} fill="none" />}
-      {series.map((s, i) => (
-        <circle key={s.id} cx={x(i)} cy={y(s.value)} r="3" className={`${s.value < 0 ? "spark-dot deficit-dot" : "spark-dot"}${proj.has(s.id) ? " spark-dot-projected" : ""}`}>
-          <title>{`${s.label}: ${money(s.value)}`}</title>
-        </circle>
-      ))}
-    </svg>
+    <>
+      <svg className="sparkline" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Trend">
+        <line x1={pad} y1={zeroY} x2={W - pad} y2={zeroY} className="spark-zero" />
+        {firstProj > 0 && <line x1={x(firstProj - 1)} y1={pad} x2={x(firstProj - 1)} y2={H - pad} className="spark-divider" />}
+        {line2 && <polyline className="spark-line spark-line-secondary" points={line2} fill="none" />}
+        <polyline className="spark-line" points={realLine} fill="none" />
+        {projLine && <polyline className="spark-line spark-line-projected" points={projLine} fill="none" />}
+        {hasSeries2 && series2.map((s, i) => (
+          <circle key={s.id} cx={x(i)} cy={y(s.value)} r="2" className="spark-dot spark-dot-secondary">
+            <title>{`${s.label}: ${money(s.value)}${series2Label ? ` (${series2Label})` : ""}`}</title>
+          </circle>
+        ))}
+        {series.map((s, i) => (
+          <circle key={s.id} cx={x(i)} cy={y(s.value)} r="3" className={`${s.value < 0 ? "spark-dot deficit-dot" : "spark-dot"}${proj.has(s.id) ? " spark-dot-projected" : ""}`}>
+            <title>{`${s.label}: ${money(s.value)}`}</title>
+          </circle>
+        ))}
+      </svg>
+      {hasSeries2 && (
+        <div className="spark-series-legend">
+          <span><span className="spark-legend-swatch" /> Actual</span>
+          <span><span className="spark-legend-swatch spark-legend-swatch-secondary" /> {series2Label || "Second series"}</span>
+        </div>
+      )}
+    </>
   );
 }
 

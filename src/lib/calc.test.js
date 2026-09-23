@@ -33,7 +33,8 @@ import {
   investmentGrowth,
   investmentTotalsByMonth,
   dividendTotalsByMonth,
-  netWorthWithInvestmentsSeries,
+  investmentTotalsForSeries,
+  withInvestmentTotals,
   billStatus,
   parseCsv,
   parseExpensesCsv,
@@ -1017,14 +1018,36 @@ describe("dividendTotalsByMonth", () => {
   });
 });
 
-describe("netWorthWithInvestmentsSeries", () => {
-  it("adds each month's carried-forward investment total onto the cash balance", () => {
+describe("investmentTotalsForSeries / withInvestmentTotals", () => {
+  const realMonths = [
+    { id: "m1", monthLabel: "March 2026" },
+    { id: "m2", monthLabel: "April 2026" },
+  ];
+  const values = [{ investmentAccountId: "acct1", monthLabel: "March 2026", value: 300 }];
+  const accounts = [{ id: "acct1" }];
+
+  it("returns null when there are no investment accounts, so callers can omit the line entirely", () => {
+    expect(investmentTotalsForSeries(realMonths, realMonths, values, [])).toBeNull();
+    expect(investmentTotalsForSeries(realMonths, realMonths, values, null)).toBeNull();
+    expect(withInvestmentTotals(realMonths, realMonths, values, [])).toBeNull();
+  });
+
+  it("pairs a real month with its own carried-forward total", () => {
+    expect(investmentTotalsForSeries(realMonths, realMonths, values, accounts)).toEqual([300, 300]);
+  });
+
+  it("holds the latest known real total flat for an id not in realMonths (a forecast month)", () => {
+    const series = [...realMonths, { id: "forecast-1" }, { id: "forecast-2" }];
+    expect(investmentTotalsForSeries(series, realMonths, values, accounts)).toEqual([300, 300, 300, 300]);
+  });
+
+  it("withInvestmentTotals adds each month's carried-forward investment total onto the cash balance", () => {
     const months = [makeMonth("m1", { monthLabel: "March 2026", pay1: { income: 500, incomeAccountId: "a", additions: [] } })];
     const ledger = computeLedger(months, [ACCT_A]);
-    const values = [{ investmentAccountId: "acct1", monthLabel: "March 2026", value: 300 }];
-    const series = netWorthWithInvestmentsSeries(months, ledger, values, [{ id: "acct1" }]);
+    const series = monthlyEndingBalances(months, ledger);
+    const withInvest = withInvestmentTotals(series, months, values, accounts);
     // cash: 100 starting + 500 = 600; plus 300 invested = 900
-    expect(series).toEqual([{ id: "m1", label: "March 2026", value: 900 }]);
+    expect(withInvest).toEqual([{ id: "m1", label: "March 2026", value: 900 }]);
   });
 });
 

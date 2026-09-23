@@ -454,11 +454,35 @@ export function dividendTotalsByMonth(months, dividends) {
 // Net worth history including investments: consolidated cash balance plus
 // the carried-forward investment total, per real month — the second trend
 // line shown alongside the existing (cash-only) net worth history.
-export function netWorthWithInvestmentsSeries(months, ledger, investmentValues, investmentAccounts) {
-  const cash = monthlyEndingBalances(months, ledger);
-  const investTotals = investmentTotalsByMonth(months, investmentValues, investmentAccounts);
-  const investById = new Map(investTotals.map((r) => [r.id, r.value]));
-  return cash.map((r) => ({ ...r, value: r.value + (investById.get(r.id) || 0) }));
+//
+// Given any month-like series — real months, optionally followed by
+// synthetic forecast months from projectLedger (anything with an `.id`) —
+// pairs each entry with an investment total: a real month gets its own
+// carried-forward total (via investmentTotalsByMonth), anything else (a
+// forecast id, not present in `realMonths`) holds the latest known real
+// total flat, since investment growth isn't itself projected forward the
+// way cash flow is — same "can't project it, so keep it constant" approach
+// already used for debt totals in the Report's net worth chart. Returns
+// null when there are no investment accounts, so a caller can tell
+// "the feature isn't in use, omit the second line entirely" apart from
+// "in use, and it happens to total $0" (which should still plot a line at
+// $0, not disappear). Shared by the Report's net worth chart and the
+// Insights tab's balance/forecast charts so they never drift apart.
+export function investmentTotalsForSeries(series, realMonths, investmentValues, investmentAccounts) {
+  if (!investmentAccounts || investmentAccounts.length === 0) return null;
+  const realTotals = investmentTotalsByMonth(realMonths, investmentValues, investmentAccounts);
+  const byId = new Map(realTotals.map((r) => [r.id, r.value]));
+  const latest = realTotals.length ? realTotals[realTotals.length - 1].value : 0;
+  return (series || []).map((s) => (byId.has(s.id) ? byId.get(s.id) : latest));
+}
+
+// `series` (e.g. consolidated cash balance, real+forecast) plus its
+// investment totals from investmentTotalsForSeries — null under the same
+// "no investment accounts" condition, so callers skip the second line.
+export function withInvestmentTotals(series, realMonths, investmentValues, investmentAccounts) {
+  const totals = investmentTotalsForSeries(series, realMonths, investmentValues, investmentAccounts);
+  if (!totals) return null;
+  return series.map((s, i) => ({ ...s, value: s.value + totals[i] }));
 }
 
 // Compares each budgeted category's spend in the latest month against its
