@@ -5,6 +5,27 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.45.0]
+
+### Added
+- **Budget by category group.** Budgeting & Planning's expense, card, and
+  debt spending sections now budget a category *group* as a whole once its
+  categories are organized (Categories tab) — grouped categories roll into
+  one row (expand to see each member's own spend) instead of being
+  budgeted individually. Type an existing group's name into "Add budget"
+  to set its target. Existing per-category budgets on already-grouped
+  categories were summed into their new group budget automatically.
+- **Report: Investments & dividends section** — account values and change
+  over the selected range, a total-over-time chart, and a dividends
+  table/total.
+
+### Changed
+- Sidebar tab groups no longer show a member-count badge (still in the
+  hover tooltip).
+- Settings → Appearance → Tooltip delay: the collapsed sidebar's account
+  tooltip now has a configurable delay instead of appearing instantly,
+  with a custom-ms option.
+
 ## [0.44.0]
 
 ### Added
