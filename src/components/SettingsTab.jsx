@@ -8,6 +8,9 @@ const SHORTCUTS = [
   { keys: ["N"], desc: "Add a new month (on the Months tab)" },
   { keys: ["Enter"], desc: "Commit the field you're editing" },
   { keys: ["Shift", "scroll"], desc: "Scroll the whole page past a section" },
+  { keys: ["Shift", "drag"], desc: "Drag a sidebar tab onto another to group them" },
+  { keys: ["F2"], desc: "Rename a sidebar tab group (hover it first)" },
+  { keys: ["Delete"], desc: "Ungroup a sidebar tab group (hover it first)" },
 ];
 
 // Buckets the visible-tabs chip list by TAB_DEFS' `group` field, excluding

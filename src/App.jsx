@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed } from "lucide-react";
 import * as db from "./lib/db.js";
-import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, allBudgetPaceAlerts, money, reconcileTabOrder } from "./lib/calc.js";
+import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, allBudgetPaceAlerts, money, reconcileTabOrder, reconcileTabGroups } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
 import { css } from "./styles.js";
 import { TabButton, ExpandContext, useDragList } from "./components/Shared.jsx";
@@ -210,6 +210,55 @@ function ArchiveGroup({ zipName, dir, onRestore, onDelete }) {
   );
 }
 
+// Shift+drag-to-group for the sidebar nav — separate from useDragList
+// (Shared.jsx), which reorders by index; this instead reports which tab got
+// dropped onto which (drop target found via elementFromPoint + a
+// data-tabid attribute, same pointer-tracking approach as useDragList, for
+// the same WebKitGTK-native-DnD-is-unreliable reason documented there).
+function useTabGroupDrag(onGroup) {
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const s = useRef({ onGroup, drag: null, over: null });
+  s.current.onGroup = onGroup;
+
+  useEffect(() => {
+    if (dragId === null) return;
+    document.documentElement.setAttribute("data-dragging", "1");
+    const onMove = (e) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const btn = el && el.closest("[data-tabid]");
+      const id = btn ? btn.getAttribute("data-tabid") : null;
+      const valid = id && id !== s.current.drag ? id : null;
+      if (valid !== s.current.over) {
+        s.current.over = valid;
+        setOverId(valid);
+      }
+    };
+    const onUp = () => {
+      const { drag, over, onGroup: group } = s.current;
+      if (drag && over) group(drag, over);
+      s.current.drag = null;
+      s.current.over = null;
+      setDragId(null);
+      setOverId(null);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.documentElement.removeAttribute("data-dragging");
+    };
+  }, [dragId]);
+
+  const startDrag = (id) => {
+    s.current.drag = id;
+    s.current.over = null;
+    setDragId(id);
+  };
+  return { dragId, overId, startDrag };
+}
+
 export default function App() {
   const { confirm, toast, undoLast } = useToast();
   const [state, setState] = useState(null);
@@ -338,6 +387,92 @@ export default function App() {
   useEffect(() => {
     if (hiddenTabs.includes(tab)) setTab("months");
   }, [hiddenTabs, tab]);
+
+  // Sidebar-only tab groups (Shift+drag a tab onto another to group them;
+  // F2/Delete while hovering a group to rename/disband it — see the
+  // group-aware nav render below and useTabGroupDrag). Membership/names are
+  // reconciled the same way tabOrder/hiddenTabs are: a stale save can't
+  // reference a tab that no longer exists, and a group that's down to one
+  // member (or zero) stops being a group.
+  const [tabGroups, setTabGroupsState] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("ledger.tabGroups") || "null");
+      const known = new Set(DEFAULT_TAB_ORDER);
+      if (saved && typeof saved === "object") return reconcileTabGroups(saved.membership, saved.names, known);
+    } catch { /* fall through to empty */ }
+    return { membership: {}, names: {} };
+  });
+  const setTabGroups = useCallback((updater) => {
+    setTabGroupsState((prev) => {
+      const raw = typeof updater === "function" ? updater(prev) : updater;
+      const next = reconcileTabGroups(raw.membership, raw.names, new Set(DEFAULT_TAB_ORDER));
+      localStorage.setItem("ledger.tabGroups", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+  // Shift+drag tab A onto tab B: both join one group (merging their existing
+  // groups, if either already had one) — Chrome-tab-group-style "drop onto"
+  // semantics, distinct from Alt+drag's plain reorder.
+  const groupTabs = useCallback((sourceId, targetId) => {
+    if (sourceId === targetId) return;
+    setTabGroups((prev) => {
+      const { membership, names } = prev;
+      const sourceGroupId = membership[sourceId];
+      const targetGroupId = membership[targetId];
+      const groupId = targetGroupId || sourceGroupId || Math.random().toString(36).slice(2, 10);
+      const nextMembership = { ...membership };
+      Object.keys(nextMembership).forEach((id) => {
+        if (sourceGroupId && nextMembership[id] === sourceGroupId) nextMembership[id] = groupId;
+        if (targetGroupId && nextMembership[id] === targetGroupId) nextMembership[id] = groupId;
+      });
+      nextMembership[sourceId] = groupId;
+      nextMembership[targetId] = groupId;
+      const nextNames = { ...names };
+      if (!nextNames[groupId]) nextNames[groupId] = "New group";
+      return { membership: nextMembership, names: nextNames };
+    });
+  }, [setTabGroups]);
+  const renameGroup = useCallback((groupId, name) => {
+    setTabGroups((prev) => {
+      const trimmed = name.trim();
+      if (!trimmed) return prev;
+      return { ...prev, names: { ...prev.names, [groupId]: trimmed } };
+    });
+  }, [setTabGroups]);
+  const disbandGroup = useCallback((groupId) => {
+    setTabGroups((prev) => {
+      const nextMembership = { ...prev.membership };
+      Object.keys(nextMembership).forEach((id) => { if (nextMembership[id] === groupId) delete nextMembership[id]; });
+      const nextNames = { ...prev.names };
+      delete nextNames[groupId];
+      return { membership: nextMembership, names: nextNames };
+    });
+  }, [setTabGroups]);
+
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const toggleGroupExpanded = useCallback((groupId) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId); else next.add(groupId);
+      return next;
+    });
+  }, []);
+  const [hoveredGroupId, setHoveredGroupId] = useState(null);
+  const [renamingGroupId, setRenamingGroupId] = useState(null);
+  // F2/Delete act on whichever group is currently hovered — ignored while
+  // typing in a field, same guard TourOverlay's arrow-key nav uses.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const el = e.target;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el?.isContentEditable) return;
+      if (!hoveredGroupId) return;
+      if (e.key === "F2") { e.preventDefault(); setRenamingGroupId(hoveredGroupId); }
+      else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); disbandGroup(hoveredGroupId); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [hoveredGroupId, disbandGroup]);
+  const { dragId: groupDragId, overId: groupOverId, startDrag: startGroupDrag } = useTabGroupDrag(groupTabs);
 
   const [expandSections, setExpandSectionsState] = useState(() => localStorage.getItem("ledger.expandSections") !== "0"); // default on
   const setExpandSections = useCallback((v) => {
@@ -1137,6 +1272,101 @@ export default function App() {
     </>
   );
 
+  // Sidebar-only group-aware nav (Classic keeps the plain tabNav above — see
+  // the AskUserQuestion decision this was scoped to). A grouped tab renders
+  // once, at whichever position its first still-visible member reaches while
+  // walking tabOrder; later members of the same group are skipped here, not
+  // reordered — no contiguity is enforced on tabOrder itself.
+  const renderedGroupIds = new Set();
+  const sidebarTabNav = orderedTabs.map((t, i) => {
+    if (hiddenTabs.includes(t.id)) return null;
+    const groupId = tabGroups.membership[t.id];
+    if (groupId) {
+      if (renderedGroupIds.has(groupId)) return null;
+      renderedGroupIds.add(groupId);
+      const members = orderedTabs.filter((m) => tabGroups.membership[m.id] === groupId && !hiddenTabs.includes(m.id));
+      if (members.length < 2) return null; // degrades to nothing rather than a broken single-member "group"
+      const expanded = expandedGroups.has(groupId);
+      const name = tabGroups.names[groupId] || "Group";
+      const isDropTarget = groupOverId && members.some((m) => m.id === groupOverId);
+      return (
+        <div className="tab-group" key={groupId}>
+          <button
+            type="button"
+            className={`tab-btn tab-group-btn${isDropTarget ? " drag-over" : ""}`}
+            data-tabid={t.id}
+            onMouseDown={(e) => { if (e.shiftKey) { e.preventDefault(); startGroupDrag(t.id); } }}
+            onMouseEnter={() => setHoveredGroupId(groupId)}
+            onMouseLeave={() => setHoveredGroupId((cur) => (cur === groupId ? null : cur))}
+            onClick={() => toggleGroupExpanded(groupId)}
+            title={`${name} — ${members.length} tabs. Click to ${expanded ? "collapse" : "expand"}. Hover + F2 to rename, Delete to ungroup.`}
+          >
+            <FolderClosed size={16} />
+            <span className="tab-group-badge">{members.length}</span>
+            <span className="tab-label">{name}</span>
+            {expanded ? <ChevronDown size={12} className="tab-group-chevron" /> : <ChevronRight size={12} className="tab-group-chevron" />}
+          </button>
+          {renamingGroupId === groupId && (
+            <input
+              className="tab-group-rename-input"
+              autoFocus
+              defaultValue={name}
+              onClick={(e) => e.stopPropagation()}
+              onBlur={(e) => { renameGroup(groupId, e.target.value); setRenamingGroupId(null); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                else if (e.key === "Escape") setRenamingGroupId(null);
+              }}
+            />
+          )}
+          {expanded && (
+            <div className="tab-group-members">
+              {members.map((m) => {
+                const MIcon = m.icon;
+                return (
+                  <button
+                    type="button"
+                    key={m.id}
+                    className={`tab-btn tab-group-member${tab === m.id ? " active" : ""}${groupOverId === m.id ? " drag-over" : ""}`}
+                    data-tabid={m.id}
+                    onMouseDown={(e) => { if (e.shiftKey) { e.preventDefault(); startGroupDrag(m.id); } }}
+                    onMouseEnter={() => setHoveredGroupId(groupId)}
+                    onMouseLeave={() => setHoveredGroupId((cur) => (cur === groupId ? null : cur))}
+                    onClick={() => setTab(m.id)}
+                  >
+                    <MIcon size={16} />
+                    <span className="tab-label">{m.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+    const Icon = t.icon;
+    const itemProps = tabItemProps(i);
+    return (
+      <button
+        type="button"
+        key={t.id}
+        className={`tab-btn ${tab === t.id ? "active" : ""} ${reorderMode ? "reorderable" : ""} ${groupOverId === t.id ? "drag-over" : ""} ${itemProps.className || ""}`.trim()}
+        data-tabid={t.id}
+        data-drag-index={i}
+        data-tour={t.dataTour}
+        onMouseDown={(e) => {
+          if (e.shiftKey) { e.preventDefault(); startGroupDrag(t.id); return; }
+          if (reorderMode) tabHandleProps(i).onMouseDown(e);
+        }}
+        onClick={reorderMode ? undefined : () => setTab(t.id)}
+      >
+        {reorderMode && <GripVertical size={12} className="tab-grip" />}
+        <Icon size={16} />
+        <span className="tab-label">{t.label}</span>
+      </button>
+    );
+  });
+
   const classic = layout === "classic";
 
   return (
@@ -1159,7 +1389,7 @@ export default function App() {
             {sidebarCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
           </button>
         </div>
-        <nav className={`tabs ${reorderMode ? "reorder-mode" : ""}`} data-tour="tabs" title="Hold Alt and drag a tab to reorder">{tabNav}</nav>
+        <nav className={`tabs ${reorderMode ? "reorder-mode" : ""}`} data-tour="tabs" title="Hold Alt to reorder, Shift-drag onto another tab to group">{sidebarTabNav}</nav>
         <div className="sidebar-balances" data-tour="accounts-panel">
           {state.accounts.map((a) => {
             const bal = balances[a.id] || 0;

@@ -1007,6 +1007,32 @@ export function reconcileTabOrder(savedOrder, defaultOrder) {
   return [...cleaned, ...missing];
 }
 
+// Cleans a saved sidebar tab-group save (localStorage, untrusted shape) —
+// drops membership for any tab id no longer in `knownIds` (a tab removed
+// since the save), then drops any group down to fewer than 2 remaining
+// members entirely (a group of one isn't a group — its last member just
+// becomes an ordinary tab again) and garbage-collects that group's name.
+// Never mutates the inputs. `membership` is { tabId: groupId },
+// `names` is { groupId: displayName }.
+export function reconcileTabGroups(membership, names, knownIds) {
+  const cleanedMembership = {};
+  Object.entries(membership || {}).forEach(([tabId, groupId]) => {
+    if (typeof groupId === "string" && knownIds.has(tabId)) cleanedMembership[tabId] = groupId;
+  });
+  const counts = {};
+  Object.values(cleanedMembership).forEach((gid) => { counts[gid] = (counts[gid] || 0) + 1; });
+  const finalMembership = {};
+  Object.entries(cleanedMembership).forEach(([tabId, groupId]) => {
+    if (counts[groupId] >= 2) finalMembership[tabId] = groupId;
+  });
+  const liveGroupIds = new Set(Object.values(finalMembership));
+  const finalNames = {};
+  Object.entries(names || {}).forEach(([groupId, name]) => {
+    if (liveGroupIds.has(groupId) && typeof name === "string") finalNames[groupId] = name;
+  });
+  return { membership: finalMembership, names: finalNames };
+}
+
 // Every distinct category string in use across `rows` (expenses, bills, or
 // debt charges — anything with a `.category` field), for the Categories
 // tab's rename-in-one-place view. Deliberately does NOT merge different

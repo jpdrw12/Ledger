@@ -28,6 +28,7 @@ import {
   budgetReport,
   netWorthSnapshot,
   allBudgetPaceAlerts,
+  reconcileTabGroups,
   investmentValueAsOf,
   investmentGrowth,
   investmentTotalsByMonth,
@@ -665,6 +666,36 @@ describe("reconcileTabOrder", () => {
 
   it("ignores non-string entries and duplicates in the saved order", () => {
     expect(reconcileTabOrder(["months", 42, "months", "card"], defaultOrder)).toEqual(["months", "card", "bills", "goals"]);
+  });
+});
+
+describe("reconcileTabGroups", () => {
+  const known = new Set(["card", "bills", "goals", "debts"]);
+
+  it("keeps a group with 2+ live members and its name", () => {
+    const result = reconcileTabGroups({ card: "g1", bills: "g1" }, { g1: "Spending" }, known);
+    expect(result).toEqual({ membership: { card: "g1", bills: "g1" }, names: { g1: "Spending" } });
+  });
+
+  it("drops a tab id no longer known (a tab removed since the save)", () => {
+    const result = reconcileTabGroups({ card: "g1", bills: "g1", oldtab: "g1" }, { g1: "Spending" }, known);
+    expect(result.membership).toEqual({ card: "g1", bills: "g1" });
+  });
+
+  it("dissolves a group left with fewer than 2 members, garbage-collecting its name", () => {
+    // "oldtab" isn't known, so g1 is left with just "card" — not a group anymore.
+    const result = reconcileTabGroups({ card: "g1", oldtab: "g1" }, { g1: "Spending" }, known);
+    expect(result).toEqual({ membership: {}, names: {} });
+  });
+
+  it("drops a name with no corresponding live group", () => {
+    const result = reconcileTabGroups({ card: "g1", bills: "g1" }, { g1: "Spending", g2: "Orphaned" }, known);
+    expect(result.names).toEqual({ g1: "Spending" });
+  });
+
+  it("handles missing/malformed membership or names gracefully", () => {
+    expect(reconcileTabGroups(null, null, known)).toEqual({ membership: {}, names: {} });
+    expect(reconcileTabGroups(undefined, undefined, known)).toEqual({ membership: {}, names: {} });
   });
 });
 

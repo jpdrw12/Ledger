@@ -208,6 +208,16 @@ export const css = `
   .tab-btn.dragging { opacity: 0.35; }
   .tab-btn.drag-over { box-shadow: inset 0 0 0 1.5px var(--accent); }
   .tab-grip { color: var(--stamp); flex-shrink: 0; }
+  .tab-group { position:relative; }
+  .tab-group-btn { position:relative; }
+  .tab-group-badge { font-size:10px; font-weight:700; background:var(--stamp); color:var(--paper); border-radius:8px; padding:1px 5px; line-height:1.4; flex-shrink:0; }
+  .app.sidebar-collapsed .tab-group-badge { position:absolute; top:2px; right:2px; }
+  .tab-group-chevron { margin-left:auto; flex-shrink:0; opacity:0.6; }
+  .app.sidebar-collapsed .tab-group-chevron { display:none; }
+  .tab-group-members { display:flex; flex-direction:column; gap:2px; padding-left:14px; margin-top:2px; }
+  .app.sidebar-collapsed .tab-group-members { padding-left:0; }
+  .tab-group-member { opacity:0.9; }
+  .tab-group-rename-input { position:absolute; top:0; left:0; z-index:20; width:180px; font-size:13px; padding:7px 10px; border-radius:5px; border:1px solid var(--accent); background:var(--card); color:var(--ink); font-family:inherit; box-shadow:0 4px 14px rgba(0,0,0,0.25); }
 
   .section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
   .section-head h2 { font-family: Georgia, serif; font-size:19px; margin:0; }
