@@ -6,6 +6,19 @@ export const css = `
      DPI scaling — the cause of the app under/over-shooting the window bottom. */
   html, body { margin: 0; height: 100%; background: var(--paper); }
   body { overflow: hidden; }
+  /* Settings → Appearance → Hide vertical scrollbars — cosmetic only,
+     toggled via a class on <html> so it reaches every scroll container
+     app-wide (the main column, the sidebar, modal lists) without threading
+     a prop through each one. Every one of those containers keeps scrolling
+     normally via wheel/trackpad; only the visual track/thumb disappears.
+     Defaults on. */
+  html.hide-v-scrollbars ::-webkit-scrollbar { display: none; }
+  /* The tab strip's horizontal scrollbar is hidden unconditionally, no
+     toggle — it has its own wheel-redirect, click-drag panning, and
+     explicit scroll buttons (see .tabstrip-scroll-btn), so a visible bar
+     never adds anything and only risks the "overlaps the tab content
+     below" layout bug it caused earlier. */
+  .tabstrip-row::-webkit-scrollbar { display: none; }
   #root { position: fixed; inset: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--paper); }
   /* Theming has two independent axes: Light/Dark (data-theme) sets the
      lightness ramp, and the color (data-accent) sets --hue, which all the
@@ -105,11 +118,21 @@ export const css = `
      group). Reuses .sidebar/.tabs/.tab-btn — only the heading is new. */
   .nav-group-heading { font-size:10px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-soft); font-weight:600; padding:12px 10px 4px; }
   .nav-group-heading:first-child { padding-top:2px; }
+  .nav-group-heading-toggle { display:flex; align-items:center; gap:4px; width:100%; background:none; border:none; cursor:pointer; font-family:inherit; }
+  .nav-group-heading-toggle:hover { color:var(--ink); }
 
   /* "minimal" and "tabstrip" layouts: no sidebar column at all, single
      block-flow main column, thin top bar. */
   .app.layout-minimal, .app.layout-tabstrip { display:block; overflow-y:auto; padding:0; }
   .app.layout-minimal .app-main, .app.layout-tabstrip .app-main { height:auto; overflow:visible; padding:18px 24px 60px; }
+  /* The topbar (and tabstrip's row) must span full-bleed and sit flush
+     against the actual window edge when it sticks — but it lives inside
+     .app-main's padded box like the rest of the tab content, so pull it
+     back out to the edges with a negative margin rather than un-padding
+     .app-main itself (that padding is still what spaces every tab's
+     content below it). */
+  .app.layout-minimal .minimal-topbar,
+  .app.layout-tabstrip .tabstrip-sticky { margin: -18px -24px 18px; }
   .minimal-topbar { display:flex; align-items:center; gap:14px; padding:12px 24px; border-bottom:2px solid var(--ink); background:var(--card); position:sticky; top:0; z-index:20; }
   .minimal-brand { display:flex; align-items:center; gap:7px; font-family: Georgia, 'Iowan Old Style', serif; font-size:14.5px; flex-shrink:0; }
   .minimal-current-tab { font-size:12.5px; color:var(--ink-soft); padding-left:14px; border-left:1px solid var(--paper-line); }
@@ -120,10 +143,26 @@ export const css = `
 
   /* "tabstrip" layout: the minimal bar plus a scrollable horizontal row of
      the same icon+label tabs Classic uses, with a fade hint at each edge
-     when the row overflows. */
-  .tabstrip-row { display:flex; gap:4px; overflow-x:auto; padding:8px 24px; border-bottom:1px solid var(--paper-line); background:var(--card); position:sticky; top:49px; z-index:19; -webkit-mask-image:linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent); mask-image:linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent); }
+     when the row overflows. Its scrollbar is always hidden (see the
+     .tabstrip-row::-webkit-scrollbar rule near the top of this file) — it
+     still scrolls via overflow-x:auto plus App.jsx's wheel-redirect,
+     click-drag, and explicit scroll buttons. */
+  /* Wraps the tabstrip's topbar + tab row as one sticky unit, so the two
+     bars scroll together without a hardcoded pixel offset between them
+     drifting out of sync (font/zoom changes would break a fixed top:Npx). */
+  .tabstrip-sticky { position:sticky; top:0; z-index:20; }
+  .tabstrip-sticky .minimal-topbar { position:static; }
+  .tabstrip-row { flex:1; min-width:0; display:flex; gap:4px; overflow-x:auto; padding:8px 10px; border-bottom:1px solid var(--paper-line); background:var(--card); -webkit-mask-image:linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent); mask-image:linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent); }
   .tabstrip-row .tab-btn { width:auto; flex-shrink:0; border-radius:var(--radius-pill); padding:7px 13px; }
   .tabstrip-row .tab-btn .tab-label { display:inline; }
+  /* Explicit left/right scroll buttons — a guaranteed way to move the row
+     that doesn't depend on wheel-redirect or drag-panning both working in
+     every WebKitGTK build/input setup; harmless (just a no-op click) when
+     the row doesn't actually overflow. */
+  .tabstrip-row-wrap { display:flex; align-items:stretch; border-bottom:1px solid var(--paper-line); background:var(--card); }
+  .tabstrip-row-wrap .tabstrip-row { border-bottom:none; }
+  .tabstrip-scroll-btn { flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:28px; background:none; border:none; color:var(--ink-soft); cursor:pointer; padding:0 6px; }
+  .tabstrip-scroll-btn:hover { color:var(--ink); background:var(--paper); }
 
   /* Layout shell: sticky sidebar rail + scrolling main column. */
   .sidebar { height:100%; overflow-y:auto; display:flex; flex-direction:column; background:var(--card); border-right:1px solid var(--paper-line); padding:16px 10px; z-index:20; }
@@ -153,6 +192,7 @@ export const css = `
   .app.sidebar-collapsed .brand-name,
   .app.sidebar-collapsed .brand-icon,
   .app.sidebar-collapsed .tab-label,
+  .app.sidebar-collapsed .nav-group-heading,
   .app.sidebar-collapsed .sb-balance-body { display:none; }
   .app.sidebar-collapsed .brand { justify-content:center; padding-left:0; padding-right:0; }
   .app.sidebar-collapsed .tab-btn { justify-content:center; gap:0; padding-left:0; padding-right:0; }
@@ -279,9 +319,31 @@ export const css = `
   .empty { color: var(--ink-soft); font-size:13.5px; font-style:italic; }
   .empty.small { font-size:12px; margin:4px 0 8px; }
 
-  .month-filter { display:flex; align-items:center; gap:8px; margin-bottom:14px; background:var(--card); border:1px solid var(--paper-line); border-radius:var(--radius-sm); padding:6px 10px; }
-  .month-filter-input { flex:1; border:none; background:none; font-size:13px; color:var(--ink); outline:none; font-family: ui-sans-serif, system-ui; }
-  .month-filter-input::placeholder { color:var(--ink-soft); }
+  /* Small, out-of-the-way controls inline with "Add next month" — same
+     pill language as the minimal layout's "Jump to a tab…" palette trigger,
+     not a full-width search bar that's visible (and in the way) even when
+     nobody's searching. Padding/font-size match .btn-primary so all three
+     sit at the same height in the header row. */
+  .month-header-actions { display:flex; align-items:center; gap:8px; }
+  .month-search-trigger { box-sizing:border-box; height:33px; display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--paper-line); border-radius:var(--radius-pill); padding:0 13px; font-size:13px; color:var(--ink-soft); cursor:pointer; font-family:inherit; }
+  .month-search-trigger:hover { border-color:var(--accent); color:var(--ink); }
+  .month-search-box { box-sizing:border-box; height:33px; display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--paper-line); border-radius:var(--radius-pill); padding:0 8px 0 13px; max-width:280px; color:var(--ink-soft); }
+  .month-search-box input { flex:1; min-width:0; border:none; background:none; font-size:13px; color:var(--ink); outline:none; font-family: ui-sans-serif, system-ui; }
+  .month-search-box input::placeholder { color:var(--ink-soft); }
+  /* Padding alone doesn't line a native <select> up with a <button> at the
+     same padding/font-size — the platform select adds its own chrome (the
+     dropdown arrow's reserved space, a UA-set min-height) on top. Strip
+     that with appearance:none and a fixed height instead, plus a manual
+     chevron since appearance:none also drops the native arrow. */
+  /* Vertical padding doesn't reliably center a native <select>'s own text
+     the way it does a <button> — use line-height matched to the box height
+     instead (33px height minus the 1px top+bottom border). */
+  .month-select { -webkit-appearance:none; appearance:none; box-sizing:border-box; height:33px; line-height:31px; font-size:13px; text-align:center; text-align-last:center; padding:0 26px 0 13px; border:1px solid var(--paper-line); border-radius:var(--radius-pill); background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 L5 6.5 L8 3.5' stroke='%23888' stroke-width='1.3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center; color:var(--ink-soft); max-width:160px; cursor:pointer; }
+  .month-select:hover { border-color:var(--accent); color:var(--ink); }
+  .month-limit-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:-6px 0 14px; font-size:12.5px; color:var(--ink-soft); }
+  .month-limit-field { display:flex; align-items:center; gap:6px; }
+  .month-limit-input { width:52px; padding:3px 6px; border:1px solid var(--paper-line); border-radius:var(--radius-sm); background:var(--card); color:var(--ink); font-size:12.5px; text-align:center; }
+  .month-limit-showall { font-size:12px; padding:4px 10px; margin-top:0; }
 
   .stub-summary { display:flex; gap:6px; margin-right:12px; }
   .stub-summary-chip { font-size:11px; color:var(--ink-soft); background:var(--paper); border:1px solid var(--paper-line); border-radius:var(--radius-pill); padding:2px 8px; font-family:ui-monospace, monospace; }
@@ -450,7 +512,10 @@ export const css = `
      <svg> itself; that combination is exactly what stretched every dot
      into an ellipse whenever the container's actual width didn't happen to
      equal 640px (see Sparkline's comment in Shared.jsx). */
+  .spark-wrap { position:relative; }
   .sparkline { width:100%; aspect-ratio: 640 / 120; display:block; }
+  .spark-dot-hit { fill:transparent; cursor:default; }
+  .spark-tooltip { position:absolute; transform:translate(-50%, -130%); background:var(--ink); color:var(--paper); font-size:11.5px; white-space:nowrap; padding:5px 9px; border-radius:var(--radius-md); pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,0.25); z-index:5; }
   .spark-line { stroke:var(--stamp); stroke-width:2; vector-effect:non-scaling-stroke; }
   .spark-zero { stroke:var(--paper-line); stroke-width:1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }
   .spark-dot { fill:var(--stamp); }

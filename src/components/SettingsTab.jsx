@@ -62,13 +62,14 @@ function SettingsTab({
   tooltipDelay, onTooltipDelayChange,
   accent, onAccentChange,
   containScroll, onContainScrollChange,
+  hideVScrollbars, onHideVScrollbarsChange,
   mirrorFolder, onChooseFolder, onClearFolder, onCopyAllToFolder,
   retention, onRetentionChange,
   appVersion, updateInfo, hasUpdate, updateBusy, updatePhase, updateError,
   onCheckUpdate, onInstallUpdate, onRestart, onStartTour,
   layout, onLayoutChange, expandSections, onExpandSectionsChange,
   settingsGroup, onSettingsGroupChange,
-  allTabs, hiddenTabs, onToggleTabHidden,
+  allTabs, hiddenTabs, onToggleTabHidden, onResetTabOrder,
 }) {
   const { confirm, toast } = useToast();
   const [profiles, setProfiles] = useState(getProfiles);
@@ -301,6 +302,17 @@ function SettingsTab({
           </label>
         </div>
         <div className="backup-folder" style={{ marginTop: 10 }}>
+          <span className="small-label" style={{ flex: 1 }}>Scrollbars</span>
+          <label className="exclude-toggle">
+            <input
+              type="checkbox"
+              checked={hideVScrollbars}
+              onChange={(e) => onHideVScrollbarsChange(e.target.checked)}
+            />
+            Hide vertical scrollbars (scrolling with wheel/trackpad still works)
+          </label>
+        </div>
+        <div className="backup-folder" style={{ marginTop: 10 }}>
           <span className="small-label" style={{ flex: 1 }}>Tooltip delay</span>
           <select
             value={customDelayMode ? "custom" : tooltipDelay}
@@ -333,7 +345,12 @@ function SettingsTab({
         </div>
         {allTabs && (
           <div style={{ marginTop: 14 }}>
-            <span className="small-label">Visible tabs</span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span className="small-label">Visible tabs</span>
+              <button type="button" className="btn-secondary" style={{ marginTop: 0, fontSize: 12, padding: "4px 10px" }} onClick={onResetTabOrder}>
+                Reset tab order
+              </button>
+            </div>
             <div className="tab-visibility-groups">
               {groupTabsForVisibility(allTabs).map(({ group, tabs }) => (
                 <div className="tab-visibility-row" key={group}>

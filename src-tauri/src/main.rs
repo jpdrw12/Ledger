@@ -164,6 +164,17 @@ fn migrations() -> Vec<Migration> {
 }
 
 fn main() {
+    // GTK's overlay scrollbars (the thin auto-fading indicators) are drawn by
+    // GTK itself as a compositing overlay on top of the WebKit view, not by
+    // the page's own CSS scrollbar box — so no amount of page-side
+    // ::-webkit-scrollbar{display:none} can hide or restyle them, and
+    // Settings → Appearance → Hide scrollbars silently did nothing. Has to be
+    // disabled before GTK initializes, which happens implicitly inside
+    // tauri::Builder::default() below — an env var is the standard way to
+    // reach it this early, since nothing here calls into gtk-rs directly.
+    #[cfg(target_os = "linux")]
+    std::env::set_var("GTK_OVERLAY_SCROLLING", "0");
+
     let mut sql_builder = tauri_plugin_sql::Builder::default();
     for file in PROFILE_DB_FILES {
         sql_builder = sql_builder.add_migrations(&format!("sqlite:{file}"), migrations());

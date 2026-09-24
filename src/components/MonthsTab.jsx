@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Plus, Trash2, Check, ChevronDown, ChevronRight, ArrowRightCircle, ArrowUp, ArrowDown, Zap, Hand, PiggyBank, TrendingUp, Landmark, Search, Receipt, Upload, Download, ArrowLeftRight, ArrowRight } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, computeDueDate, dueDayForSlot, parseActivityCsv, resolveActivityRow, buildCsvReferenceBlock, planTransfer } from "../lib/calc.js";
@@ -45,6 +45,46 @@ function MonthsTab({
 }) {
   const { confirm, toast } = useToast();
   const [filter, setFilter] = useState("");
+  // The search box stays collapsed to a plain icon button until clicked —
+  // an always-open free-text field ate visual space most people don't use
+  // most of the time. Reopens automatically if a filter is still active.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef(null);
+
+  // Long-running ledgers pile up months fast — default to only the most
+  // recent few, with a custom count and a "show all" escape hatch. Search
+  // (above) and jumping to a specific month (below) both take priority over
+  // this limit — they're already a more specific, intentional narrowing.
+  const [monthShowCount, setMonthShowCount] = useState(() => {
+    const saved = Number(localStorage.getItem("ledger.monthShowCount"));
+    return Number.isFinite(saved) && saved > 0 ? saved : 6;
+  });
+  // Mirrors monthShowCount as a string for the input's own display — kept
+  // separate so an in-progress edit (spinner click or typed digit) applies
+  // immediately without fighting a controlled value being reformatted out
+  // from under the cursor mid-type.
+  const [monthShowCountInput, setMonthShowCountInput] = useState(String(monthShowCount));
+  const [monthShowAll, setMonthShowAll] = useState(() => localStorage.getItem("ledger.monthShowAll") === "1");
+  const applyMonthShowCount = (n) => {
+    const count = Math.max(1, Math.round(n) || 1);
+    setMonthShowCount(count);
+    localStorage.setItem("ledger.monthShowCount", String(count));
+    setMonthShowAll(false);
+    localStorage.setItem("ledger.monthShowAll", "0");
+  };
+  const showAllMonths = () => {
+    setMonthShowAll(true);
+    localStorage.setItem("ledger.monthShowAll", "1");
+  };
+  const hideOlderMonths = () => {
+    setMonthShowAll(false);
+    localStorage.setItem("ledger.monthShowAll", "0");
+  };
+
+  // Jump-to shows only the chosen month, on its own — not a scroll-to
+  // within a longer list. Cleared by search, by picking the placeholder
+  // option again, or by the show-count controls below.
+  const [jumpedTo, setJumpedTo] = useState(null);
 
   const trimmed = filter.trim().toLowerCase();
   // Search across everything visible in a month, not just expenses: the month
@@ -62,52 +102,120 @@ function MonthsTab({
     ];
     return hay.some((s) => s && s.toLowerCase().includes(trimmed));
   };
-  const visibleMonths = trimmed ? months.filter(monthMatches) : months;
+  const hasHiddenMonths = !trimmed && !jumpedTo && months.length > monthShowCount;
+  const limited = hasHiddenMonths && !monthShowAll;
+  const visibleMonths = trimmed
+    ? months.filter(monthMatches)
+    : jumpedTo
+    ? months.filter((m) => m.id === jumpedTo)
+    : limited ? months.slice(-monthShowCount) : months;
 
   return (
     <div className="section">
       <div className="section-head">
         <h2>Months</h2>
-        <button className="btn-primary" onClick={onAddMonth} data-tour="add-month">
-          <Plus size={15} /> Add next month
-        </button>
+        <div className="month-header-actions">
+          {searchOpen || trimmed ? (
+            <div className="month-search-box">
+              <Search size={13} />
+              <input
+                id="month-search-input"
+                ref={searchInputRef}
+                placeholder="Search months…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                onBlur={() => { if (!filter.trim()) setSearchOpen(false); }}
+                onKeyDown={(e) => { if (e.key === "Escape") { setFilter(""); setSearchOpen(false); e.currentTarget.blur(); } }}
+                autoFocus={searchOpen}
+              />
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => { setFilter(""); setSearchOpen(false); }}
+                title="Clear filter"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="month-search-trigger"
+              title="Search months"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search size={13} /> Search
+            </button>
+          )}
+          {months.length > 1 && (
+            <select
+              className="month-select"
+              value={jumpedTo || ""}
+              title="Show only one month"
+              onChange={(e) => {
+                const id = e.target.value;
+                setJumpedTo(id || null);
+                if (!id) return;
+                setFilter("");
+                setSearchOpen(false);
+                // Jump-to isolates the list to this one month (see visibleMonths
+                // above) — nothing else is left to scroll past, so no scroll.
+                setOpenMonth(id);
+              }}
+            >
+              <option value="">Select month…</option>
+              {months.map((m) => (
+                <option key={m.id} value={m.id}>{m.monthLabel}</option>
+              ))}
+            </select>
+          )}
+          <button className="btn-primary" onClick={onAddMonth} data-tour="add-month">
+            <Plus size={15} /> Add next month
+          </button>
+        </div>
       </div>
 
-      <div className="month-filter">
-        <Search size={14} />
-        <input
-          id="month-search-input"
-          className="month-filter-input"
-          placeholder="Search months — bills, expenses, goals, transfers, notes…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        {trimmed && (
-          <button className="icon-btn" onClick={() => setFilter("")} title="Clear filter">
-            <Trash2 size={13} />
-          </button>
-        )}
-        {months.length > 1 && (
-          <select
-            className="account-select"
-            value=""
-            title="Jump to a month"
-            onChange={(e) => {
-              const id = e.target.value;
-              if (!id) return;
-              setOpenMonth(id);
-              requestAnimationFrame(() =>
-                document.getElementById(`month-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
-              );
-            }}
-          >
-            <option value="">Jump to…</option>
-            {months.map((m) => (
-              <option key={m.id} value={m.id}>{m.monthLabel}</option>
-            ))}
-          </select>
-        )}
-      </div>
+      {!trimmed && months.length > 1 && (
+        <div className="month-limit-row">
+          <label className="month-limit-field">
+            Show
+            <input
+              type="number"
+              min="1"
+              max="999"
+              className="month-limit-input"
+              value={monthShowCountInput}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setMonthShowCountInput(raw);
+                const n = parseInt(raw, 10);
+                if (Number.isFinite(n) && n > 0) applyMonthShowCount(n);
+              }}
+              onBlur={() => {
+                // Left empty or invalid — snap the display back to what's
+                // actually applied rather than leaving the field blank.
+                const n = parseInt(monthShowCountInput, 10);
+                if (!Number.isFinite(n) || n <= 0) setMonthShowCountInput(String(monthShowCount));
+              }}
+            />
+            months
+          </label>
+          {jumpedTo && (
+            <button type="button" className="btn-secondary month-limit-showall" onClick={() => setJumpedTo(null)}>
+              Back to list
+            </button>
+          )}
+          {!jumpedTo && hasHiddenMonths && (
+            <button
+              type="button"
+              className="btn-secondary month-limit-showall"
+              onClick={monthShowAll ? hideOlderMonths : showAllMonths}
+            >
+              {monthShowAll ? `Show last ${monthShowCount} months` : `Show all ${months.length}`}
+            </button>
+          )}
+        </div>
+      )}
 
       {months.length === 0 && (
         <p className="empty">No months yet. Add one to start the chain — both pays land here together, and every account's balance carries forward automatically.</p>

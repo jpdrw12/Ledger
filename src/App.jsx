@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed, LayoutDashboard, Search } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, ChevronLeft, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed, LayoutDashboard, Search } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, allBudgetPaceAlerts, money, reconcileTabOrder, reconcileTabGroups } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -53,7 +53,7 @@ const TAB_DEFS = [
   { id: "insights", label: "Insights", icon: TrendingUp, dataTour: "tab-insights", group: "Insights & reports" },
   { id: "report", label: "Report", icon: FileText, dataTour: "tab-report", group: "Insights & reports" },
   { id: "backups", label: "Backups", icon: HardDrive, dataTour: "tab-backups", group: "System" },
-  { id: "settings", label: "Settings", icon: Settings },
+  { id: "settings", label: "Settings", icon: Settings, group: "System" },
 ];
 const DEFAULT_TAB_ORDER = TAB_DEFS.map((t) => t.id);
 
@@ -337,7 +337,14 @@ export default function App() {
       return next;
     });
   }, []);
+  const resetTabOrder = useCallback(() => setTabOrder(DEFAULT_TAB_ORDER), [setTabOrder]);
   const [reorderMode, setReorderMode] = useState(false);
+  // Mirrors reorderMode for the tabstrip's pan-to-scroll handler below,
+  // which is set up once via a callback ref (not re-created on every
+  // reorderMode change) and needs to read the CURRENT value, not a stale
+  // closed-over one, to know when to defer to Alt-drag reordering instead.
+  const reorderModeRef = useRef(false);
+  useEffect(() => { reorderModeRef.current = reorderMode; }, [reorderMode]);
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === "Alt") setReorderMode(true);
@@ -400,6 +407,107 @@ export default function App() {
   useEffect(() => {
     if (hiddenTabs.includes(tab)) setTab("overview");
   }, [hiddenTabs, tab]);
+
+  // "grouped" layout's section headings are collapsible (Core excluded —
+  // it's one tab, nothing to hide behind a toggle). Persisted per group
+  // name, same pattern as hiddenTabs/tabOrder. Collapsed by default (every
+  // known group except Core) until the person expands one for the first
+  // time, rather than opening on a full wall of every tab.
+  const [collapsedNavGroups, setCollapsedNavGroups] = useState(() => {
+    const allGroups = new Set(TAB_DEFS.map((t) => t.group).filter((g) => g && g !== "Core"));
+    try {
+      const saved = localStorage.getItem("ledger.collapsedNavGroups");
+      if (saved === null) return allGroups;
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? new Set(parsed) : allGroups;
+    } catch {
+      return allGroups;
+    }
+  });
+  const toggleNavGroupCollapsed = useCallback((g) => {
+    setCollapsedNavGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g); else next.add(g);
+      localStorage.setItem("ledger.collapsedNavGroups", JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
+  // "tabstrip" layout's tab row can have its native scrollbar hidden
+  // (Settings → Appearance) — two independent ways to scroll it that don't
+  // depend on that bar, so hiding it never leaves it unscrollable:
+  //  1. Wheel redirect: plain vertical mouse-wheel delta becomes horizontal
+  //     scroll, same as most browsers' own horizontal tab strips do. A
+  //     native (non-passive) listener, not React's onWheel, since React's
+  //     wheel handler is passive by default and preventDefault would
+  //     silently no-op (and warn) there.
+  //  2. Click-and-drag panning, since a wheel/trackpad isn't guaranteed to
+  //     behave the same way in every input setup — press anywhere on the
+  //     row (including on a tab button) and drag; past a small threshold
+  //     it's treated as a pan, not a click, and the click that would
+  //     otherwise land on whatever tab is under the cursor at release is
+  //     suppressed so dragging never also switches tabs.
+  // A callback ref, not useRef+useEffect(deps:[layout]) — this fires exactly
+  // when the <nav> mounts/unmounts, guaranteed, rather than relying on a
+  // separate effect happening to run after the ref is populated (which is
+  // what caused the "works after switching layout away and back, not on a
+  // fresh reload" bug: on reload, layout is already "tabstrip" at first
+  // render, and something about that specific timing left the old
+  // effect-based version not actually attaching its listeners).
+  const tabstripRowRef = useRef(null);
+  const tabstripCleanupRef = useRef(null);
+  const tabstripRowCallbackRef = useCallback((el) => {
+    if (tabstripCleanupRef.current) {
+      tabstripCleanupRef.current();
+      tabstripCleanupRef.current = null;
+    }
+    tabstripRowRef.current = el;
+    if (!el) return;
+
+    const onWheel = (e) => {
+      if (e.deltaY !== 0 && el.scrollWidth > el.clientWidth) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+
+    const THRESHOLD = 6;
+    let dragging = false, moved = false, startX = 0, startScroll = 0;
+    const suppressNextClick = (e) => { e.preventDefault(); e.stopPropagation(); };
+    const onPointerDown = (e) => {
+      // Alt-held means the person is reordering this tab (useDragList's own
+      // mousedown handler on the tab itself), not panning the row — defer
+      // to that entirely rather than also starting a pan.
+      if (el.scrollWidth <= el.clientWidth || e.button !== 0 || e.altKey || reorderModeRef.current) return;
+      dragging = true;
+      moved = false;
+      startX = e.clientX;
+      startScroll = el.scrollLeft;
+    };
+    const onPointerMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      if (!moved && Math.abs(dx) > THRESHOLD) moved = true;
+      if (moved) el.scrollLeft = startScroll - dx;
+    };
+    const onPointerUp = () => {
+      if (moved) el.addEventListener("click", suppressNextClick, { capture: true, once: true });
+      dragging = false;
+      moved = false;
+    };
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+
+    tabstripCleanupRef.current = () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("click", suppressNextClick, { capture: true });
+    };
+  }, []);
 
   // Sidebar-only tab groups (Shift+drag a tab onto another to group them;
   // F2/Delete while hovering a group to rename/disband it — see the
@@ -551,6 +659,44 @@ export default function App() {
     localStorage.setItem("ledger.containScroll", String(containScroll));
   }, [containScroll]);
 
+  // Hide vertical scrollbars' visual track/thumb app-wide — cosmetic only,
+  // via ::-webkit-scrollbar{display:none} in styles.js; wheel/trackpad
+  // scroll is native and completely unaffected. Defaults on. The tab
+  // strip's horizontal scrollbar is unconditionally hidden the same way
+  // (no toggle — it has its own wheel-redirect, click-drag, and explicit
+  // scroll buttons, so there's never a reason to want it back).
+  const [hideVScrollbars, setHideVScrollbars] = useState(() => localStorage.getItem("ledger.hideVScrollbars") !== "0");
+  // WebKitGTK doesn't reliably repaint an element's scrollbar just because
+  // an ancestor class (and therefore the ::-webkit-scrollbar rule matching
+  // it) changed — toggling the checkbox took effect only after a full app
+  // reload. Forcing each scroll container's own overflow property off and
+  // back on (reading a size on the SAME axis in between, which is what
+  // actually forces WebKit to recompute that scrollbar) is what makes it
+  // take effect live instead.
+  const forceScrollbarRepaint = useCallback((axis) => {
+    const selector = axis === "x" ? ".tabstrip-row" : ".app, .app-main, .sidebar, .scroll-panel";
+    const prop = axis === "x" ? "overflowX" : "overflowY";
+    document.querySelectorAll(selector).forEach((el) => {
+      const prev = el.style[prop];
+      el.style[prop] = "hidden";
+      void (axis === "x" ? el.offsetWidth : el.offsetHeight);
+      el.style[prop] = "auto";
+      void (axis === "x" ? el.offsetWidth : el.offsetHeight);
+      el.style[prop] = prev || "";
+    });
+  }, []);
+  useEffect(() => {
+    document.documentElement.classList.toggle("hide-v-scrollbars", hideVScrollbars);
+    localStorage.setItem("ledger.hideVScrollbars", hideVScrollbars ? "1" : "0");
+    forceScrollbarRepaint("y");
+  }, [hideVScrollbars, forceScrollbarRepaint]);
+  // One-time repaint whenever the tabstrip row is freshly mounted (switching
+  // into "tabstrip" layout) — without this its scrollbar can briefly show
+  // before WebKit repaints the always-on hide rule.
+  useEffect(() => {
+    if (layout === "tabstrip") forceScrollbarRepaint("x");
+  }, [layout, forceScrollbarRepaint]);
+
   // Enter commits an input. The app's inputs commit on blur (defaultValue +
   // onBlur), so blurring the focused field on Enter reuses that exact path —
   // no per-input wiring. Skips checkbox/radio/button/range (Enter is a click
@@ -596,7 +742,11 @@ export default function App() {
 
   // Focusing a number field selects its whole value, so typing replaces it.
   // The mouseup from the same click would otherwise clear the selection and
-  // drop a caret, so we preventDefault on that one mouseup.
+  // drop a caret, so we preventDefault on that one mouseup — but NOT when
+  // the click landed on the native up/down spinner (rightmost ~20px): doing
+  // preventDefault there confused WebKitGTK's spinner-button release
+  // handling and left it auto-incrementing after a single click, as if the
+  // mouse button never came back up.
   useEffect(() => {
     let justFocused = null;
     const onFocusIn = (e) => {
@@ -608,8 +758,11 @@ export default function App() {
     };
     const onMouseUp = (e) => {
       if (justFocused && e.target === justFocused) {
-        e.preventDefault(); // keep the selection instead of placing a caret
+        const el = justFocused;
         justFocused = null;
+        const rect = el.getBoundingClientRect();
+        if (e.clientX > rect.right - 20) return; // spinner zone — let it behave natively
+        e.preventDefault(); // keep the selection instead of placing a caret
       }
     };
     document.addEventListener("focusin", onFocusIn);
@@ -1431,7 +1584,18 @@ export default function App() {
     groupOrder.sort((a, b) => (a === "Core" ? -1 : b === "Core" ? 1 : 0));
     const out = [];
     groupOrder.forEach((g) => {
-      if (g) out.push(<div className="nav-group-heading" key={`h-${g}`}>{g}</div>);
+      if (g && g !== "Core") {
+        const collapsed = collapsedNavGroups.has(g);
+        out.push(
+          <button type="button" className="nav-group-heading nav-group-heading-toggle" key={`h-${g}`} onClick={() => toggleNavGroupCollapsed(g)}>
+            {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+            <span>{g}</span>
+          </button>
+        );
+        if (collapsed) return;
+      } else if (g) {
+        out.push(<div className="nav-group-heading" key={`h-${g}`}>{g}</div>);
+      }
       byGroup.get(g).forEach((t) => {
         const Icon = t.icon;
         out.push(
@@ -1612,14 +1776,32 @@ export default function App() {
         )}
 
         {tabstrip && (
-          <>
+          <div className="tabstrip-sticky">
             <div className="minimal-topbar" data-tour="total">
               <span className="minimal-brand"><BookOpen size={16} strokeWidth={1.5} /> {activeProfileName()}'s Ledger</span>
               <span className={`minimal-total mono ${consolidated < 0 ? "deficit" : "surplus"}`} style={{ marginLeft: "auto" }}>{money(consolidated)}</span>
               {statusCluster}
             </div>
-            <nav className="tabstrip-row" data-tour="tabs">{tabNav}</nav>
-          </>
+            <div className="tabstrip-row-wrap">
+              <button
+                type="button"
+                className="tabstrip-scroll-btn tabstrip-scroll-left"
+                aria-label="Scroll tabs left"
+                onClick={() => tabstripRowRef.current?.scrollBy({ left: -160, behavior: "smooth" })}
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <nav className="tabstrip-row" data-tour="tabs" ref={tabstripRowCallbackRef}>{tabNav}</nav>
+              <button
+                type="button"
+                className="tabstrip-scroll-btn tabstrip-scroll-right"
+                aria-label="Scroll tabs right"
+                onClick={() => tabstripRowRef.current?.scrollBy({ left: 160, behavior: "smooth" })}
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         )}
 
         {!tourActive && state.months.length === 0 && (
@@ -1701,6 +1883,8 @@ export default function App() {
           onAccentChange={setAccent}
           containScroll={containScroll}
           onContainScrollChange={setContainScroll}
+          hideVScrollbars={hideVScrollbars}
+          onHideVScrollbarsChange={setHideVScrollbars}
           mirrorFolder={mirrorFolder}
           onChooseFolder={handleChooseFolder}
           onClearFolder={handleClearFolder}
@@ -1726,6 +1910,7 @@ export default function App() {
           allTabs={TAB_DEFS}
           hiddenTabs={hiddenTabs}
           onToggleTabHidden={toggleTabHidden}
+          onResetTabOrder={resetTabOrder}
         />
       )}
 
@@ -1796,7 +1981,10 @@ export default function App() {
 
       <CommandPalette
         open={paletteOpen}
-        tabs={orderedTabs.filter((t) => !hiddenTabs.includes(t.id))}
+        tabs={[
+          ...(overviewHidden ? [] : [overviewDef]),
+          ...orderedTabs.filter((t) => t.id !== "overview" && !hiddenTabs.includes(t.id)),
+        ]}
         onSelect={(id) => { setTab(id); setPaletteOpen(false); }}
         onClose={() => setPaletteOpen(false)}
       />

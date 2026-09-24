@@ -5,6 +5,38 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.47.0]
+
+### Added
+- **Months tab**: a "Show N months" limit (custom count, "Show all" toggle)
+  so a long-running ledger doesn't default to listing every month, plus a
+  compact "Select month…" dropdown that isolates the list to one month and
+  a collapsible "Search" trigger instead of an always-open search bar.
+- **Overview tab**: cards for Accounts, Debts, Investments, Card spending,
+  Debt spending, and Top categories this month, alongside the existing
+  net worth/bills/budget/goals cards — each links through to its real tab.
+- **Grouped layout**: section headings are now collapsible (collapsed by
+  default), and Settings moved into the System group.
+- **Tab strip layout**: explicit left/right scroll buttons on the tab row,
+  a wheel-redirect, and click-drag panning, so it scrolls reliably
+  regardless of input device; its scrollbar is always hidden.
+- **Settings → Appearance**: "Hide vertical scrollbars" toggle (defaults
+  on) and a "Reset tab order" button next to Visible tabs.
+
+### Fixed
+- A native `<title>` SVG tooltip on chart data points left a stale visual
+  artifact in the WebKitGTK webview on hover; replaced with a custom HTML
+  tooltip.
+- A global focus/selection handler on number inputs could leave the native
+  spinner arrows auto-incrementing after a single click.
+- GTK's overlay scrollbars are a native compositing layer, not part of the
+  page — no page CSS could ever hide or restyle them. Disabled at startup
+  (`GTK_OVERLAY_SCROLLING=0`) so the app's own scrollbar CSS actually takes
+  effect.
+- Minimal/Tab strip layouts' topbar wasn't flush against the window edge
+  and could show a gap while scrolling; Tab strip's two sticky bars could
+  drift apart; Alt-drag tab reordering could also trigger a tab-strip pan.
+
 ## [0.46.0]
 
 ### Added

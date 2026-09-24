@@ -485,8 +485,13 @@ export function MonthSection({ icon, title, hint, total, totalClass, children })
 // nor letterboxes; see that rule's comment in styles.js. An earlier version
 // of this component used "none" with a fixed-height container, which is
 // exactly the same distortion bug already fixed once in report.js's chart.
+// Data-point tooltips are a custom HTML overlay, not SVG <title> — the
+// native title tooltip leaves a stale grey artifact on hover in the
+// WebKitGTK webview (same root cause as the collapsed-sidebar account
+// badges, fixed the same way — see styles.js's .sb-balance::after comment).
 export function Sparkline({ series, projectedIds, series2, series2Label }) {
   const W = 640, H = 120, pad = 8;
+  const [hover, setHover] = useState(null); // { label, text, xPct, yPct } | null
   if (series.length < 2) return <p className="empty small">Need at least two months to chart a trend.</p>;
 
   const proj = projectedIds || new Set();
@@ -505,8 +510,11 @@ export function Sparkline({ series, projectedIds, series2, series2Label }) {
   const projLine = firstProj <= 0 ? "" : series.slice(firstProj - 1).map((s, k) => pt(s, firstProj - 1 + k)).join(" ");
   const line2 = hasSeries2 ? series2.map((s, i) => pt(s, i)).join(" ") : "";
 
+  const showTip = (s, i, text) => setHover({ text, xPct: (x(i) / W) * 100, yPct: (y(s.value) / H) * 100 });
+  const hideTip = () => setHover(null);
+
   return (
-    <>
+    <div className="spark-wrap">
       <svg className="sparkline" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Trend">
         <line x1={pad} y1={zeroY} x2={W - pad} y2={zeroY} className="spark-zero" />
         {firstProj > 0 && <line x1={x(firstProj - 1)} y1={pad} x2={x(firstProj - 1)} y2={H - pad} className="spark-divider" />}
@@ -514,23 +522,36 @@ export function Sparkline({ series, projectedIds, series2, series2Label }) {
         <polyline className="spark-line" points={realLine} fill="none" />
         {projLine && <polyline className="spark-line spark-line-projected" points={projLine} fill="none" />}
         {hasSeries2 && series2.map((s, i) => (
-          <circle key={s.id} cx={x(i)} cy={y(s.value)} r="2" className="spark-dot spark-dot-secondary">
-            <title>{`${s.label}: ${money(s.value)}${series2Label ? ` (${series2Label})` : ""}`}</title>
-          </circle>
+          <g key={s.id}>
+            <circle cx={x(i)} cy={y(s.value)} r="2" className="spark-dot spark-dot-secondary" />
+            <circle
+              cx={x(i)} cy={y(s.value)} r="8" className="spark-dot-hit"
+              onMouseEnter={() => showTip(s, i, `${s.label}: ${money(s.value)}${series2Label ? ` (${series2Label})` : ""}`)}
+              onMouseLeave={hideTip}
+            />
+          </g>
         ))}
         {series.map((s, i) => (
-          <circle key={s.id} cx={x(i)} cy={y(s.value)} r="3" className={`${s.value < 0 ? "spark-dot deficit-dot" : "spark-dot"}${proj.has(s.id) ? " spark-dot-projected" : ""}`}>
-            <title>{`${s.label}: ${money(s.value)}`}</title>
-          </circle>
+          <g key={s.id}>
+            <circle cx={x(i)} cy={y(s.value)} r="3" className={`${s.value < 0 ? "spark-dot deficit-dot" : "spark-dot"}${proj.has(s.id) ? " spark-dot-projected" : ""}`} />
+            <circle
+              cx={x(i)} cy={y(s.value)} r="8" className="spark-dot-hit"
+              onMouseEnter={() => showTip(s, i, `${s.label}: ${money(s.value)}`)}
+              onMouseLeave={hideTip}
+            />
+          </g>
         ))}
       </svg>
+      {hover && (
+        <div className="spark-tooltip" style={{ left: `${hover.xPct}%`, top: `${hover.yPct}%` }}>{hover.text}</div>
+      )}
       {hasSeries2 && (
         <div className="spark-series-legend">
           <span><span className="spark-legend-swatch" /> Actual</span>
           <span><span className="spark-legend-swatch spark-legend-swatch-secondary" /> {series2Label || "Second series"}</span>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
