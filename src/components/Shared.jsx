@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useContext, createContext } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Trash2, Plus } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ChevronDown, ChevronRight, ChevronLeft, GripVertical, Trash2, Plus, Calendar as CalendarIcon } from "lucide-react";
 import { money, groupCategoryRows, effectiveBudget } from "../lib/calc.js";
 import { useToast } from "./Toast.jsx";
 
@@ -595,39 +596,159 @@ export function Field({ label, ...props }) {
   );
 }
 
-// WebKitGTK's date picker fires no JS events on date click. Poll el.value
-// every 150ms while focused to catch the change without waiting for blur.
-export function DateInput({ defaultValue, onSave, className }) {
-  const ref = useRef(null);
-  const onSaveRef = useRef(onSave);
-  const lastSaved = useRef(defaultValue || "");
-  const pollRef = useRef(null);
+const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTH_LABELS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+// Local YYYY-MM-DD, matching how due dates are stored/compared — never
+// `new Date(str)` to parse one back, which reads as UTC midnight and can
+// land on the wrong day west of UTC.
+function isoOf(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+function parseIso(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || "");
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]) - 1, d: Number(m[3]) };
+}
+function todayIso() {
+  const d = new Date();
+  return isoOf(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+// A small in-app popup calendar, not the native <input type="date"> — that
+// pulls up WebKitGTK's own GTK-styled picker (not Windows-like at all) and,
+// per the reason this replaced it, fires no JS events on a date click,
+// which used to need a 150ms-poll workaround just to catch a change.
+// Building the grid ourselves sidesteps both at once.
+export function DateInput({ defaultValue, onSave, className }) {
+  const [value, setValue] = useState(defaultValue || "");
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null); // {top,left} in viewport coords, for the portal below
+  const parsed = parseIso(value) || parseIso(todayIso());
+  const [viewY, setViewY] = useState(parsed.y);
+  const [viewM, setViewM] = useState(parsed.m);
+  const btnRef = useRef(null);
+  const popupRef = useRef(null);
+  const onSaveRef = useRef(onSave);
   useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+  useEffect(() => { setValue(defaultValue || ""); }, [defaultValue]);
+
+  // Portalled to document.body and positioned via the trigger button's own
+  // viewport rect (position:fixed), not position:absolute inside whatever
+  // card/section happens to contain the field — a month stub row's own
+  // overflow/stacking context was clipping and burying the popup under
+  // other UI instead of floating above everything.
+  const openPicker = () => {
+    const rect = btnRef.current.getBoundingClientRect();
+    const width = 236, height = 300;
+    let left = rect.left;
+    let top = rect.bottom + 4;
+    if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 4);
+    setPos({ top, left });
+    const p = parseIso(value) || parseIso(todayIso());
+    setViewY(p.y);
+    setViewM(p.m);
+    setOpen(true);
+  };
 
   useEffect(() => {
-    const el = ref.current;
-    const check = () => {
-      // No truthiness guard: an empty value that differs from lastSaved means
-      // the user cleared a previously-set date, which should persist too.
-      // An untouched blank input never fires ("" === lastSaved).
-      if (el.value !== lastSaved.current) {
-        lastSaved.current = el.value;
-        onSaveRef.current(el.value);
-      }
+    if (!open) return;
+    const onDocMouseDown = (e) => {
+      if (btnRef.current?.contains(e.target) || popupRef.current?.contains(e.target)) return;
+      setOpen(false);
     };
-    const startPoll = () => { pollRef.current = setInterval(check, 150); };
-    const stopPoll = () => { clearInterval(pollRef.current); check(); };
-    el.addEventListener("focus", startPoll);
-    el.addEventListener("blur", stopPoll);
+    const onKeyDown = (e) => { if (e.key === "Escape") setOpen(false); };
+    // Reposition needs the button's rect, which a scroll/resize can move —
+    // simplest correct fix is just closing rather than chasing it live.
+    const onScrollOrResize = () => setOpen(false);
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
     return () => {
-      el.removeEventListener("focus", startPoll);
-      el.removeEventListener("blur", stopPoll);
-      clearInterval(pollRef.current);
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
     };
-  }, []);
+  }, [open]);
 
-  return <input ref={ref} type="date" className={className} defaultValue={defaultValue || ""} />;
+  const commit = (iso) => {
+    setValue(iso);
+    setOpen(false);
+    if (iso !== (defaultValue || "")) onSaveRef.current(iso);
+  };
+
+  const shiftMonth = (delta) => {
+    let y = viewY, m = viewM + delta;
+    if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    setViewY(y);
+    setViewM(m);
+  };
+
+  // Weeks of the visible month, padded with the trailing days of the
+  // previous month and leading days of the next so every row has 7 cells.
+  const firstWeekday = new Date(viewY, viewM, 1).getDay();
+  const daysInMonth = new Date(viewY, viewM + 1, 0).getDate();
+  const daysInPrevMonth = new Date(viewY, viewM, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) {
+    cells.push({ iso: null, label: daysInPrevMonth - firstWeekday + 1 + i, outside: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ iso: isoOf(viewY, viewM, d), label: d, outside: false });
+  }
+  while (cells.length % 7 !== 0) {
+    const d = cells.length - (firstWeekday + daysInMonth) + 1;
+    cells.push({ iso: null, label: d, outside: true });
+  }
+
+  const today = todayIso();
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={btnRef}
+        className={`date-input ${className || ""}`.trim()}
+        onClick={() => (open ? setOpen(false) : openPicker())}
+      >
+        <CalendarIcon size={13} />
+        <span className={value ? "" : "date-input-placeholder"}>{value || "Select date"}</span>
+      </button>
+      {open && pos && createPortal(
+        <div className="date-picker-popup" ref={popupRef} style={{ top: pos.top, left: pos.left }}>
+          <div className="date-picker-header">
+            <button type="button" className="date-picker-nav" onClick={() => shiftMonth(-1)} title="Previous month"><ChevronLeft size={14} /></button>
+            <span className="date-picker-month">{MONTH_LABELS[viewM]} {viewY}</span>
+            <button type="button" className="date-picker-nav" onClick={() => shiftMonth(1)} title="Next month"><ChevronRight size={14} /></button>
+          </div>
+          <div className="date-picker-weekdays">
+            {WEEKDAY_LABELS.map((w) => <span key={w}>{w}</span>)}
+          </div>
+          <div className="date-picker-grid">
+            {cells.map((c, i) => (
+              <button
+                type="button"
+                key={i}
+                disabled={c.outside}
+                className={`date-picker-day${c.iso === value ? " selected" : ""}${c.iso === today ? " today" : ""}${c.outside ? " outside" : ""}`}
+                onClick={() => c.iso && commit(c.iso)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <div className="date-picker-footer">
+            <button type="button" className="date-picker-today-btn" onClick={() => commit(today)}>Today</button>
+            {value && <button type="button" className="date-picker-clear-btn" onClick={() => commit("")}>Clear</button>}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
 }
 
 export function AccountSelect({ accounts, value, onChange }) {

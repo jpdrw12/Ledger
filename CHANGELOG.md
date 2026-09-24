@@ -5,6 +5,20 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.47.1]
+
+### Changed
+- **Due-date picker**: replaced the native `<input type="date">` (WebKitGTK's
+  own GTK-styled calendar, and the reason the old 150ms-poll workaround
+  existed — it fired no JS events on a date click) with a custom in-app
+  popup calendar, portalled above every other surface so it can no longer
+  get clipped or buried by whatever section contains the field.
+
+### Fixed
+- Click-dragging inside a text field started a native OS drag of the
+  selection ("copy" cursor) instead of highlighting it — a WebKitGTK
+  default; now cancelled app-wide.
+
 ## [0.47.0]
 
 ### Added

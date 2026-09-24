@@ -1,5 +1,12 @@
 export const css = `
   * { box-sizing: border-box; }
+  /* WebKitGTK defaults to letting a click-drag inside a text field start a
+     native OS (XDND) drag-out of the field's content instead of just
+     extending the text selection, which shows up as a "copy" cursor/ghost
+     instead of a highlight. This is a GTK/X11-embedding quirk, not
+     something Chrome/Firefox/Safari do — disable it so drag-to-select
+     behaves like every other input the user has ever used. */
+  input, textarea { -webkit-user-drag: none; }
   /* App shell: #root is pinned to the viewport and scrolling happens INSIDE the
      columns, never on the page. This avoids all vh units, which mis-measure
      under the app's CSS zoom (UI scale != 100%) and Windows/WebView2 fractional
@@ -425,7 +432,34 @@ export const css = `
   .scroll-panel-empty { padding: 6px 0; }
   .scroll-panel-label { display:flex; align-items:center; gap:4px; font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:4px 0 2px; }
   .amount-input { width:90px; font-family:ui-monospace, monospace; text-align:right; padding:6px 7px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); }
-  .date-input { width:126px; font-family:ui-monospace, monospace; font-size:12px; padding:6px 6px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); }
+  /* Custom popup calendar (DateInput in Shared.jsx) — not the native
+     <input type="date">, which pulls up WebKitGTK's own GTK-styled picker
+     rather than anything resembling a Windows-style calendar flyout. */
+  .date-input { width:126px; display:flex; align-items:center; gap:6px; font-family:ui-monospace, monospace; font-size:12px; padding:6px 8px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); color:var(--ink); cursor:pointer; text-align:left; }
+  .date-input:hover { border-color:var(--accent); }
+  .date-input span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .date-input-placeholder { color:var(--ink-soft); }
+  /* Portalled to document.body (see DateInput in Shared.jsx) and positioned
+     via inline top/left in viewport coordinates — position:fixed, not
+     relative to whatever card happens to contain the trigger button, so it
+     floats above every other surface instead of getting clipped by a
+     scrollable/overflow-hidden ancestor. */
+  .date-picker-popup { position:fixed; z-index:200; width:236px; background:var(--card); border:1px solid var(--paper-line); border-radius:var(--radius-lg); box-shadow:0 12px 32px rgba(0,0,0,0.28); padding:10px; }
+  .date-picker-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .date-picker-month { font-size:12.5px; font-weight:600; color:var(--ink); }
+  .date-picker-nav { background:none; border:none; color:var(--ink-soft); cursor:pointer; padding:3px; border-radius:var(--radius-sm); display:flex; }
+  .date-picker-nav:hover { background:var(--paper); color:var(--ink); }
+  .date-picker-weekdays { display:grid; grid-template-columns:repeat(7, 1fr); font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--ink-soft); text-align:center; margin-bottom:2px; }
+  .date-picker-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:1px; }
+  .date-picker-day { aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:12px; background:none; border:none; border-radius:50%; color:var(--ink); cursor:pointer; }
+  .date-picker-day:hover:not(:disabled) { background:var(--paper); }
+  .date-picker-day.outside { color:var(--ink-soft); opacity:0.4; cursor:default; }
+  .date-picker-day.today:not(.selected) { border:1px solid var(--accent); color:var(--accent); }
+  .date-picker-day.selected { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .date-picker-footer { display:flex; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid var(--paper-line); }
+  .date-picker-today-btn, .date-picker-clear-btn { background:none; border:none; color:var(--accent); font-size:12px; cursor:pointer; padding:2px 4px; }
+  .date-picker-clear-btn { color:var(--ink-soft); }
+  .date-picker-today-btn:hover, .date-picker-clear-btn:hover { text-decoration:underline; }
   .day-input { width:60px; font-family:ui-monospace, monospace; text-align:center; padding:6px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); }
   .text-input { flex:1; width:100%; padding:6px 8px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); font-size:13px; box-sizing:border-box; }
   .tag-input { flex:0 0 110px; }

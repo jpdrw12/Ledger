@@ -773,6 +773,20 @@ export default function App() {
     };
   }, []);
 
+  // WebKitGTK defaults to starting a native OS (XDND) drag of an input's
+  // text on a click-drag, instead of just extending the selection — shows
+  // up as a "copy" cursor/ghost rather than a highlight. The CSS knob for
+  // this (-webkit-user-drag:none, in styles.js) alone wasn't enough to stop
+  // it; canceling the browser's own dragstart event is what actually does.
+  useEffect(() => {
+    const onDragStart = (e) => {
+      const el = e.target;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) e.preventDefault();
+    };
+    document.addEventListener("dragstart", onDragStart);
+    return () => document.removeEventListener("dragstart", onDragStart);
+  }, []);
+
   // Optimistic local patch: apply a change to in-memory state immediately so
   // the edit shows instantly, before the persist + reload reconcile lands.
   const patchState = useCallback((updater) => {
