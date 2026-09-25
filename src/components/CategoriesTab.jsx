@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Tag, Plus, Trash2, GripVertical, FolderInput } from "lucide-react";
 import * as db from "../lib/db.js";
-import { categoryUsageReport, groupCategoryRows } from "../lib/calc.js";
+import { categoryUsageReport, groupCategoryRows, sortRows } from "../lib/calc.js";
 import { Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
@@ -99,7 +99,7 @@ function CategoryRow({ source, row, dupHint, showHandle, groups, groupId, draggi
   return (
     <div className={`cat-row${dragging ? " cat-row-dragging" : ""}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
       {showHandle && (
-        <span className="cat-drag-handle" onMouseDown={onDragStart} title="Drag to move into a group">
+        <span className="cat-drag-handle" onMouseDown={onDragStart} title="Drag to move into a category">
           <GripVertical size={13} />
         </span>
       )}
@@ -126,13 +126,13 @@ function CategoryRow({ source, row, dupHint, showHandle, groups, groupId, draggi
       {groups.length > 0 && (
         assigning ? (
           <select className="text-input" style={{ flex: "0 0 120px" }} autoFocus defaultValue={groupId || ""} onChange={assign} onBlur={() => setAssigning(false)}>
-            <option value="">Ungrouped</option>
+            <option value="">Uncategorized</option>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
         ) : (
-          <button type="button" className="icon-btn" onClick={() => setAssigning(true)} title="Assign to a group">
+          <button type="button" className="icon-btn" onClick={() => setAssigning(true)} title="Assign to a category">
             <FolderInput size={13} />
           </button>
         )
@@ -159,9 +159,9 @@ function GroupHeader({ group, onChanged }) {
 
   const remove = async (e) => {
     e.stopPropagation();
-    if (!(await confirm(`Delete the group "${group.name}"? Its categories stay — they just become ungrouped.`, { danger: true, confirmLabel: "Delete" }))) return;
+    if (!(await confirm(`Delete the category "${group.name}"? Its items stay — they just become uncategorized.`, { danger: true, confirmLabel: "Delete" }))) return;
     await db.deleteCategoryGroup(group.id);
-    toast(`Deleted group "${group.name}".`, "success");
+    toast(`Deleted category "${group.name}".`, "success");
     onChanged();
   };
 
@@ -181,9 +181,9 @@ function GroupHeader({ group, onChanged }) {
           }}
         />
       ) : (
-        <span onClick={(e) => { e.stopPropagation(); setEditing(true); }} title="Click to rename this group">{group.name}</span>
+        <span onClick={(e) => { e.stopPropagation(); setEditing(true); }} title="Click to rename this category">{group.name}</span>
       )}
-      <button type="button" className="icon-btn" onClick={remove} title="Delete group (ungroups its categories)">
+      <button type="button" className="icon-btn" onClick={remove} title="Delete category (uncategorizes its items)">
         <Trash2 size={12} />
       </button>
     </span>
@@ -192,6 +192,15 @@ function GroupHeader({ group, onChanged }) {
 
 function CategorySection({ title, source, rows, groups, members, onRenamed }) {
   const [newGroupName, setNewGroupName] = useState("");
+  const [sort, setSort] = useState("none");
+  const [groupSort, setGroupSort] = useState("order");
+  const [allOpen, setAllOpen] = useState(false); // groups start collapsed
+  const [collapseSignal, setCollapseSignal] = useState(null);
+  const toggleAll = () => {
+    const next = !allOpen;
+    setAllOpen(next);
+    setCollapseSignal({ open: next, token: Date.now() });
+  };
 
   // Flags rows that normalize to the same lowercase key but aren't literally
   // equal (e.g. "Groceries" vs "groceries") — the drift this tab exists to fix.
@@ -208,7 +217,18 @@ function CategorySection({ title, source, rows, groups, members, onRenamed }) {
   const groupIdByCategory = {};
   members.forEach((m) => { groupIdByCategory[m.category] = m.groupId; });
 
-  const { groups: groupedRows, ungrouped } = groupCategoryRows(rows, groups, members);
+  const sortedRows = sort === "none" ? rows : sortRows(rows, sort, { valueKey: "count" });
+  const { groups: groupedRowsRaw, ungrouped } = groupCategoryRows(sortedRows, groups, members);
+  // Ungrouped always stays last regardless of the chosen sort — it isn't a
+  // real group, so it shouldn't jump around the page when this changes.
+  const groupedRows = groupSort === "order" ? groupedRowsRaw : [...groupedRowsRaw].sort((a, b) => {
+    if (groupSort === "alpha") return a.name.localeCompare(b.name);
+    if (groupSort === "alpha-desc") return b.name.localeCompare(a.name);
+    const total = (g) => g.rows.reduce((s, r) => s + (Number(r.count) || 0), 0);
+    if (groupSort === "value-desc") return total(b) - total(a);
+    if (groupSort === "value-asc") return total(a) - total(b);
+    return 0;
+  });
 
   const { draggingCategory, overGroup, startDrag } = useCategoryDrag(async (category, groupId) => {
     if ((groupIdByCategory[category] || "") === groupId) return; // dropped back where it already was
@@ -242,13 +262,43 @@ function CategorySection({ title, source, rows, groups, members, onRenamed }) {
   );
 
   return (
-    <Collapsible title={title} icon={<Tag size={13} />} right={`${rows.length} categor${rows.length === 1 ? "y" : "ies"}`}>
-      {rows.length === 0 && <p className="empty small">No categories yet.</p>}
+    <Collapsible title={title} icon={<Tag size={13} />} right={`${rows.length} item${rows.length === 1 ? "" : "s"}`} ignoreGlobalExpand>
+      {rows.length === 0 && <p className="empty small">No items yet.</p>}
+
+      {rows.length > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+          <span className="small-label">Sort items</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="none">Default order</option>
+            <option value="alpha">Alphabetical (A–Z)</option>
+            <option value="alpha-desc">Alphabetical (Z–A)</option>
+            <option value="value-desc">Rows (most to fewest)</option>
+            <option value="value-asc">Rows (fewest to most)</option>
+          </select>
+          {groupedRowsRaw.length > 0 && (
+            <>
+              <span className="small-label">Sort categories</span>
+              <select value={groupSort} onChange={(e) => setGroupSort(e.target.value)}>
+                <option value="order">Default order</option>
+                <option value="alpha">Alphabetical (A–Z)</option>
+                <option value="alpha-desc">Alphabetical (Z–A)</option>
+                <option value="value-desc">Rows (most to fewest)</option>
+                <option value="value-asc">Rows (fewest to most)</option>
+              </select>
+            </>
+          )}
+          {groupedRows.length > 0 && (
+            <button type="button" className="link-btn" style={{ fontSize: 12, marginLeft: "auto" }} onClick={toggleAll}>
+              {allOpen ? "Collapse all" : "Expand all"}
+            </button>
+          )}
+        </div>
+      )}
 
       {groupedRows.map((g) => (
         <div key={g.id} data-group-drop={g.id} className={`cat-group-dropzone${overGroup === g.id ? " drag-over" : ""}`}>
-          <Collapsible title={<GroupHeader group={g} onChanged={onRenamed} />} right={`${g.rows.length}`} className="cat-group" defaultOpen>
-            {g.rows.length === 0 && <p className="empty small">Drag a category here to add it to this group.</p>}
+          <Collapsible title={<GroupHeader group={g} onChanged={onRenamed} />} right={`${g.rows.length}`} className="cat-group" ignoreGlobalExpand forceSignal={collapseSignal}>
+            {g.rows.length === 0 && <p className="empty small">Drag an item here to add it to this category.</p>}
             {g.rows.map(row)}
           </Collapsible>
         </div>
@@ -256,8 +306,8 @@ function CategorySection({ title, source, rows, groups, members, onRenamed }) {
 
       {groupedRows.length > 0 ? (
         <div data-group-drop="" className={`cat-group-dropzone${overGroup === "" ? " drag-over" : ""}`}>
-          <Collapsible title="Ungrouped" right={`${ungrouped.length}`} className="cat-group" defaultOpen>
-            {ungrouped.length === 0 && <p className="empty small">Everything's grouped.</p>}
+          <Collapsible title="Uncategorized" right={`${ungrouped.length}`} className="cat-group" ignoreGlobalExpand forceSignal={collapseSignal}>
+            {ungrouped.length === 0 && <p className="empty small">Everything's categorized.</p>}
             {ungrouped.map(row)}
           </Collapsible>
         </div>
@@ -268,13 +318,13 @@ function CategorySection({ title, source, rows, groups, members, onRenamed }) {
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <input
           className="text-input"
-          placeholder="New group name…"
+          placeholder="New category name…"
           value={newGroupName}
           onChange={(e) => setNewGroupName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") addGroup(); }}
         />
         <button type="button" className="btn-secondary" onClick={addGroup}>
-          <Plus size={13} /> Add group
+          <Plus size={13} /> Add category
         </button>
       </div>
     </Collapsible>
@@ -296,14 +346,14 @@ function CategoriesTab({ state, onChanged }) {
         <h2>Categories</h2>
       </div>
       <p className="empty" style={{ marginBottom: 16 }}>
-        Rename a category once and every row that uses it — plus its budget, if it has one — updates together.
-        Once you've added a group, drag a category by its handle to move it in. Categories are separate per source
+        Rename an item once and every row that uses it — plus its budget, if it has one — updates together.
+        Once you've added a category, drag an item by its handle to move it in. Items are separate per source
         below since each feeds a different budget.
       </p>
 
-      <CategorySection title="Expense & Card categories" source="expenses" rows={expenseRows} groups={groupsFor("expenses")} members={membersFor("expenses")} onRenamed={onChanged} />
-      <CategorySection title="Bill categories" source="bills" rows={billRows} groups={groupsFor("bills")} members={membersFor("bills")} onRenamed={onChanged} />
-      <CategorySection title="Debt spending categories" source="debtCharges" rows={debtChargeRows} groups={groupsFor("debtCharges")} members={membersFor("debtCharges")} onRenamed={onChanged} />
+      <CategorySection title="Expense & Card items" source="expenses" rows={expenseRows} groups={groupsFor("expenses")} members={membersFor("expenses")} onRenamed={onChanged} />
+      <CategorySection title="Bill items" source="bills" rows={billRows} groups={groupsFor("bills")} members={membersFor("bills")} onRenamed={onChanged} />
+      <CategorySection title="Debt spending items" source="debtCharges" rows={debtChargeRows} groups={groupsFor("debtCharges")} members={membersFor("debtCharges")} onRenamed={onChanged} />
     </div>
   );
 }

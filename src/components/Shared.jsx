@@ -115,11 +115,23 @@ export function ScrollPanel({ className = "scroll-panel", children, ...rest }) {
 // the "Expand sections by default" setting.
 export const ExpandContext = createContext(false);
 
-export function Collapsible({ title, icon, right, defaultOpen = false, className = "", children }) {
+// `forceSignal` ({ open, token } | undefined) is an optional one-shot
+// override for a "Collapse all"/"Expand all" button somewhere above a group
+// of Collapsibles — bump `token` (e.g. Date.now()) each time it's clicked so
+// every instance re-applies `open` even if a person already had one of them
+// individually toggled to the opposite state.
+// `ignoreGlobalExpand`: this instance always starts collapsed (unless
+// `defaultOpen`), regardless of the "Expand sections by default" setting —
+// for a group of many small sections (category groups, debt history months)
+// where "everything open by default" would defeat the point of grouping
+// them at all, even for someone who's turned that setting on globally.
+export function Collapsible({ title, icon, right, defaultOpen = false, className = "", children, forceSignal, ignoreGlobalExpand = false }) {
   const expandDefault = useContext(ExpandContext);
-  const [open, setOpen] = useState(defaultOpen || expandDefault);
+  const initialOpen = defaultOpen || (ignoreGlobalExpand ? false : expandDefault);
+  const [open, setOpen] = useState(initialOpen);
   // Follow the global setting when it's toggled (opens/closes all sections live).
-  useEffect(() => { setOpen(defaultOpen || expandDefault); }, [expandDefault, defaultOpen]);
+  useEffect(() => { setOpen(initialOpen); }, [initialOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (forceSignal) setOpen(forceSignal.open); }, [forceSignal?.token]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className={`collapsible ${open ? "open" : ""} ${className}`.trim()}>
       <button type="button" className="collapsible-head" onClick={() => setOpen((o) => !o)}>
@@ -142,7 +154,7 @@ export function Collapsible({ title, icon, right, defaultOpen = false, className
 // reference so bars stay comparable across groups. Falls back to the old
 // flat list when no groups exist yet, so a tab with none defined looks
 // exactly as it did before this feature.
-export function GroupedCategoryList({ categories, groups, members, selectedCat, onSelect, maxTotal, emptyLabel = "Nothing to show here." }) {
+export function GroupedCategoryList({ categories, groups, members, selectedCat, onSelect, maxTotal, emptyLabel = "Nothing to show here.", collapseSignal, groupSort = "order" }) {
   if (!categories.length) return <p className="empty small">{emptyLabel}</p>;
 
   const catRow = (c) => (
@@ -161,18 +173,28 @@ export function GroupedCategoryList({ categories, groups, members, selectedCat, 
 
   if (!(groups || []).length) return <>{categories.map(catRow)}</>;
 
-  const { groups: groupedRows, ungrouped } = groupCategoryRows(categories, groups, members);
+  const { groups: groupedRowsRaw, ungrouped } = groupCategoryRows(categories, groups, members);
   const subtotal = (rows) => rows.reduce((s, c) => s + c.total, 0);
+  // "order" (default) leaves groups in their configured sort_order — the
+  // Categories tab's drag-to-reorder still governs that. Ungrouped always
+  // stays last regardless, so it doesn't jump around the page on re-sort.
+  const groupedRows = groupSort === "order" ? groupedRowsRaw : [...groupedRowsRaw].sort((a, b) => {
+    if (groupSort === "alpha") return a.name.localeCompare(b.name);
+    if (groupSort === "alpha-desc") return b.name.localeCompare(a.name);
+    if (groupSort === "value-desc") return subtotal(b.rows) - subtotal(a.rows);
+    if (groupSort === "value-asc") return subtotal(a.rows) - subtotal(b.rows);
+    return 0;
+  });
 
   return (
     <>
       {groupedRows.map((g) => (
-        <Collapsible key={g.id} title={g.name} right={money(subtotal(g.rows))} className="cat-group" defaultOpen>
+        <Collapsible key={g.id} title={g.name} right={money(subtotal(g.rows))} className="cat-group" ignoreGlobalExpand forceSignal={collapseSignal}>
           {g.rows.length === 0 ? <p className="empty small">No spending here.</p> : g.rows.map(catRow)}
         </Collapsible>
       ))}
       {ungrouped.length > 0 && (
-        <Collapsible title="Ungrouped" right={money(subtotal(ungrouped))} className="cat-group" defaultOpen>
+        <Collapsible title="Uncategorized" right={money(subtotal(ungrouped))} className="cat-group" ignoreGlobalExpand forceSignal={collapseSignal}>
           {ungrouped.map(catRow)}
         </Collapsible>
       )}
@@ -200,7 +222,7 @@ function BudgetRow({ label, budget, actual, onSave, onDelete, recentAvg, history
     <div className="cat-row-group">
       <div className="cat-row">
         {hasMembers ? (
-          <button type="button" className="cat-name cat-name-group" onClick={() => setExpanded((v) => !v)} title="A category group — its budget is the sum of every category in it">
+          <button type="button" className="cat-name cat-name-group" onClick={() => setExpanded((v) => !v)} title="A category — its budget is the sum of every item in it">
             {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {label}
           </button>
         ) : (
@@ -585,6 +607,72 @@ export function parseNumberInput(e, prev) {
     return prev;
   }
   return n;
+}
+
+// A "show last N / show all" limit for a long month-by-month list (Card/Debt
+// Spending, Investments' dividends) — same idea as the Months tab's own
+// show-count control, factored out so each tab gets its own persisted
+// preference (`key`) without re-implementing the count/show-all state.
+export function useShowLimit(key, defaultCount = 6) {
+  const [count, setCount] = useState(() => {
+    const saved = Number(localStorage.getItem(`${key}.count`));
+    return Number.isFinite(saved) && saved > 0 ? saved : defaultCount;
+  });
+  const [countInput, setCountInput] = useState(String(count));
+  const [showAll, setShowAll] = useState(() => localStorage.getItem(`${key}.all`) === "1");
+
+  const applyCount = (n) => {
+    const c = Math.max(1, Math.round(n) || 1);
+    setCount(c);
+    localStorage.setItem(`${key}.count`, String(c));
+    setShowAll(false);
+    localStorage.setItem(`${key}.all`, "0");
+  };
+  const showAllRows = () => { setShowAll(true); localStorage.setItem(`${key}.all`, "1"); };
+  const hideExtra = () => { setShowAll(false); localStorage.setItem(`${key}.all`, "0"); };
+
+  return { count, countInput, setCountInput, showAll, applyCount, showAllRows, hideExtra };
+}
+
+// `limit` is a useShowLimit() result; `total` is the full list length before
+// slicing — the control only renders its "show all"/"show last N" toggle
+// when there's actually something being hidden.
+export function ShowLimitControl({ limit, total, itemLabel = "months" }) {
+  const hasHidden = total > limit.count;
+  return (
+    <div className="month-limit-row">
+      <label className="month-limit-field">
+        Show
+        <input
+          type="number"
+          min="1"
+          max="999"
+          className="month-limit-input"
+          value={limit.countInput}
+          onChange={(e) => {
+            const raw = e.target.value;
+            limit.setCountInput(raw);
+            const n = parseInt(raw, 10);
+            if (Number.isFinite(n) && n > 0) limit.applyCount(n);
+          }}
+          onBlur={() => {
+            const n = parseInt(limit.countInput, 10);
+            if (!Number.isFinite(n) || n <= 0) limit.setCountInput(String(limit.count));
+          }}
+        />
+        {itemLabel}
+      </label>
+      {hasHidden && (
+        <button
+          type="button"
+          className="btn-secondary month-limit-showall"
+          onClick={limit.showAll ? limit.hideExtra : limit.showAllRows}
+        >
+          {limit.showAll ? `Show last ${limit.count} ${itemLabel}` : `Show all ${total}`}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function Field({ label, ...props }) {

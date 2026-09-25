@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from "react";
 import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download, Upload } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock } from "../lib/calc.js";
+import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, BudgetProgressList } from "./Shared.jsx";
+import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, BudgetProgressList, useShowLimit, ShowLimitControl } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -14,6 +14,16 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
   const { toast } = useToast();
   const [selectedCat, setSelectedCat] = useState(null);
   const [chartMonth, setChartMonth] = useState("all"); // scope the category/per-card charts
+  const [catSort, setCatSort] = useState("value-desc");
+  const [groupSort, setGroupSort] = useState("order");
+  const [catAllOpen, setCatAllOpen] = useState(false); // groups start collapsed
+  const [catCollapseSignal, setCatCollapseSignal] = useState(null);
+  const toggleCatAll = () => {
+    const next = !catAllOpen;
+    setCatAllOpen(next);
+    setCatCollapseSignal({ open: next, token: Date.now() });
+  };
+  const monthLimit = useShowLimit("ledger.cardSpendingMonths");
   const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
   const cardIds = new Set(cardAccounts.map((a) => a.id));
   // Card spending shares the "expenses" category namespace with the Months
@@ -222,10 +232,12 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
         the consolidated total — load the card with a transfer on the Months tab, then log what you spend here.
       </p>
 
+      {state.months.length > 1 && <ShowLimitControl limit={monthLimit} total={state.months.length} />}
+
       {state.months.length === 0 ? (
         <p className="empty">Add a month on the <strong>Months</strong> tab first.</p>
       ) : (
-        state.months.map((m) => {
+        (monthLimit.showAll ? state.months : state.months.slice(-monthLimit.count)).map((m) => {
           const exps = cardExpensesFor(m);
           const total = exps.reduce((s, e) => s + (Number(e.amount) || 0), 0);
           return (
@@ -271,7 +283,14 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
         </div>
       </Collapsible>
 
-      <h4 className="block-title"><Receipt size={13} /> Card spending by category</h4>
+      <div className="block-title-row">
+        <h4 className="block-title"><Receipt size={13} /> Card spending by item</h4>
+        {categoryGroups.length > 0 && (
+          <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={toggleCatAll}>
+            {catAllOpen ? "Collapse all" : "Expand all"}
+          </button>
+        )}
+      </div>
       <div className="insight-card">
         <div className="backup-folder" style={{ marginTop: 0 }}>
           <span className="small-label" style={{ flex: 1 }}>Month</span>
@@ -282,14 +301,37 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
             ))}
           </select>
         </div>
+        <div className="backup-folder" style={{ marginTop: 8 }}>
+          <span className="small-label" style={{ flex: 1 }}>Sort items</span>
+          <select value={catSort} onChange={(e) => setCatSort(e.target.value)}>
+            <option value="value-desc">Total (high to low)</option>
+            <option value="value-asc">Total (low to high)</option>
+            <option value="alpha">Alphabetical (A–Z)</option>
+            <option value="alpha-desc">Alphabetical (Z–A)</option>
+          </select>
+        </div>
+        {categoryGroups.length > 0 && (
+          <div className="backup-folder" style={{ marginTop: 8 }}>
+            <span className="small-label" style={{ flex: 1 }}>Sort categories</span>
+            <select value={groupSort} onChange={(e) => setGroupSort(e.target.value)}>
+              <option value="order">Default order</option>
+              <option value="value-desc">Total (high to low)</option>
+              <option value="value-asc">Total (low to high)</option>
+              <option value="alpha">Alphabetical (A–Z)</option>
+              <option value="alpha-desc">Alphabetical (Z–A)</option>
+            </select>
+          </div>
+        )}
         <GroupedCategoryList
-          categories={categories}
+          categories={sortRows(categories, catSort)}
+          groupSort={groupSort}
           groups={categoryGroups}
           members={categoryGroupMembers}
           selectedCat={selectedCat}
           onSelect={(cat) => setSelectedCat((s) => (s === cat ? null : cat))}
           maxTotal={maxCat}
           emptyLabel={`No card spending for ${scopeLabel}.`}
+          collapseSignal={catCollapseSignal}
         />
         {categories.length > 0 && (
           <div className="cat-row cat-total">

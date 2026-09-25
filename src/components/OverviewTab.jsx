@@ -1,9 +1,9 @@
 import React from "react";
 import { AlertTriangle, Plus, Download, Target as TargetIcon } from "lucide-react";
 import {
-  monthlyEndingBalances, upcomingBills, allBudgetSnapshot, spendingByCategory,
+  monthlyEndingBalances, upcomingBills, combinedBudgetReport, spendingByCategory,
   monthlyExpenseTotals, debtMonthlyTotals, investmentTotalsByMonth, dividendTotalsByMonth,
-  money,
+  groupCategoryRows, money,
 } from "../lib/calc.js";
 import { Sparkline } from "./Shared.jsx";
 
@@ -22,7 +22,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const bills = upcomingBills(state.months, state.bills, todayStr, 5);
-  const budgetRows = allBudgetSnapshot(state).slice(0, 4);
+  const budgetRows = combinedBudgetReport(state).slice(0, 4);
   const goals = (state.goals || []).filter((g) => g.targetAmount > 0).slice(0, 4);
 
   const months = state.months || [];
@@ -48,7 +48,22 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
   const debtSpendTotals = spendableDebtIds.size ? debtMonthlyTotals(state.debtCharges, { include: spendableDebtIds }) : [];
   const debtSpend = latestMonth ? (debtSpendTotals.find((r) => r.label === latestMonth.monthLabel)?.value || 0) : 0;
 
-  const topCategories = latestMonth ? spendingByCategory([latestMonth], undefined, state.bills).slice(0, 4) : [];
+  // "Categories" (formerly "groups") and "items" (formerly "categories") —
+  // see the Categories tab's own terminology. Two separate cards: item-level
+  // spend (the same flat data Card/Debt Spending's "by item" breakdown
+  // uses) and category-level totals (each category's items summed), which
+  // only makes sense to show at all once the person has actually made any.
+  const monthItems = latestMonth ? spendingByCategory([latestMonth], undefined, state.bills) : [];
+  const topItems = monthItems.slice(0, 4);
+  const expenseCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const expenseCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
+  const topCategories = expenseCategoryGroups.length
+    ? groupCategoryRows(monthItems, expenseCategoryGroups, expenseCategoryGroupMembers)
+        .groups.map((g) => ({ category: g.name, total: g.rows.reduce((s, r) => s + r.total, 0) }))
+        .filter((g) => g.total > 0)
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 4)
+    : [];
 
   return (
     <div className="section">
@@ -116,7 +131,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
                 const over = b.actual > b.budget;
                 const pct = b.budget > 0 ? Math.min(100, (b.actual / b.budget) * 100) : 0;
                 return (
-                  <div key={`${b.source}-${b.category}`} style={{ cursor: "pointer" }} onClick={() => onGoTo("budgeting")}>
+                  <div key={b.category} style={{ cursor: "pointer" }} onClick={() => onGoTo("budgeting")}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
                       <span>{b.category}</span>
                       <span className={`mono ${over ? "deficit" : ""}`}>{money(b.actual)} / {money(b.budget)}</span>
@@ -229,6 +244,20 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
             <div className="overview-card-label">Top categories this month</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
               {topCategories.map((c) => (
+                <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("insights")}>
+                  <span className="row-name">{c.category}</span>
+                  <span className="mono">{money(c.total)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {topItems.length > 0 && (
+          <div className="insight-card">
+            <div className="overview-card-label">Top items this month</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+              {topItems.map((c) => (
                 <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("insights")}>
                   <span className="row-name">{c.category}</span>
                   <span className="mono">{money(c.total)}</span>

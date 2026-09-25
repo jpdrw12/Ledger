@@ -634,6 +634,21 @@ export default function App() {
     localStorage.setItem("ledger.uiScale", String(uiScale));
   }, [uiScale]);
 
+  // Ctrl+scroll changes UI scale from anywhere — the same convention
+  // browsers use for page zoom. A native (non-passive) listener, since
+  // preventDefault has to actually stop the page from also scrolling while
+  // this fires. 5% per wheel notch, clamped to a sane range (matches the
+  // Settings dropdown's lowest/highest options).
+  useEffect(() => {
+    const onWheel = (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setUiScale((s) => Math.min(150, Math.max(50, Math.round((s - Math.sign(e.deltaY) * 5) / 5) * 5)));
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
+
   // How long a hover has to linger before a delayed custom tooltip (e.g.
   // the collapsed sidebar's account badges) appears — see --tooltip-delay
   // in styles.js. Native title tooltips have their own OS/browser-controlled
@@ -1442,7 +1457,25 @@ export default function App() {
   // nav. Order comes from tabOrder (persisted, reorderable by holding Alt
   // and dragging — see useDragList above); while reorderMode is active,
   // clicking is disabled so a drag's mouseup doesn't also switch tabs.
-  const orderedTabs = tabOrder.map((id) => TAB_DEFS.find((t) => t.id === id)).filter(Boolean);
+  const orderedTabsRaw = tabOrder.map((id) => TAB_DEFS.find((t) => t.id === id)).filter(Boolean);
+  // Bucketed into the same Core→Spending→Accounts & debts→Planning→Insights
+  // & reports→System sequence the "grouped" layout enforces, so every
+  // layout's nav shows tabs in the same order. Alt-drag reordering still
+  // works — it still edits raw tabOrder positions (see the `i` lookups
+  // below) — but only ever visibly reorders within a tab's own group,
+  // since a tab's group comes from TAB_DEFS, not from its tabOrder
+  // position, so a drag across group lines snaps back on the next render.
+  const orderedTabs = (() => {
+    const byGroup = new Map();
+    const groupOrder = [];
+    orderedTabsRaw.forEach((t) => {
+      const g = t.group || "";
+      if (!byGroup.has(g)) { byGroup.set(g, []); groupOrder.push(g); }
+      byGroup.get(g).push(t);
+    });
+    groupOrder.sort((a, b) => (a === "Core" ? -1 : b === "Core" ? 1 : 0));
+    return groupOrder.flatMap((g) => byGroup.get(g));
+  })();
   // Overview is always pinned first in every layout's nav (never draggable,
   // never grouped alongside the rest) — rendered as a fixed lead item, then
   // skipped when the reorderable loop below reaches its slot in tabOrder.
@@ -1462,8 +1495,9 @@ export default function App() {
   const tabNav = (
     <>
       {overviewButton}
-      {orderedTabs.map((t, i) => {
+      {orderedTabs.map((t) => {
         if (t.id === "overview" || hiddenTabs.includes(t.id)) return null;
+        const i = tabOrder.indexOf(t.id);
         const Icon = t.icon;
         return (
           <TabButton
@@ -1488,8 +1522,9 @@ export default function App() {
   // walking tabOrder; later members of the same group are skipped here, not
   // reordered — no contiguity is enforced on tabOrder itself.
   const renderedGroupIds = new Set();
-  const sidebarTabNav = [overviewButton, ...orderedTabs.map((t, i) => {
+  const sidebarTabNav = [overviewButton, ...orderedTabs.map((t) => {
     if (t.id === "overview" || hiddenTabs.includes(t.id)) return null;
+    const i = tabOrder.indexOf(t.id);
     const groupId = tabGroups.membership[t.id];
     if (groupId) {
       if (renderedGroupIds.has(groupId)) return null;

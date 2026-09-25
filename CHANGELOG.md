@@ -5,6 +5,43 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.48.0]
+
+### Added
+- **Investment accounts** are now in their own collapsible container.
+- **Settings → Appearance**: a Ctrl+scroll shortcut changes UI scale from
+  anywhere in the app, same convention as browser page zoom.
+- **Reset tab order** button next to Settings → Visible tabs.
+
+### Changed
+- **Budgeting & Planning** replaced with a single "Combined budget" system
+  (new `combined_budgets` table): pick a category (a group of items) or a
+  single item — mutually exclusive fields — set one monthly target, and
+  spend is looked up and summed across Expense, Card, and Debt Spending
+  automatically for that name. Replaces the three separate per-source
+  budget editors previously here; Overview's Budget snapshot now reflects
+  this too.
+- **Categories tab terminology**: what was called a "group" is now a
+  "category", and what was called a "category" is now an "item" —
+  Categories tab, Card/Debt Spending's category breakdown, and Insights'
+  "Spending by category" (which also gained the same sort/group-sort/
+  collapse-all/category-group support Card and Debt Spending already had).
+- Every layout's tab order is now bucketed into the same Core → Spending →
+  Accounts & debts → Planning → Insights & reports → System sequence
+  Grouped enforces, not just Grouped's own nav; a tab added since your last
+  save is inserted near its natural neighbor instead of always at the end.
+- Categories/groups start collapsed by default in the Categories tab, Card
+  and Debt Spending's breakdowns, and Debts' payment history (now grouped
+  by month in one condensed table instead of a flat list).
+- The "Insights & reports" nav heading could render right-aligned once it
+  wrapped to two lines at low UI scale — fixed.
+- The "Not in total" account badge no longer looks like a pill/warning
+  badge.
+
+### Removed
+- A stale native tooltip on the combined budget row's expand control (same
+  WebKitGTK stale-artifact issue documented elsewhere in this app).
+
 ## [0.47.1]
 
 ### Changed

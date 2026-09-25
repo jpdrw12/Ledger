@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { Download, TrendingUp, Receipt, Target } from "lucide-react";
-import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, withInvestmentTotals, money } from "../lib/calc.js";
+import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, withInvestmentTotals, sortRows, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
-import { Sparkline, Collapsible, BudgetProgressList } from "./Shared.jsx";
+import { Sparkline, Collapsible, BudgetProgressList, GroupedCategoryList } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
 function InsightsTab({ state, ledger, onGoToBudgeting }) {
@@ -10,6 +10,17 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
   const [horizon, setHorizon] = useState(6);
   const [selectedCat, setSelectedCat] = useState(null); // click a category row to highlight its total
   const [catMonth, setCatMonth] = useState("all"); // scope the spending-by-category chart
+  const [catSort, setCatSort] = useState("value-desc");
+  const [groupSort, setGroupSort] = useState("order");
+  const [catAllOpen, setCatAllOpen] = useState(false); // groups start collapsed
+  const [catCollapseSignal, setCatCollapseSignal] = useState(null);
+  const toggleCatAll = () => {
+    const next = !catAllOpen;
+    setCatAllOpen(next);
+    setCatCollapseSignal({ open: next, token: Date.now() });
+  };
+  const categoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
+  const categoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
 
   // These pure aggregations only depend on state/ledger/horizon.
   const { series, seriesWithInvest, budgets, latestLabel, nw, avgNet } = useMemo(() => {
@@ -153,7 +164,14 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
         )}
       </Collapsible>
 
-      <h4 className="block-title"><Receipt size={13} /> Spending by category</h4>
+      <div className="block-title-row">
+        <h4 className="block-title"><Receipt size={13} /> Spending by category</h4>
+        {categoryGroups.length > 0 && (
+          <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={toggleCatAll}>
+            {catAllOpen ? "Collapse all" : "Expand all"}
+          </button>
+        )}
+      </div>
       <div className="insight-card">
         <div className="backup-folder" style={{ marginTop: 0 }}>
           <span className="small-label" style={{ flex: 1 }}>Month</span>
@@ -164,20 +182,38 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
             ))}
           </select>
         </div>
-        {scopedCategories.length === 0 && <p className="empty small">No expenses logged for {catScopeLabel}.</p>}
-        {scopedCategories.map((c) => (
-          <div
-            className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
-            key={c.category}
-            onClick={() => setSelectedCat((s) => (s === c.category ? null : c.category))}
-          >
-            <span className="cat-name">{c.category}</span>
-            <div className="cat-bar-track">
-              <div className="cat-bar-fill" style={{ width: `${scopedMax ? (c.total / scopedMax) * 100 : 0}%` }} />
-            </div>
-            <span className="cat-amount mono">{money(c.total)}</span>
+        <div className="backup-folder" style={{ marginTop: 8 }}>
+          <span className="small-label" style={{ flex: 1 }}>Sort items</span>
+          <select value={catSort} onChange={(e) => setCatSort(e.target.value)}>
+            <option value="value-desc">Total (high to low)</option>
+            <option value="value-asc">Total (low to high)</option>
+            <option value="alpha">Alphabetical (A–Z)</option>
+            <option value="alpha-desc">Alphabetical (Z–A)</option>
+          </select>
+        </div>
+        {categoryGroups.length > 0 && (
+          <div className="backup-folder" style={{ marginTop: 8 }}>
+            <span className="small-label" style={{ flex: 1 }}>Sort categories</span>
+            <select value={groupSort} onChange={(e) => setGroupSort(e.target.value)}>
+              <option value="order">Default order</option>
+              <option value="value-desc">Total (high to low)</option>
+              <option value="value-asc">Total (low to high)</option>
+              <option value="alpha">Alphabetical (A–Z)</option>
+              <option value="alpha-desc">Alphabetical (Z–A)</option>
+            </select>
           </div>
-        ))}
+        )}
+        <GroupedCategoryList
+          categories={sortRows(scopedCategories, catSort)}
+          groupSort={groupSort}
+          groups={categoryGroups}
+          members={categoryGroupMembers}
+          selectedCat={selectedCat}
+          onSelect={(cat) => setSelectedCat((s) => (s === cat ? null : cat))}
+          maxTotal={scopedMax}
+          emptyLabel={`No expenses logged for ${catScopeLabel}.`}
+          collapseSignal={catCollapseSignal}
+        />
         {scopedCategories.length > 0 && (
           <div className="cat-row cat-total">
             <span className="cat-name">Total</span>

@@ -28,7 +28,7 @@ import {
   budgetReport,
   netWorthSnapshot,
   allBudgetPaceAlerts,
-  allBudgetSnapshot,
+  combinedBudgetReport,
   reconcileTabGroups,
   groupSnapshots,
   investmentValueAsOf,
@@ -47,6 +47,7 @@ import {
   reconcileTabOrder,
   categoryUsageReport,
   groupCategoryRows,
+  sortRows,
   mergeCategoryTotals,
   billPaymentTotals,
   debtSpendingByCategory,
@@ -719,8 +720,17 @@ describe("reconcileTabOrder", () => {
     expect(reconcileTabOrder(["oldtab", "months", "card", "bills", "goals"], defaultOrder)).toEqual(["months", "card", "bills", "goals"]);
   });
 
-  it("appends ids missing from the saved order at their default position (a tab added since the save)", () => {
-    expect(reconcileTabOrder(["card", "months"], defaultOrder)).toEqual(["card", "months", "bills", "goals"]);
+  it("inserts ids missing from the saved order near their default-order neighbor (a tab added since the save)", () => {
+    // Both missing ids ("bills", "goals") come after "card" in defaultOrder
+    // and before nothing else present in the saved order — so they land
+    // right after "card", ahead of "months" rather than trailing it.
+    expect(reconcileTabOrder(["card", "months"], defaultOrder)).toEqual(["card", "bills", "goals", "months"]);
+  });
+
+  it("inserts a missing tab near its default-order neighbor instead of always at the very end", () => {
+    // "card" is missing here — its default position is right after "months",
+    // which is present, so it should land there, not after "goals".
+    expect(reconcileTabOrder(["months", "bills", "goals"], defaultOrder)).toEqual(["months", "card", "bills", "goals"]);
   });
 
   it("falls back to defaultOrder untouched for anything that isn't an array (malformed/missing localStorage)", () => {
@@ -888,6 +898,44 @@ describe("groupCategoryRows", () => {
 
   it("handles missing inputs", () => {
     expect(groupCategoryRows(undefined, undefined, undefined)).toEqual({ groups: [], ungrouped: [] });
+  });
+});
+
+describe("sortRows", () => {
+  const rows = [
+    { category: "Groceries", total: 50, count: 3 },
+    { category: "Gas", total: 200, count: 1 },
+    { category: "rent", total: 100, count: 5 },
+  ];
+
+  it("sorts alphabetically by category, case-insensitively where locale collation applies", () => {
+    expect(sortRows(rows, "alpha").map((r) => r.category)).toEqual(["Gas", "Groceries", "rent"]);
+  });
+
+  it("sorts alphabetically descending", () => {
+    expect(sortRows(rows, "alpha-desc").map((r) => r.category)).toEqual(["rent", "Groceries", "Gas"]);
+  });
+
+  it("sorts by total (default valueKey), high to low", () => {
+    expect(sortRows(rows, "value-desc").map((r) => r.category)).toEqual(["Gas", "rent", "Groceries"]);
+  });
+
+  it("sorts by total, low to high", () => {
+    expect(sortRows(rows, "value-asc").map((r) => r.category)).toEqual(["Groceries", "rent", "Gas"]);
+  });
+
+  it("sorts by a different valueKey (e.g. count)", () => {
+    expect(sortRows(rows, "value-desc", { valueKey: "count" }).map((r) => r.category)).toEqual(["rent", "Groceries", "Gas"]);
+  });
+
+  it("returns a shallow copy in original order for an unknown mode, leaving the input untouched", () => {
+    const result = sortRows(rows, "none");
+    expect(result).toEqual(rows);
+    expect(result).not.toBe(rows);
+  });
+
+  it("handles a missing rows array", () => {
+    expect(sortRows(undefined, "alpha")).toEqual([]);
   });
 });
 
@@ -1347,34 +1395,90 @@ describe("allBudgetPaceAlerts", () => {
   });
 });
 
-describe("allBudgetSnapshot", () => {
-  const month = makeMonth("m1", { monthLabel: "June 2026", expensesPay1: [{ category: "Groceries", amount: 300, accountId: "a" }, { category: "Gas", amount: 45, accountId: "a" }] });
+describe("combinedBudgetReport", () => {
+  const month = makeMonth("m1", {
+    monthLabel: "June 2026",
+    // "a" is a plain (non-card) account; "c" is a card account.
+    expensesPay1: [
+      { category: "Groceries", amount: 300, accountId: "a" },
+      { category: "Groceries", amount: 40, accountId: "c" },
+      { category: "Gas", amount: 45, accountId: "a" },
+    ],
+  });
   const state = {
     months: [month],
-    accounts: [{ id: "a" }],
-    categoryBudgets: [{ category: "Groceries", amount: 400 }, { category: "Gas", amount: 50 }],
-    cardBudgets: [],
-    debtBudgets: [],
-    debts: [],
-    debtCharges: [],
+    accounts: [{ id: "a" }, { id: "c", excludeFromTotal: true }],
+    // A single, separate budget list — not derived from category_budgets/
+    // card_budgets/debt_budgets, which don't factor in here at all.
+    combinedBudgets: [{ category: "Groceries", amount: 500 }, { category: "Gas", amount: 50 }],
+    debts: [{ id: "d1", spendable: true }],
+    debtCharges: [{ debtId: "d1", monthLabel: "June 2026", category: "Groceries", amount: 20 }],
     bills: [],
+    categoryGroups: [],
+    categoryGroupMembers: [],
   };
 
-  it("sorts every budgeted row by how much of its target is used, highest first", () => {
-    // Gas: 45/50 = 90%; Groceries: 300/400 = 75%.
-    expect(allBudgetSnapshot(state)).toEqual([
-      { category: "Gas", budget: 50, actual: 45, source: "Expense" },
-      { category: "Groceries", budget: 400, actual: 300, source: "Expense" },
+  it("looks up the same category name in expenses, card spending, and debt spending, and sums what it finds", () => {
+    // Expense (card-excluded): 300, Card: 40, Debt: 20 -> 360.
+    const groceries = combinedBudgetReport(state).find((r) => r.category === "Groceries");
+    expect(groceries.budget).toBe(500);
+    expect(groceries.actual).toBe(360);
+  });
+
+  it("breaks the total back down by source, for whichever sources actually contributed", () => {
+    const groceries = combinedBudgetReport(state).find((r) => r.category === "Groceries");
+    expect(groceries.members).toEqual([
+      { category: "Expense", actual: 300 },
+      { category: "Card", actual: 40 },
+      { category: "Debt", actual: 20 },
+    ]);
+    expect(groceries.memberActualKey).toBe("actual");
+  });
+
+  it("still lists a single contributing source in the breakdown (transparent even when nothing's actually merged)", () => {
+    // Gas only appears in the Expense fixture.
+    const gas = combinedBudgetReport(state).find((r) => r.category === "Gas");
+    expect(gas.actual).toBe(45);
+    expect(gas.members).toEqual([{ category: "Expense", actual: 45 }]);
+  });
+
+  it("shows no breakdown at all when a budgeted category has no spend anywhere yet", () => {
+    const noSpend = { ...state, combinedBudgets: [...state.combinedBudgets, { category: "Rent", amount: 1000 }] };
+    const rent = combinedBudgetReport(noSpend).find((r) => r.category === "Rent");
+    expect(rent.actual).toBe(0);
+    expect(rent.members).toBeNull();
+  });
+
+  it("when the name matches a GROUP in a source, sums every member of that group instead of a single item", () => {
+    const grouped = {
+      ...state,
+      // "Household" groups Groceries + Gas on the expenses side (which
+      // Card spending shares); debt spending has no such group.
+      categoryGroups: [{ id: "g1", source: "expenses", name: "Household" }],
+      categoryGroupMembers: [
+        { source: "expenses", category: "Groceries", groupId: "g1" },
+        { source: "expenses", category: "Gas", groupId: "g1" },
+      ],
+      combinedBudgets: [{ category: "Household", amount: 500 }],
+    };
+    const household = combinedBudgetReport(grouped).find((r) => r.category === "Household");
+    // Expense (card-excluded): 300 + 45 = 345, Card: 40, Debt: 0 (no debt
+    // charge named "Household" or in a same-named debt group).
+    expect(household.actual).toBe(385);
+    expect(household.members).toEqual([
+      { category: "Expense", actual: 345 },
+      { category: "Card", actual: 40 },
     ]);
   });
 
-  it("excludes rows with no budget set", () => {
-    const noBudget = { ...state, categoryBudgets: [] };
-    expect(allBudgetSnapshot(noBudget)).toEqual([]);
+  it("excludes categories with no combined budget row at all", () => {
+    expect(combinedBudgetReport({ ...state, combinedBudgets: [] })).toEqual([]);
   });
 
-  it("returns [] when there are no months", () => {
-    expect(allBudgetSnapshot({ months: [] })).toEqual([]);
+  it("handles no months at all", () => {
+    expect(combinedBudgetReport({ months: [], debts: [], debtCharges: [], combinedBudgets: [{ category: "Groceries", amount: 50 }] })).toEqual([
+      { category: "Groceries", budget: 50, actual: 0, members: null, memberActualKey: "actual" },
+    ]);
   });
 });
 

@@ -1,10 +1,103 @@
 import React, { useState } from "react";
-import { Plus, Trash2, RotateCcw } from "lucide-react";
+import { Plus, Trash2, RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, estimateMonthlyInterest, currentMonthLabel } from "../lib/calc.js";
 import { Field, parseNumberInput, useDragList, DragHandle, patchEntity } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
+
+// One debt's payment/interest history — same condensed table as before
+// (Month/Previous/Paid/Interest/New balance), just with its rows grouped
+// under a collapsible month header instead of one long flat list. A real
+// component (not the inline IIFE this replaced) because collapsed-group
+// state needs actual hooks, which can't live inside a plain function
+// invoked ad hoc during render.
+function DebtHistoryTable({ history, onRemove }) {
+  const totalPaid = history.reduce((s, h) => s + (Number(h.amount_paid) || 0), 0);
+  const totalInterest = history.reduce((s, h) => s + (Number(h.interest) || 0), 0);
+
+  // Grouped by month_label (free text, not a real month — see monthDraft
+  // below), in first-appearance order.
+  const groupLabels = [];
+  const byLabel = new Map();
+  history.forEach((h) => {
+    const label = h.month_label || "";
+    if (!byLabel.has(label)) { byLabel.set(label, []); groupLabels.push(label); }
+    byLabel.get(label).push(h);
+  });
+
+  // Every month group starts collapsed — the lazy-init only runs once, so
+  // later payments (new labels) still land expanded rather than needing a
+  // second click just to see what was just logged.
+  const [collapsed, setCollapsed] = useState(() => new Set(groupLabels));
+  const toggle = (label) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (next.has(label)) next.delete(label); else next.add(label);
+    return next;
+  });
+
+  return (
+    <table className="history-table">
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>Previous</th>
+          <th>Paid</th>
+          <th>Interest</th>
+          <th>New balance</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {groupLabels.map((label) => {
+          const rows = byLabel.get(label);
+          const isCollapsed = collapsed.has(label);
+          const monthPaid = rows.reduce((s, h) => s + (Number(h.amount_paid) || 0), 0);
+          return (
+            <React.Fragment key={label}>
+              <tr className="history-group-row" onClick={() => toggle(label)}>
+                <td className="history-group-label">
+                  {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  {label || "(no label)"}
+                </td>
+                <td />
+                <td className="mono">{money(monthPaid)}</td>
+                <td />
+                <td />
+                <td />
+              </tr>
+              {!isCollapsed && rows.map((h) => (
+                <tr key={h.id}>
+                  <td />
+                  <td className="mono">{money(h.previous_balance)}</td>
+                  <td className="mono">{money(h.amount_paid)}</td>
+                  <td className="mono">{money(h.interest)}</td>
+                  <td className="mono">{money(h.new_balance)}</td>
+                  <td>
+                    <button
+                      className="icon-btn"
+                      title="Remove this payment and restore previous balance"
+                      onClick={() => onRemove(h.id)}
+                    >
+                      <RotateCcw size={12} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </React.Fragment>
+          );
+        })}
+        <tr className="history-total-row">
+          <td colSpan={2}>Total</td>
+          <td className="mono">{money(totalPaid)}</td>
+          <td className="mono">{money(totalInterest)}</td>
+          <td />
+          <td />
+        </tr>
+      </tbody>
+    </table>
+  );
+}
 
 function DebtsTab({ debts, debtHistory, months, onChanged, onPatch }) {
   const { confirm, toast } = useToast();
@@ -176,49 +269,7 @@ function DebtsTab({ debts, debtHistory, months, onChanged, onPatch }) {
             {(() => {
               const history = debtHistory.filter((h) => h.debt_id === debt.id);
               if (!history.length) return null;
-              const totalPaid = history.reduce((s, h) => s + (Number(h.amount_paid) || 0), 0);
-              const totalInterest = history.reduce((s, h) => s + (Number(h.interest) || 0), 0);
-              return (
-                <table className="history-table">
-                  <thead>
-                    <tr>
-                      <th>Month</th>
-                      <th>Previous</th>
-                      <th>Paid</th>
-                      <th>Interest</th>
-                      <th>New balance</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((h) => (
-                      <tr key={h.id}>
-                        <td>{h.month_label}</td>
-                        <td className="mono">{money(h.previous_balance)}</td>
-                        <td className="mono">{money(h.amount_paid)}</td>
-                        <td className="mono">{money(h.interest)}</td>
-                        <td className="mono">{money(h.new_balance)}</td>
-                        <td>
-                          <button
-                            className="icon-btn"
-                            title="Remove this payment and restore previous balance"
-                            onClick={() => removeHistoryEntry(h.id)}
-                          >
-                            <RotateCcw size={12} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="history-total-row">
-                      <td colSpan={2}>Total</td>
-                      <td className="mono">{money(totalPaid)}</td>
-                      <td className="mono">{money(totalInterest)}</td>
-                      <td />
-                      <td />
-                    </tr>
-                  </tbody>
-                </table>
-              );
+              return <DebtHistoryTable history={history} onRemove={removeHistoryEntry} />;
             })()}
           </div>
           );

@@ -1,18 +1,20 @@
 import React, { useMemo, useState } from "react";
-import { Target, CreditCard, Landmark, CalendarRange, Wand2, AlertTriangle } from "lucide-react";
+import { Target, Wand2, AlertTriangle, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import * as db from "../lib/db.js";
-import { budgetReport, cardBudgetReport, debtBudgetReport, spendingByCategory, categorySnapshotsByMonth, debtCategorySnapshotsByLabel, recentCategoryAverage, budgetOverUnderHistory, groupSnapshots, allBudgetPaceAlerts, whatIfComparison, money } from "../lib/calc.js";
-import { Collapsible, BudgetEditor, BudgetGrid, Sparkline } from "./Shared.jsx";
+import { combinedBudgetReport, spendingByCategory, debtSpendingByCategory, allBudgetPaceAlerts, whatIfComparison, money } from "../lib/calc.js";
+import { Collapsible, Sparkline } from "./Shared.jsx";
+import { useToast } from "./Toast.jsx";
 
-// One home for every monthly budget target — expense categories, card
-// spending, and debt spending each had their own hand-rolled editing UI
-// (in Insights/Card/Debt Spending tabs) before this; those tabs now show a
-// read-only glance (BudgetProgressList) and point here to actually set
-// targets. See CLAUDE.md's "Conventions" — this tab still doesn't hold its
-// own copy of app state, same as every other tab.
+// One home for every monthly budget target. Used to hold three separate
+// per-source editors (Expense/Card/Debt Spending each with their own
+// category_budgets/card_budgets/debt_budgets table) before this — replaced
+// by a single combined_budgets table: one target per category NAME,
+// checked against spend summed across all three sources for that name
+// (see combinedBudgetReport in calc.js). Card Spending/Debt Spending/
+// Insights still show a read-only glance at whatever's relevant to them.
 function BudgetingTab({ state, onChanged }) {
-  const latestMonth = state.months.length ? state.months[state.months.length - 1] : null;
-  const latestLabel = latestMonth?.monthLabel || null;
+  const { toast } = useToast();
+  const latestLabel = state.months.length ? state.months[state.months.length - 1].monthLabel : null;
 
   // --- What-if scenarios (client-side only — nothing here is persisted) ---
   const [whatIfHorizon, setWhatIfHorizon] = useState(6);
@@ -28,115 +30,36 @@ function BudgetingTab({ state, onChanged }) {
   const endBaseline = whatIf.rows.length ? whatIf.rows[whatIf.rows.length - 1].baseline : 0;
   const endScenario = whatIf.rows.length ? whatIf.rows[whatIf.rows.length - 1].scenario : 0;
 
-  // --- Category groups — shared by expense/card (both source="expenses",
-  // since card spending is just expenses on a card-flagged account) and
-  // debt (source="debtCharges"). Once a category is grouped, it's the
-  // group that gets budgeted, not the category — see calc.js's
-  // buildGroupBudgetRows and migrations/0022_budget_groups.sql.
-  const expenseGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
-  const expenseGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
-  const debtGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
-  const debtGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
-  const findGroupByName = (groups, name) => groups.find((g) => g.name.trim().toLowerCase() === (name || "").trim().toLowerCase());
-
-  // --- Expense categories (category_budgets / category_group_budgets) ----
-  const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
-  const expenseBudgets = budgetReport(state.months, state.categoryBudgets, expenseGroups, expenseGroupMembers, state.categoryGroupBudgets);
-  const expenseCategorySuggestions = [...expenseGroups.map((g) => g.name), ...spendingByCategory(state.months, { exclude: cardAccountIds }).map((c) => c.category)];
-  const expenseSnapshots = groupSnapshots(categorySnapshotsByMonth(state.months, { exclude: cardAccountIds }), expenseGroups, expenseGroupMembers);
-  // A row that came from buildGroupBudgetRows carries its groupId; the
-  // "Add budget" flow (onAddRow) has no row to read one from, so it
-  // resolves the typed text against known group names itself instead.
-  const saveExpenseBudget = async (category, amount, groupId) => {
-    const gid = groupId || findGroupByName(expenseGroups, category)?.id;
-    if (gid) await db.upsertCategoryGroupBudget(gid, amount);
-    else await db.upsertCategoryBudget(category, amount);
-    onChanged();
-  };
-  const deleteExpenseBudget = async (category, groupId) => {
-    if (groupId) await db.deleteCategoryGroupBudget(groupId);
-    else await db.deleteCategoryBudget(category);
-    onChanged();
-  };
-  const expenseOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "category");
-  const saveExpenseBudgetMonth = async (category, monthLabel, amount) => {
-    await db.upsertCategoryBudgetMonth("category", category, monthLabel, amount);
-    onChanged();
-  };
-
-  // --- Card spending (card_budgets / card_group_budgets) ------------------
-  const cardAccounts = state.accounts.filter((a) => a.excludeFromTotal);
-  const cardBudgetData = cardBudgetReport(latestMonth, state.cardBudgets || [], cardAccountIds, state.bills, expenseGroups, expenseGroupMembers, state.cardGroupBudgets);
-  const cardCategorySuggestions = [
-    ...expenseGroups.map((g) => g.name),
-    ...Array.from(
-      new Set(
-        state.months.flatMap((m) => [...(m.expensesPay1 || []), ...(m.expensesPay2 || [])])
-          .filter((e) => cardAccountIds.has(e.accountId))
-          .map((e) => e.category)
-          .filter(Boolean)
-      )
-    ).sort(),
-  ];
-  const cardSnapshots = groupSnapshots(categorySnapshotsByMonth(state.months, { include: cardAccountIds }, state.bills), expenseGroups, expenseGroupMembers);
-  const cardAllowance = (state.cardBudgets || []).find((b) => b.category === "");
-  const saveCardAllowance = async (amount) => {
-    if (amount > 0) await db.upsertCardBudget("", amount);
-    else if (cardAllowance) await db.deleteCardBudget("");
-    onChanged();
-  };
-  const saveCardBudget = async (category, amount, groupId) => {
-    const gid = groupId || findGroupByName(expenseGroups, category)?.id;
-    if (gid) await db.upsertCardGroupBudget(gid, amount);
-    else await db.upsertCardBudget(category, amount);
-    onChanged();
-  };
-  const deleteCardBudget = async (category, groupId) => {
-    if (groupId) await db.deleteCardGroupBudget(groupId);
-    else await db.deleteCardBudget(category);
-    onChanged();
-  };
-  const cardOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "card");
-  const saveCardBudgetMonth = async (category, monthLabel, amount) => {
-    await db.upsertCategoryBudgetMonth("card", category, monthLabel, amount);
-    onChanged();
-  };
-
-  // --- Debt spending (debt_budgets / debt_group_budgets) ------------------
-  const spendableDebts = (state.debts || []).filter((d) => d.spendable);
-  const debtIds = new Set(spendableDebts.map((d) => d.id));
-  const debtCharges = state.debtCharges || [];
-  const debtBudgetData = debtBudgetReport(debtCharges, latestLabel, state.debtBudgets || [], debtIds, debtGroups, debtGroupMembers, state.debtGroupBudgets);
-  const debtCategorySuggestions = [...debtGroups.map((g) => g.name), ...Array.from(new Set(debtCharges.map((c) => c.category).filter(Boolean))).sort()];
-  const debtSnapshots = groupSnapshots(debtCategorySnapshotsByLabel(debtCharges, state.months.map((m) => m.monthLabel)), debtGroups, debtGroupMembers);
-  const debtAllowance = (state.debtBudgets || []).find((b) => b.category === "");
-  const saveDebtAllowance = async (amount) => {
-    if (amount > 0) await db.upsertDebtBudget("", amount);
-    else if (debtAllowance) await db.deleteDebtBudget("");
-    onChanged();
-  };
-  const saveDebtBudget = async (category, amount, groupId) => {
-    const gid = groupId || findGroupByName(debtGroups, category)?.id;
-    if (gid) await db.upsertDebtGroupBudget(gid, amount);
-    else await db.upsertDebtBudget(category, amount);
-    onChanged();
-  };
-  const deleteDebtBudget = async (category, groupId) => {
-    if (groupId) await db.deleteDebtGroupBudget(groupId);
-    else await db.deleteDebtBudget(category);
-    onChanged();
-  };
-  const debtOverrides = (state.categoryBudgetMonths || []).filter((o) => o.kind === "debt");
-  const saveDebtBudgetMonth = async (category, monthLabel, amount) => {
-    await db.upsertCategoryBudgetMonth("debt", category, monthLabel, amount);
-    onChanged();
-  };
-
   // --- Mid-month pace alerts ------------------------------------------------
-  // Shared with the global header badge (App.jsx) via allBudgetPaceAlerts —
-  // see its comment in calc.js for why this now takes the whole state shape
-  // instead of each source's rows being assembled here.
+  // Shared with the global header badge (App.jsx) via allBudgetPaceAlerts.
   const paceAlerts = allBudgetPaceAlerts(state);
+
+  // --- Combined budget (combined_budgets) ---------------------------------
+  const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
+  // Category groups (source="expenses" covers both Expense and Card
+  // spending — card spending is just expenses on a card-flagged account —
+  // "debtCharges" is its own separate namespace) — the "Category" mode
+  // below picks from these; "Item" mode picks from actual leaf-level
+  // category names logged in any of the three sources.
+  const categoryGroupOptions = Array.from(new Set([
+    ...(state.categoryGroups || []).filter((g) => g.source === "expenses").map((g) => g.name),
+    ...(state.categoryGroups || []).filter((g) => g.source === "debtCharges").map((g) => g.name),
+  ]));
+  const itemOptions = Array.from(new Set([
+    ...spendingByCategory(state.months, { exclude: cardAccountIds }, state.bills).map((c) => c.category),
+    ...spendingByCategory(state.months, { include: cardAccountIds }, state.bills).map((c) => c.category),
+    ...debtSpendingByCategory(state.debtCharges || [], {}).map((c) => c.category),
+  ]));
+
+  const combinedBudgets = combinedBudgetReport(state);
+  const saveCombinedBudget = async (category, amount) => {
+    await db.upsertCombinedBudget(category, amount);
+    onChanged();
+  };
+  const deleteCombinedBudget = async (category) => {
+    await db.deleteCombinedBudget(category);
+    onChanged();
+  };
 
   if (state.months.length === 0) {
     return (
@@ -153,9 +76,9 @@ function BudgetingTab({ state, onChanged }) {
         <h2>Budgeting & Planning</h2>
       </div>
       <p className="empty" style={{ marginBottom: 16 }}>
-        Every monthly budget target in one place — expense categories, card spending, and debt spending. Each compares
-        against <strong>{latestLabel}</strong>, your most recent month. Card Spending and Debt Spending still show these
-        same numbers at a glance; edit them here.
+        One target per category, checked against <strong>{latestLabel}</strong> (your most recent month) — spend is
+        summed across Expense, Card, and Debt Spending automatically, whichever of those a category actually
+        appears in.
       </p>
 
       {paceAlerts.length > 0 && (
@@ -170,109 +93,27 @@ function BudgetingTab({ state, onChanged }) {
         </div>
       )}
 
-      <Collapsible title="Expense categories" icon={<Target size={13} />} right={latestLabel} defaultOpen>
-        <BudgetEditor
-          rows={expenseBudgets.map((b) => ({
-            category: b.category,
-            groupId: b.groupId,
-            members: b.members,
-            memberActualKey: "actual",
-            budget: b.budget,
-            actual: b.actual,
-            recentAvg: recentCategoryAverage(expenseSnapshots, b.category),
-            history: budgetOverUnderHistory(expenseSnapshots, b.category, b.budget),
-          }))}
-          onSaveRow={saveExpenseBudget}
-          onDeleteRow={deleteExpenseBudget}
-          onAddRow={saveExpenseBudget}
-          categorySuggestions={expenseCategorySuggestions}
-          datalistId="budgeting-expense-suggestions"
+      <Collapsible title="Budgets" icon={<Target size={13} />} right={latestLabel} defaultOpen>
+        {combinedBudgets.length === 0 && (
+          <p className="empty small" style={{ marginTop: 0 }}>
+            No budgets set yet. Add one below — pick a category (a group of items) or a single item, and its spend
+            across Expense, Card, and Debt Spending is looked up and summed automatically.
+          </p>
+        )}
+        {combinedBudgets.map((b) => (
+          <CombinedBudgetRow key={b.category} row={b} onSave={(amt) => saveCombinedBudget(b.category, amt)} onDelete={() => deleteCombinedBudget(b.category)} />
+        ))}
+        <CombinedBudgetAddRow
+          categoryOptions={categoryGroupOptions}
+          itemOptions={itemOptions}
+          onAdd={(category, amount) => {
+            if (!category.trim() || amount <= 0) {
+              toast("Pick a category or item and a positive amount.", "error");
+              return;
+            }
+            saveCombinedBudget(category.trim(), amount);
+          }}
         />
-        {expenseBudgets.length > 0 && (
-          <Collapsible title="Plan ahead" icon={<CalendarRange size={13} />} className="cat-group">
-            <BudgetGrid
-              categories={expenseBudgets.map((b) => ({ category: b.category, globalBudget: b.budget }))}
-              months={state.months}
-              overrides={expenseOverrides}
-              actualSnapshots={expenseSnapshots}
-              onSaveCell={saveExpenseBudgetMonth}
-            />
-          </Collapsible>
-        )}
-      </Collapsible>
-
-      <Collapsible title="Card spending" icon={<CreditCard size={13} />} right={latestLabel} defaultOpen>
-        {cardAccounts.length === 0 ? (
-          <p className="empty small">No spending-card accounts set up (Accounts tab).</p>
-        ) : (
-          <BudgetEditor
-            allowance={cardBudgetData.total ? { budget: cardBudgetData.total.budget, actual: cardBudgetData.total.spent } : null}
-            onSaveAllowance={saveCardAllowance}
-            rows={cardBudgetData.categories.map((b) => ({
-              category: b.category,
-              groupId: b.groupId,
-              members: b.members,
-              memberActualKey: "spent",
-              budget: b.budget,
-              actual: b.spent,
-              recentAvg: recentCategoryAverage(cardSnapshots, b.category),
-              history: budgetOverUnderHistory(cardSnapshots, b.category, b.budget),
-            }))}
-            onSaveRow={saveCardBudget}
-            onDeleteRow={deleteCardBudget}
-            onAddRow={saveCardBudget}
-            categorySuggestions={cardCategorySuggestions}
-            datalistId="budgeting-card-suggestions"
-          />
-        )}
-        {cardBudgetData.categories.length > 0 && (
-          <Collapsible title="Plan ahead" icon={<CalendarRange size={13} />} className="cat-group">
-            <BudgetGrid
-              categories={cardBudgetData.categories.map((b) => ({ category: b.category, globalBudget: b.budget }))}
-              months={state.months}
-              overrides={cardOverrides}
-              actualSnapshots={cardSnapshots}
-              onSaveCell={saveCardBudgetMonth}
-            />
-          </Collapsible>
-        )}
-      </Collapsible>
-
-      <Collapsible title="Debt spending" icon={<Landmark size={13} />} right={latestLabel} defaultOpen>
-        {spendableDebts.length === 0 ? (
-          <p className="empty small">No spendable debts set up (Debts tab).</p>
-        ) : (
-          <BudgetEditor
-            allowance={debtBudgetData.total ? { budget: debtBudgetData.total.budget, actual: debtBudgetData.total.spent } : null}
-            onSaveAllowance={saveDebtAllowance}
-            rows={debtBudgetData.categories.map((b) => ({
-              category: b.category,
-              groupId: b.groupId,
-              members: b.members,
-              memberActualKey: "spent",
-              budget: b.budget,
-              actual: b.spent,
-              recentAvg: recentCategoryAverage(debtSnapshots, b.category),
-              history: budgetOverUnderHistory(debtSnapshots, b.category, b.budget),
-            }))}
-            onSaveRow={saveDebtBudget}
-            onDeleteRow={deleteDebtBudget}
-            onAddRow={saveDebtBudget}
-            categorySuggestions={debtCategorySuggestions}
-            datalistId="budgeting-debt-suggestions"
-          />
-        )}
-        {debtBudgetData.categories.length > 0 && (
-          <Collapsible title="Plan ahead" icon={<CalendarRange size={13} />} className="cat-group">
-            <BudgetGrid
-              categories={debtBudgetData.categories.map((b) => ({ category: b.category, globalBudget: b.budget }))}
-              months={state.months}
-              overrides={debtOverrides}
-              actualSnapshots={debtSnapshots}
-              onSaveCell={saveDebtBudgetMonth}
-            />
-          </Collapsible>
-        )}
       </Collapsible>
 
       <Collapsible title="What-if scenarios" icon={<Wand2 size={13} />} className="cat-group">
@@ -340,6 +181,93 @@ function BudgetingTab({ state, onChanged }) {
           </>
         )}
       </Collapsible>
+    </div>
+  );
+}
+
+// One combined-budget row — same look as the app's other budget rows
+// (progress bar, amount input, delete), plus the per-source breakdown
+// combinedBudgetReport already attaches as `members`.
+function CombinedBudgetRow({ row, onSave, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const over = row.actual > row.budget;
+  const pct = row.budget > 0 ? Math.min(100, (row.actual / row.budget) * 100) : 0;
+  const hasMembers = row.members && row.members.length > 0;
+  return (
+    <div className="cat-row-group">
+      <div className="cat-row">
+        {hasMembers ? (
+          <button type="button" className="cat-name cat-name-group" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {row.category}
+          </button>
+        ) : (
+          <span className="cat-name">{row.category}</span>
+        )}
+        <div className="cat-bar-track" title={`${money(row.actual)} of ${money(row.budget)}`}>
+          <div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} />
+        </div>
+        <span className={`cat-amount mono ${over ? "deficit" : "surplus"}`}>{money(row.actual)} / {money(row.budget)}</span>
+        <input className="amount-input" type="number" defaultValue={row.budget} onBlur={(e) => onSave(parseFloat(e.target.value) || 0)} />
+        <button className="icon-btn" title="Remove budget" onClick={onDelete}>
+          <Trash2 size={13} />
+        </button>
+      </div>
+      {hasMembers && expanded && (
+        <div className="budget-group-members">
+          {row.members.map((m) => (
+            <div className="budget-group-member" key={m.category}>
+              <span className="cat-name">{m.category}</span>
+              <span className="mono">{money(m.actual)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Two mutually-exclusive ways to pick what a new budget applies to: an
+// existing category (a group of items, shared across sources — see
+// combinedBudgetReport's group matching) or a single item's own name.
+// Only one field is active at a time, matching how the DB stores exactly
+// one category name per combined_budgets row either way.
+function CombinedBudgetAddRow({ categoryOptions, itemOptions, onAdd }) {
+  const [mode, setMode] = useState("category"); // "category" | "item"
+  const [value, setValue] = useState("");
+  const [amount, setAmount] = useState("");
+  const options = mode === "category" ? categoryOptions : itemOptions;
+  const datalistId = `combined-budget-${mode}-options`;
+
+  const add = () => {
+    onAdd(value, parseFloat(amount) || 0);
+    setValue("");
+    setAmount("");
+  };
+
+  return (
+    <div className="cat-row budget-add combined-budget-add">
+      <div className="seg-group combined-budget-mode">
+        <button type="button" className={`seg-btn${mode === "category" ? " selected" : ""}`} onClick={() => { setMode("category"); setValue(""); }}>
+          Category
+        </button>
+        <button type="button" className={`seg-btn${mode === "item" ? " selected" : ""}`} onClick={() => { setMode("item"); setValue(""); }}>
+          Item
+        </button>
+      </div>
+      <input
+        className="text-input"
+        list={datalistId}
+        placeholder={mode === "category" ? "Category name…" : "Item name…"}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <datalist id={datalistId}>
+        {options.map((o) => <option key={o} value={o} />)}
+      </datalist>
+      <input className="amount-input" type="number" placeholder="Monthly $" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      <button type="button" className="btn-secondary" onClick={add}>
+        <Plus size={13} /> Add budget
+      </button>
     </div>
   );
 }

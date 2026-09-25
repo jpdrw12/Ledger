@@ -678,18 +678,24 @@ export function allBudgetPaceAlerts(state, { now } = {}) {
   ].sort((a, b) => b.overBy - a.overBy);
 }
 
-// Every budgeted row (expense/card/debt, group or individual) merged into
-// one list, sorted by how much of its target is used up — highest first —
-// for the Overview tab's "Budget snapshot" widget, which just wants "what's
-// closest to (or over) its limit" rather than allBudgetPaceAlerts' stricter
-// "only the real current month, only genuinely over pace" alerting. Shares
-// the same three report calls (see allBudgetPaceAlerts's comment on why
-// card/debt group data comes from the "expenses"/"debtCharges" namespaces).
-// Pure — no I/O.
-export function allBudgetSnapshot(state) {
+// One target per category NAME (state.combinedBudgets — a genuinely
+// separate budget list, not derived from category_budgets/card_budgets/
+// debt_budgets), checked against spend summed across all three sources for
+// that same name: the "Groceries" combined budget looks for a "Groceries"
+// category (or group — see below) in expenses, card spending, and debt
+// spending, and sums whatever it finds. `members` (source-per-row, reusing
+// BudgetRow's existing group-member breakdown UI) shows each source's own
+// contribution. Pure — no I/O.
+//
+// A combined budget's name is matched two ways per source: as a plain
+// item-level category, or — if it matches a GROUP name in that source — as
+// the sum of every item in that group (mirrors how card spending shares
+// expense-source groups already). A name with no match in a given source
+// simply contributes $0 from it.
+export function combinedBudgetReport(state) {
   const months = state.months || [];
-  if (months.length === 0) return [];
-  const latestLabel = months[months.length - 1].monthLabel;
+  const latestMonth = months.length ? months[months.length - 1] : null;
+  const latestLabel = latestMonth ? latestMonth.monthLabel : null;
   const cardAccountIds = new Set((state.accounts || []).filter((a) => a.excludeFromTotal).map((a) => a.id));
   const spendableDebtIds = new Set((state.debts || []).filter((d) => d.spendable).map((d) => d.id));
 
@@ -698,16 +704,54 @@ export function allBudgetSnapshot(state) {
   const debtGroups = (state.categoryGroups || []).filter((g) => g.source === "debtCharges");
   const debtMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
 
-  const expenseBudgets = budgetReport(months, state.categoryBudgets, expenseGroups, expenseMembers, state.categoryGroupBudgets);
-  const cardBudgetData = cardBudgetReport(months[months.length - 1], state.cardBudgets || [], cardAccountIds, state.bills, expenseGroups, expenseMembers, state.cardGroupBudgets);
-  const debtBudgetData = debtBudgetReport(state.debtCharges || [], latestLabel, state.debtBudgets || [], spendableDebtIds, debtGroups, debtMembers, state.debtGroupBudgets);
+  // Item-level spend maps (lowercased category -> $), scoped to the latest
+  // month/label like every other budget report here. Expense excludes card
+  // accounts — a card charge is just an expense row tagged to a card
+  // account, so without excluding it here it'd be summed twice (once as
+  // "Expense", once as "Card").
+  const expenseSpend = {};
+  const cardSpend = {};
+  if (latestMonth) {
+    spendingByCategory([latestMonth], { exclude: cardAccountIds }, state.bills).forEach((c) => { expenseSpend[c.category.trim().toLowerCase()] = c.total; });
+    spendingByCategory([latestMonth], { include: cardAccountIds }, state.bills).forEach((c) => { cardSpend[c.category.trim().toLowerCase()] = c.total; });
+  }
+  const debtSpend = {};
+  debtSpendingByCategory((state.debtCharges || []).filter((c) => c.monthLabel === latestLabel), { include: spendableDebtIds })
+    .forEach((c) => { debtSpend[c.category.trim().toLowerCase()] = c.total; });
 
-  const rows = [
-    ...expenseBudgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual, source: "Expense" })),
-    ...cardBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, source: "Card" })),
-    ...debtBudgetData.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, source: "Debt" })),
-  ].filter((r) => r.budget > 0);
-  return rows.sort((a, b) => b.actual / b.budget - a.actual / a.budget);
+  // If `name` matches a group in this source, sum every member's spend;
+  // otherwise treat it as one plain item name.
+  const spendFor = (spendMap, groups, members, name) => {
+    const group = groups.find((g) => g.name.trim().toLowerCase() === name);
+    if (group) {
+      return members
+        .filter((m) => m.groupId === group.id)
+        .reduce((s, m) => s + (spendMap[m.category.trim().toLowerCase()] || 0), 0);
+    }
+    return spendMap[name] || 0;
+  };
+
+  const rows = (state.combinedBudgets || []).map((b) => {
+    const name = (b.category || "").trim();
+    const key = name.toLowerCase();
+    const expenseActual = spendFor(expenseSpend, expenseGroups, expenseMembers, key);
+    const cardActual = spendFor(cardSpend, expenseGroups, expenseMembers, key);
+    const debtActual = spendFor(debtSpend, debtGroups, debtMembers, key);
+    const members = [];
+    if (expenseActual > 0) members.push({ category: "Expense", actual: expenseActual });
+    if (cardActual > 0) members.push({ category: "Card", actual: cardActual });
+    if (debtActual > 0) members.push({ category: "Debt", actual: debtActual });
+    return {
+      category: name,
+      budget: Number(b.amount) || 0,
+      actual: expenseActual + cardActual + debtActual,
+      members: members.length > 0 ? members : null,
+      memberActualKey: "actual",
+    };
+  });
+  return rows
+    .filter((r) => r.budget > 0)
+    .sort((a, b) => (b.actual / b.budget) - (a.actual / a.budget));
 }
 
 // The target a planning-grid cell shows/edits for one category+month: a
@@ -1162,8 +1206,23 @@ export function reconcileTabOrder(savedOrder, defaultOrder) {
     seen.add(id);
     return true;
   });
-  const missing = defaultOrder.filter((id) => !seen.has(id));
-  return [...cleaned, ...missing];
+  // A tab added since the save is inserted right after wherever its nearest
+  // preceding default-order neighbor ended up (not dumped at the very end)
+  // — otherwise a new tab (or the whole tail of defaultOrder, for a save
+  // from well before several tabs existed) lands far from its intended
+  // group instead of close to where a fresh install would show it.
+  const result = [...cleaned];
+  defaultOrder.forEach((id, defaultIndex) => {
+    if (seen.has(id)) return;
+    let insertAt = result.length;
+    for (let i = defaultIndex - 1; i >= 0; i--) {
+      const idx = result.indexOf(defaultOrder[i]);
+      if (idx !== -1) { insertAt = idx + 1; break; }
+    }
+    result.splice(insertAt, 0, id);
+    seen.add(id);
+  });
+  return result;
 }
 
 // Cleans a saved sidebar tab-group save (localStorage, untrusted shape) —
@@ -1241,6 +1300,23 @@ export function mergeCategoryTotals(...lists) {
 }
 
 // Buckets categoryUsageReport()'s rows into their assigned group, for the
+// Reorders a list of {category, ...} rows for display — used by Card/Debt
+// Spending's category breakdown (valueKey "total") and the Categories tab
+// (valueKey "count") to offer alphabetical/by-value sort options on top of
+// whatever order the row source already returns. Pure, and safe to call
+// before groupCategoryRows below — it buckets rows in whatever order they
+// arrive, so a sorted input keeps that order once split into groups.
+export function sortRows(rows, mode, { nameKey = "category", valueKey = "total" } = {}) {
+  const list = [...(rows || [])];
+  switch (mode) {
+    case "alpha": return list.sort((a, b) => (a[nameKey] || "").localeCompare(b[nameKey] || ""));
+    case "alpha-desc": return list.sort((a, b) => (b[nameKey] || "").localeCompare(a[nameKey] || ""));
+    case "value-asc": return list.sort((a, b) => (Number(a[valueKey]) || 0) - (Number(b[valueKey]) || 0));
+    case "value-desc": return list.sort((a, b) => (Number(b[valueKey]) || 0) - (Number(a[valueKey]) || 0));
+    default: return list;
+  }
+}
+
 // Categories tab's collapsible-group display. `groups` and `members` are
 // already scoped to one source (db.js's getCategoryGroups(source) /
 // getCategoryGroupMembers(source) or an equivalent filter of loadFullState's

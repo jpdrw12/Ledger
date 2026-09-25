@@ -2,7 +2,7 @@ import React from "react";
 import { Plus, Trash2, Coins, TrendingUp } from "lucide-react";
 import * as db from "../lib/db.js";
 import { money, investmentGrowth, investmentTotalsByMonth, dividendTotalsByMonth } from "../lib/calc.js";
-import { Collapsible, InvestmentGrid, MonthSection, ScrollPanel, DragHandle, useDragList, AccountSelect, parseNumberInput, Sparkline } from "./Shared.jsx";
+import { Collapsible, InvestmentGrid, MonthSection, ScrollPanel, DragHandle, useDragList, AccountSelect, parseNumberInput, Sparkline, useShowLimit, ShowLimitControl } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -18,6 +18,7 @@ function InvestmentsTab({ state, onChanged }) {
   const values = state.investmentValues || [];
   const dividends = state.dividends || [];
   const months = state.months || [];
+  const dividendMonthLimit = useShowLimit("ledger.dividendsMonths");
 
   const { itemProps, handleProps } = useDragList(accounts.map((a) => a.id), async (ids) => {
     await db.reorderInvestmentAccounts(ids);
@@ -118,22 +119,24 @@ function InvestmentsTab({ state, onChanged }) {
         <p className="empty">No investment accounts yet — add one above, then record its value each month below.</p>
       ) : (
         <>
-          <div className="card-list" style={{ marginBottom: 16 }}>
-            {accounts.map((a, i) => {
-              const dp = itemProps(i);
-              return (
-                <div {...dp} className={`goal-card ${dp.className}`} key={a.id}>
-                  <div className="debt-top">
-                    <DragHandle {...handleProps(i)} />
-                    <input className="text-input" defaultValue={a.name} onBlur={(e) => renameAccount(a, e.target.value)} />
-                    <button className="icon-btn" onClick={() => removeAccount(a)}>
-                      <Trash2 size={14} />
-                    </button>
+          <Collapsible title="Investment accounts" icon={<Coins size={13} />} right={`${accounts.length}`} ignoreGlobalExpand>
+            <div className="card-list">
+              {accounts.map((a, i) => {
+                const dp = itemProps(i);
+                return (
+                  <div {...dp} className={`goal-card ${dp.className}`} key={a.id}>
+                    <div className="debt-top">
+                      <DragHandle {...handleProps(i)} />
+                      <input className="text-input" defaultValue={a.name} onBlur={(e) => renameAccount(a, e.target.value)} />
+                      <button className="icon-btn" onClick={() => removeAccount(a)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </Collapsible>
 
           <Collapsible title="Monthly values" icon={<TrendingUp size={13} />} defaultOpen>
             <InvestmentGrid accounts={accounts} months={months} growthByAccount={growthByAccount} onSaveCell={saveCell} />
@@ -142,10 +145,11 @@ function InvestmentsTab({ state, onChanged }) {
       )}
 
       <h4 className="block-title" style={{ marginTop: 24 }}><Coins size={13} /> Dividends</h4>
+      {sectionLabels.length > 1 && <ShowLimitControl limit={dividendMonthLimit} total={sectionLabels.length} />}
       {months.length === 0 && orphanLabels.length === 0 ? (
         <p className="empty">Add a month on the <strong>Months</strong> tab first.</p>
       ) : (
-        sectionLabels.map((label) => {
+        (dividendMonthLimit.showAll ? sectionLabels : sectionLabels.slice(-dividendMonthLimit.count)).map((label) => {
           const list = dividendsForLabel(label);
           const total = list.reduce((s, d) => s + (Number(d.amount) || 0), 0);
           return (

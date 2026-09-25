@@ -519,6 +519,32 @@ export async function deleteCategoryBudget(category) {
   await db.execute("DELETE FROM category_budgets WHERE category = $1", [category]);
 }
 
+// ---------------------------------------------------------------------
+// Combined budgets — one target per category NAME, checked against spend
+// summed across expenses, card spending, and debt spending together. A
+// separate table from category_budgets/card_budgets/debt_budgets, not a
+// merge of them — see combinedBudgetReport in calc.js and the migration's
+// own comment.
+// ---------------------------------------------------------------------
+export async function getCombinedBudgets() {
+  const db = await getDb();
+  const rows = await db.select("SELECT * FROM combined_budgets ORDER BY category");
+  return rows.map((r) => ({ category: r.category, amount: r.amount }));
+}
+
+export async function upsertCombinedBudget(category, amount) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO combined_budgets (category, amount) VALUES ($1, $2) ON CONFLICT(category) DO UPDATE SET amount = $2",
+    [category, amount || 0]
+  );
+}
+
+export async function deleteCombinedBudget(category) {
+  const db = await getDb();
+  await db.execute("DELETE FROM combined_budgets WHERE category = $1", [category]);
+}
+
 // Card budgets: '' category = the total monthly allowance; others per-category.
 export async function getCardBudgets() {
   const db = await getDb();
@@ -1100,6 +1126,7 @@ export async function wipeAllData() {
     "category_budgets", "card_budgets", "bills", "goals", "debts", "accounts",
     "dividends", "investment_values", "investment_accounts",
     "category_group_budgets", "card_group_budgets", "debt_group_budgets",
+    "combined_budgets",
   ];
   for (const t of tables) await db.execute(`DELETE FROM ${t}`);
 }
@@ -1107,7 +1134,7 @@ export async function wipeAllData() {
 export async function loadFullState() {
   const db = await getDb();
 
-  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows, categoryBudgetMonthRows, investmentAccounts, investmentValues, dividends, categoryGroupBudgets, cardGroupBudgets, debtGroupBudgets] =
+  const [accounts, bills, goals, debts, debtHistory, categoryBudgets, cardBudgets, debtChargeRows, debtBudgets, activity, monthRows, payBlockRows, additionRows, billPaymentRows, expenseRows, goalContribRows, debtPaymentRows, transferRows, categoryGroupRows, categoryGroupMemberRows, categoryBudgetMonthRows, investmentAccounts, investmentValues, dividends, categoryGroupBudgets, cardGroupBudgets, debtGroupBudgets, combinedBudgets] =
     await Promise.all([
       getAccounts(),
       getBills(),
@@ -1136,6 +1163,7 @@ export async function loadFullState() {
       getCategoryGroupBudgets(),
       getCardGroupBudgets(),
       getDebtGroupBudgets(),
+      getCombinedBudgets(),
     ]);
 
   const months = monthRows.map((m) => {
@@ -1196,5 +1224,5 @@ export async function loadFullState() {
   const categoryGroupMembers = categoryGroupMemberRows.map((m) => ({ source: m.source, category: m.category, groupId: m.group_id }));
   const categoryBudgetMonths = categoryBudgetMonthRows.map((r) => ({ kind: r.source, category: r.category, monthLabel: r.month_label, amount: r.amount }));
 
-  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers, categoryBudgetMonths, investmentAccounts, investmentValues, dividends, categoryGroupBudgets, cardGroupBudgets, debtGroupBudgets };
+  return { accounts, bills, goals, months, debts, debtHistory, categoryBudgets, cardBudgets, debtCharges, debtBudgets, activity, categoryGroups, categoryGroupMembers, categoryBudgetMonths, investmentAccounts, investmentValues, dividends, categoryGroupBudgets, cardGroupBudgets, debtGroupBudgets, combinedBudgets };
 }

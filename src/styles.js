@@ -125,7 +125,15 @@ export const css = `
      group). Reuses .sidebar/.tabs/.tab-btn — only the heading is new. */
   .nav-group-heading { font-size:10px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-soft); font-weight:600; padding:12px 10px 4px; }
   .nav-group-heading:first-child { padding-top:2px; }
-  .nav-group-heading-toggle { display:flex; align-items:center; gap:4px; width:100%; background:none; border:none; cursor:pointer; font-family:inherit; }
+  /* flex-shrink:0 on the chevron + flex:1/min-width:0/text-align:left on
+     the label span — without these, the longest heading ("Insights &
+     reports", especially once it wraps to 2 lines in the sidebar's fixed
+     216px column at low UI scale) sized its own box to its content rather
+     than the remaining row width, and a wrapped line inside that undersized
+     box rendered flush right instead of left. */
+  .nav-group-heading-toggle { display:flex; align-items:center; gap:4px; width:100%; background:none; border:none; cursor:pointer; font-family:inherit; text-align:left; }
+  .nav-group-heading-toggle svg { flex-shrink:0; }
+  .nav-group-heading-toggle span { flex:1; min-width:0; text-align:left; }
   .nav-group-heading-toggle:hover { color:var(--ink); }
 
   /* "minimal" and "tabstrip" layouts: no sidebar column at all, single
@@ -380,6 +388,8 @@ export const css = `
 
   .stub-body { padding:6px 14px 18px 14px; border-top:1px solid var(--paper-line); }
   .block-title { display:flex; align-items:center; gap:6px; font-size:12.5px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-soft); margin:16px 0 8px; }
+  .block-title-row { display:flex; align-items:center; justify-content:space-between; margin:16px 0 0; }
+  .block-title-row .block-title { margin:0 0 8px; }
   .sub-title { display:flex; align-items:center; gap:5px; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); margin:10px 0 6px; }
 
   .per-account-row { display:flex; gap:10px; margin:6px 0 14px; flex-wrap:wrap; }
@@ -503,6 +513,10 @@ export const css = `
   .history-table td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--paper-line); }
   .history-total-row td { font-weight:700; border-top:2px solid var(--ink); border-bottom:none; }
   .history-total-row td:first-child { text-align:left; }
+  .history-group-row { cursor:pointer; }
+  .history-group-row td { font-weight:600; color:var(--ink); border-top:1px solid var(--paper-line); }
+  .history-group-row:hover td { background:var(--control-bg); }
+  .history-group-label { display:flex; align-items:center; gap:5px; text-align:left; }
 
   .insight-card { background:var(--card); border:1px solid var(--paper-line); border-radius:var(--radius-sm); padding:14px; margin-bottom:18px; }
   .overview-eyebrow { font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
@@ -593,6 +607,10 @@ export const css = `
   .budget-add { gap:8px; margin-top:10px; padding-top:10px; border-top:1px dashed var(--paper-line); }
   .budget-add .text-input { flex:0 0 160px; }
   .budget-add .btn-secondary { margin-top:0; }
+  /* "Monthly $" placeholder was clipped in the default 90px .amount-input —
+     wide enough to actually show it plus a real amount alongside it. */
+  .budget-add .amount-input { width:120px; }
+  .combined-budget-mode { flex-shrink:0; }
   .cat-amount { flex:0 0 90px; text-align:right; font-size:13px; }
   .cat-total { border-top:1px solid var(--ink); margin-top:6px; padding-top:8px; font-weight:700; }
 
@@ -611,7 +629,11 @@ export const css = `
   .goal-group { margin-bottom:6px; }
   .goal-group-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:4px 2px; font-weight:600; font-size:13px; border-bottom:1px solid var(--paper-line); margin-bottom:2px; }
   .contribution-row { padding-left:14px; }
-  .excluded-tag { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); border:1px solid var(--stamp); border-radius:var(--radius-pill); padding:1px 6px; margin-left:6px; vertical-align:middle; }
+  /* Purely informational ("this account isn't counted"), not a warning or
+     a status to flag — no pill/border/background at all now, just a small
+     muted label, same treatment as .balance-chip-excl/.sb-balance-excl
+     right next to it rather than a badge that reads as an alert. */
+  .excluded-tag { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); margin-left:6px; vertical-align:middle; }
   .exclude-toggle { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); cursor:pointer; padding:7px 0; }
   .tab-visibility-groups { margin-top:6px; }
   .tab-visibility-row { display:flex; align-items:center; gap:12px; padding:7px 0; border-bottom:1px solid var(--paper-line); }
