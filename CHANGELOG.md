@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [semantic versioning](https://semver.org/). The version is bumped on each
 commit via `./bump-version.sh`.
 
+## [0.48.1]
+
+### Fixed
+- The app version number only showed in the Classic and Sidebar-family
+  topbars — now shows in every layout's header (Grouped, Minimal, Tab
+  strip too).
+
 ## [0.48.0]
 
 ### Added

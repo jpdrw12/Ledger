@@ -1686,6 +1686,7 @@ export default function App() {
       {TAB_HELP[tab] && (
         <button className="help-btn" onClick={() => setShowHelp((v) => !v)} title="What's this tab?" aria-label="Tab help">?</button>
       )}
+      <span className="app-version">v{APP_VERSION}</span>
     </>
   );
 
@@ -1807,7 +1808,6 @@ export default function App() {
             </div>
             <div className="topbar-status">
               {statusCluster}
-              <span className="app-version">v{APP_VERSION}</span>
             </div>
           </div>
         )}
