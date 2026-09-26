@@ -17,21 +17,21 @@ import { Sparkline, ScrollPanel } from "./Shared.jsx";
 // read-only budget glance used to be. Deliberately generous for now (one
 // card per source tab) — trim or make individual cards toggleable later
 // once it's clear which ones actually get used. Each card's own list is a
-// ScrollPanel (same contained-scroll container/setting as everywhere else
-// in the app) so a long one scrolls inside itself instead of growing that
-// one card — and the whole grid around it — to an unbalanced height.
+// ScrollPanel (contained-scroll, same as elsewhere) with its scrollbar
+// hidden — still scrolls with a wheel/trackpad/touch, just no visible
+// track cluttering a small card.
 function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBalances, onGoTo, onAddMonth }) {
   const netWorthSeries = monthlyEndingBalances(state.months, ledger);
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const bills = upcomingBills(state.months, state.bills, todayStr, 5);
-  const budgetRows = combinedBudgetReport(state).slice(0, 4);
-  const goals = (state.goals || []).filter((g) => g.targetAmount > 0).slice(0, 4);
+  const bills = upcomingBills(state.months, state.bills, todayStr, 50);
+  const budgetRows = combinedBudgetReport(state);
+  const goals = (state.goals || []).filter((g) => g.targetAmount > 0);
 
   const months = state.months || [];
   const latestMonth = months[months.length - 1];
   const accounts = state.accounts || [];
-  const debts = (state.debts || []).slice().sort((a, b) => b.balance - a.balance).slice(0, 4);
+  const debts = (state.debts || []).slice().sort((a, b) => b.balance - a.balance);
   const totalDebt = (state.debts || []).reduce((s, d) => s + (Number(d.balance) || 0), 0);
 
   const investmentAccounts = state.investmentAccounts || [];
@@ -58,7 +58,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
   // summed), which only makes sense to show at all once the person has
   // actually made any.
   const monthItems = latestMonth ? spendingByCategory([latestMonth], undefined, state.bills) : [];
-  const topItems = monthItems.slice(0, 4);
+  const topItems = monthItems;
   const expenseCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
   const expenseCategoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
   const topCategories = expenseCategoryGroups.length
@@ -66,7 +66,6 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
         .groups.map((g) => ({ category: g.name, total: g.rows.reduce((s, r) => s + r.total, 0) }))
         .filter((g) => g.total > 0)
         .sort((a, b) => b.total - a.total)
-        .slice(0, 4)
     : [];
 
   return (
@@ -114,7 +113,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {bills.length === 0 ? (
             <p className="empty small">Nothing unpaid right now.</p>
           ) : (
-            <ScrollPanel style={{ marginTop: 6 }}>
+            <ScrollPanel className="scroll-panel overview-scroll" style={{ marginTop: 6 }}>
               {bills.map((b) => (
                 <div key={b.id} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("months")}>
                   <span className="row-name">{b.name}</span>
@@ -130,7 +129,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {budgetRows.length === 0 ? (
             <p className="empty small">No budgets set yet.</p>
           ) : (
-            <ScrollPanel style={{ marginTop: 6 }}>
+            <ScrollPanel className="scroll-panel overview-scroll" style={{ marginTop: 6 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {budgetRows.map((b) => {
                   const over = b.actual > b.budget;
@@ -155,7 +154,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {goals.length === 0 ? (
             <p className="empty small">No goals with a target set yet.</p>
           ) : (
-            <ScrollPanel style={{ marginTop: 6 }}>
+            <ScrollPanel className="scroll-panel overview-scroll" style={{ marginTop: 6 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {goals.map((g) => {
                   const balance = goalBalances?.[g.id] || 0;
@@ -180,7 +179,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {accounts.length === 0 ? (
             <p className="empty small">No accounts yet.</p>
           ) : (
-            <ScrollPanel style={{ marginTop: 6 }}>
+            <ScrollPanel className="scroll-panel overview-scroll" style={{ marginTop: 6 }}>
               {accounts.map((a) => {
                 const bal = balances[a.id] || 0;
                 return (
@@ -197,7 +196,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
         {debts.length > 0 && (
           <div className="insight-card">
             <div className="overview-card-label">Debts</div>
-            <ScrollPanel style={{ marginTop: 6 }}>
+            <ScrollPanel className="scroll-panel overview-scroll" style={{ marginTop: 6 }}>
               {debts.map((d) => (
                 <div key={d.id} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("debts")}>
                   <span className="row-name">{d.name}</span>
@@ -249,8 +248,8 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
 
         {topCategories.length > 0 && (
           <div className="insight-card">
-            <div className="overview-card-label">Top categories this month</div>
-            <ScrollPanel style={{ marginTop: 6 }}>
+            <div className="overview-card-label">Categories this month</div>
+            <ScrollPanel className="scroll-panel overview-scroll" style={{ marginTop: 6 }}>
               {topCategories.map((c) => (
                 <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("expense")}>
                   <span className="row-name">{c.category}</span>
@@ -263,8 +262,8 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
 
         {topItems.length > 0 && (
           <div className="insight-card">
-            <div className="overview-card-label">Top items this month</div>
-            <ScrollPanel style={{ marginTop: 6 }}>
+            <div className="overview-card-label">Items this month</div>
+            <ScrollPanel className="scroll-panel overview-scroll" style={{ marginTop: 6 }}>
               {topItems.map((c) => (
                 <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("expense")}>
                   <span className="row-name">{c.category}</span>

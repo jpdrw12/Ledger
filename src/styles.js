@@ -439,6 +439,10 @@ export const css = `
   .scroll-panel .ledger-row:last-child { border-bottom: none; }
   .scroll-panel::-webkit-scrollbar { width: 8px; }
   .scroll-panel::-webkit-scrollbar-thumb { background: var(--paper-line); border-radius: 4px; }
+  /* Overview's cards scroll (still contained by the setting above) but skip
+     the visible track — a small dashboard card looks cluttered with one. */
+  .overview-scroll { border: none; padding: 0; background: none; scrollbar-width: none; }
+  .overview-scroll::-webkit-scrollbar { display: none; }
   .scroll-panel-empty { padding: 6px 0; }
   .scroll-panel-label { display:flex; align-items:center; gap:4px; font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.4px; padding:4px 0 2px; }
   .amount-input { width:90px; font-family:ui-monospace, monospace; text-align:right; padding:6px 7px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); }
