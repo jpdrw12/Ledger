@@ -5,7 +5,7 @@ import {
   monthlyExpenseTotals, debtMonthlyTotals, investmentTotalsByMonth, dividendTotalsByMonth,
   groupCategoryRows, money,
 } from "../lib/calc.js";
-import { Sparkline } from "./Shared.jsx";
+import { Sparkline, ScrollPanel } from "./Shared.jsx";
 
 // A dashboard landing page, independent of which nav layout is active —
 // widget cards pulling from data every other tab already computes (pace
@@ -14,9 +14,12 @@ import { Sparkline } from "./Shared.jsx";
 // place to see "does anything need my attention" without visiting each tab
 // in turn. Read-only: every widget links to its real tab for the actual
 // editing UI, same "glance here, act there" split as Card/Debt Spending's
-// read-only BudgetProgressList pointing at Budgeting & Planning. Deliberately
-// generous for now (one card per source tab) — trim or make individual
-// cards toggleable later once it's clear which ones actually get used.
+// read-only budget glance used to be. Deliberately generous for now (one
+// card per source tab) — trim or make individual cards toggleable later
+// once it's clear which ones actually get used. Each card's own list is a
+// ScrollPanel (same contained-scroll container/setting as everywhere else
+// in the app) so a long one scrolls inside itself instead of growing that
+// one card — and the whole grid around it — to an unbalanced height.
 function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBalances, onGoTo, onAddMonth }) {
   const netWorthSeries = monthlyEndingBalances(state.months, ledger);
   const today = new Date();
@@ -50,9 +53,10 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
 
   // "Categories" (formerly "groups") and "items" (formerly "categories") —
   // see the Categories tab's own terminology. Two separate cards: item-level
-  // spend (the same flat data Card/Debt Spending's "by item" breakdown
-  // uses) and category-level totals (each category's items summed), which
-  // only makes sense to show at all once the person has actually made any.
+  // spend (the same flat data the Expense tab and Card/Debt Spending's "by
+  // item" breakdown use) and category-level totals (each category's items
+  // summed), which only makes sense to show at all once the person has
+  // actually made any.
   const monthItems = latestMonth ? spendingByCategory([latestMonth], undefined, state.bills) : [];
   const topItems = monthItems.slice(0, 4);
   const expenseCategoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
@@ -110,14 +114,14 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {bills.length === 0 ? (
             <p className="empty small">Nothing unpaid right now.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            <ScrollPanel style={{ marginTop: 6 }}>
               {bills.map((b) => (
                 <div key={b.id} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("months")}>
                   <span className="row-name">{b.name}</span>
                   <span className={`mono ${b.overdue ? "deficit" : ""}`}>{money(b.amount)}</span>
                 </div>
               ))}
-            </div>
+            </ScrollPanel>
           )}
         </div>
 
@@ -126,21 +130,23 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {budgetRows.length === 0 ? (
             <p className="empty small">No budgets set yet.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
-              {budgetRows.map((b) => {
-                const over = b.actual > b.budget;
-                const pct = b.budget > 0 ? Math.min(100, (b.actual / b.budget) * 100) : 0;
-                return (
-                  <div key={b.category} style={{ cursor: "pointer" }} onClick={() => onGoTo("budgeting")}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
-                      <span>{b.category}</span>
-                      <span className={`mono ${over ? "deficit" : ""}`}>{money(b.actual)} / {money(b.budget)}</span>
+            <ScrollPanel style={{ marginTop: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {budgetRows.map((b) => {
+                  const over = b.actual > b.budget;
+                  const pct = b.budget > 0 ? Math.min(100, (b.actual / b.budget) * 100) : 0;
+                  return (
+                    <div key={b.category} style={{ cursor: "pointer" }} onClick={() => onGoTo("budgeting")}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
+                        <span>{b.category}</span>
+                        <span className={`mono ${over ? "deficit" : ""}`}>{money(b.actual)} / {money(b.budget)}</span>
+                      </div>
+                      <div className="cat-bar-track"><div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} /></div>
                     </div>
-                    <div className="cat-bar-track"><div className={`cat-bar-fill ${over ? "over" : "under"}`} style={{ width: `${pct}%` }} /></div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </ScrollPanel>
           )}
         </div>
 
@@ -149,21 +155,23 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {goals.length === 0 ? (
             <p className="empty small">No goals with a target set yet.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
-              {goals.map((g) => {
-                const balance = goalBalances?.[g.id] || 0;
-                const pct = g.targetAmount > 0 ? Math.min(100, Math.round((balance / g.targetAmount) * 100)) : 0;
-                return (
-                  <div key={g.id} style={{ cursor: "pointer" }} onClick={() => onGoTo("goals")}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
-                      <span>{g.name}</span>
-                      <span className="mono" style={{ color: "var(--ink-soft)" }}>{pct}%</span>
+            <ScrollPanel style={{ marginTop: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {goals.map((g) => {
+                  const balance = goalBalances?.[g.id] || 0;
+                  const pct = g.targetAmount > 0 ? Math.min(100, Math.round((balance / g.targetAmount) * 100)) : 0;
+                  return (
+                    <div key={g.id} style={{ cursor: "pointer" }} onClick={() => onGoTo("goals")}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
+                        <span>{g.name}</span>
+                        <span className="mono" style={{ color: "var(--ink-soft)" }}>{pct}%</span>
+                      </div>
+                      <div className="cat-bar-track"><div className="cat-bar-fill under" style={{ width: `${pct}%`, background: "var(--stamp)" }} /></div>
                     </div>
-                    <div className="cat-bar-track"><div className="cat-bar-fill under" style={{ width: `${pct}%`, background: "var(--stamp)" }} /></div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </ScrollPanel>
           )}
         </div>
 
@@ -172,7 +180,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
           {accounts.length === 0 ? (
             <p className="empty small">No accounts yet.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            <ScrollPanel style={{ marginTop: 6 }}>
               {accounts.map((a) => {
                 const bal = balances[a.id] || 0;
                 return (
@@ -182,14 +190,14 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
                   </div>
                 );
               })}
-            </div>
+            </ScrollPanel>
           )}
         </div>
 
         {debts.length > 0 && (
           <div className="insight-card">
             <div className="overview-card-label">Debts</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            <ScrollPanel style={{ marginTop: 6 }}>
               {debts.map((d) => (
                 <div key={d.id} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("debts")}>
                   <span className="row-name">{d.name}</span>
@@ -200,7 +208,7 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
                 <span className="row-name" style={{ color: "var(--ink-soft)" }}>Total remaining</span>
                 <span className="mono deficit">{money(totalDebt)}</span>
               </div>
-            </div>
+            </ScrollPanel>
           </div>
         )}
 
@@ -242,28 +250,28 @@ function OverviewTab({ state, ledger, balances, consolidated, paceAlerts, goalBa
         {topCategories.length > 0 && (
           <div className="insight-card">
             <div className="overview-card-label">Top categories this month</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            <ScrollPanel style={{ marginTop: 6 }}>
               {topCategories.map((c) => (
-                <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("insights")}>
+                <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("expense")}>
                   <span className="row-name">{c.category}</span>
                   <span className="mono">{money(c.total)}</span>
                 </div>
               ))}
-            </div>
+            </ScrollPanel>
           </div>
         )}
 
         {topItems.length > 0 && (
           <div className="insight-card">
             <div className="overview-card-label">Top items this month</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            <ScrollPanel style={{ marginTop: 6 }}>
               {topItems.map((c) => (
-                <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("insights")}>
+                <div key={c.category} className="ledger-row" style={{ cursor: "pointer" }} onClick={() => onGoTo("expense")}>
                   <span className="row-name">{c.category}</span>
                   <span className="mono">{money(c.total)}</span>
                 </div>
               ))}
-            </div>
+            </ScrollPanel>
           </div>
         )}
       </div>

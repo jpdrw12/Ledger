@@ -1,19 +1,20 @@
 import React, { useState, useMemo } from "react";
 import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download, Upload } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, cardBudgetReport, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows } from "../lib/calc.js";
+import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, monthsInRange, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, BudgetProgressList, useShowLimit, ShowLimitControl } from "./Shared.jsx";
+import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, MonthRangeFilter, useShowLimit, ShowLimitControl } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
 // Dedicated view for spending on "exclude from total" (card) accounts, tracked
 // month by month. Card purchases are ordinary expenses whose account is a card
 // account; this tab is where they're entered/shown (they're hidden from Months).
-function CardTab({ state, onChanged, onGoToBudgeting }) {
+function CardTab({ state, onChanged }) {
   const { toast } = useToast();
   const [selectedCat, setSelectedCat] = useState(null);
-  const [chartMonth, setChartMonth] = useState("all"); // scope the category/per-card charts
+  const [fromLabel, setFromLabel] = useState("");
+  const [toLabel, setToLabel] = useState("");
   const [catSort, setCatSort] = useState("value-desc");
   const [groupSort, setGroupSort] = useState("order");
   const [catAllOpen, setCatAllOpen] = useState(false); // groups start collapsed
@@ -34,24 +35,23 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
   const categoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
 
   // Pure aggregations — memoized (kept above the early return so hook order is
-  // stable) so they don't re-run on every keystroke in the budget fields.
-  const { trend, scopedMonths, scopeLabel, categories, perCard, maxCat, totalSpend, budgetMonth, budgets } = useMemo(() => {
+  // stable) so they don't re-run on every keystroke.
+  const { trend, scopeLabel, categories, perCard, maxCat, totalSpend } = useMemo(() => {
     const ids = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
-    const scoped = chartMonth === "all" ? state.months : state.months.filter((m) => m.id === chartMonth);
+    const hasRange = !!(fromLabel || toLabel);
+    const scoped = hasRange ? monthsInRange(state.months, fromLabel || null, toLabel || null) : state.months;
     const cats = spendingByCategory(scoped, { include: ids }, state.bills);
-    const bMonth = chartMonth === "all" ? state.months[state.months.length - 1] : scoped[0];
     return {
       trend: monthlyExpenseTotals(state.months, { include: ids }, state.bills),
-      scopedMonths: scoped,
-      scopeLabel: chartMonth === "all" ? "all months" : (state.months.find((m) => m.id === chartMonth)?.monthLabel || ""),
+      scopeLabel: hasRange
+        ? `${fromLabel || state.months[0]?.monthLabel} – ${toLabel || state.months[state.months.length - 1]?.monthLabel}`
+        : "all months",
       categories: cats,
       perCard: spendByAccount(scoped, [...ids], state.bills),
       maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
       totalSpend: cats.reduce((s, c) => s + c.total, 0),
-      budgetMonth: bMonth,
-      budgets: cardBudgetReport(bMonth, state.cardBudgets || [], ids, state.bills, categoryGroups, categoryGroupMembers, state.cardGroupBudgets),
     };
-  }, [state, chartMonth]);
+  }, [state, fromLabel, toLabel]);
 
   if (cardAccounts.length === 0) {
     return (
@@ -292,15 +292,7 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
         )}
       </div>
       <div className="insight-card">
-        <div className="backup-folder" style={{ marginTop: 0 }}>
-          <span className="small-label" style={{ flex: 1 }}>Month</span>
-          <select value={chartMonth} onChange={(e) => setChartMonth(e.target.value)}>
-            <option value="all">All months</option>
-            {state.months.map((m) => (
-              <option key={m.id} value={m.id}>{m.monthLabel}</option>
-            ))}
-          </select>
-        </div>
+        <MonthRangeFilter months={state.months} fromLabel={fromLabel} toLabel={toLabel} onFromChange={setFromLabel} onToChange={setToLabel} />
         <div className="backup-folder" style={{ marginTop: 8 }}>
           <span className="small-label" style={{ flex: 1 }}>Sort items</span>
           <select value={catSort} onChange={(e) => setCatSort(e.target.value)}>
@@ -341,19 +333,6 @@ function CardTab({ state, onChanged, onGoToBudgeting }) {
           </div>
         )}
       </div>
-
-      <Collapsible title="Card budget" icon={<CreditCard size={13} />} right={budgetMonth ? budgetMonth.monthLabel : null}>
-        <BudgetProgressList
-          allowance={budgets.total ? { budget: budgets.total.budget, actual: budgets.total.spent } : null}
-          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, members: b.members, memberActualKey: "spent" }))}
-          emptyLabel="No card budget set yet."
-        />
-        {onGoToBudgeting && (
-          <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 8 }} onClick={onGoToBudgeting}>
-            Manage budgets in Budgeting & Planning →
-          </button>
-        )}
-      </Collapsible>
 
       {cardAccounts.length > 1 && (
         <Collapsible title="Per-card totals" icon={<CreditCard size={13} />}>

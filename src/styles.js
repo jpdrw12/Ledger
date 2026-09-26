@@ -634,6 +634,8 @@ export const css = `
      muted label, same treatment as .balance-chip-excl/.sb-balance-excl
      right next to it rather than a badge that reads as an alert. */
   .excluded-tag { font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--stamp); margin-left:6px; vertical-align:middle; }
+  .cat-source-badges { display:flex; gap:6px; flex-wrap:wrap; padding:0 0 6px 0; }
+  .source-badge { font-size:9.5px; text-transform:uppercase; letter-spacing:0.3px; color:var(--ink-soft); background:var(--control-bg); border:1px solid var(--paper-line); border-radius:var(--radius-pill); padding:1px 7px; }
   .exclude-toggle { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); cursor:pointer; padding:7px 0; }
   .tab-visibility-groups { margin-top:6px; }
   .tab-visibility-row { display:flex; align-items:center; gap:12px; padding:7px 0; border-bottom:1px solid var(--paper-line); }

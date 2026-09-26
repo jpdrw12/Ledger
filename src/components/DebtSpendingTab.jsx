@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from "react";
 import { Landmark, Plus, Trash2, TrendingUp, Receipt, Download, Upload, ShoppingCart } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, debtBudgetReport, buildDebtSpendingCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows } from "../lib/calc.js";
+import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, monthsInRange, buildDebtSpendingCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, BudgetProgressList, useShowLimit, ShowLimitControl } from "./Shared.jsx";
+import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, MonthRangeFilter, useShowLimit, ShowLimitControl } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -11,10 +11,11 @@ import { undoableDelete } from "../lib/undo.js";
 // month. A charge raises the debt's balance (like a purchase on a credit card);
 // it touches no bank account. Charges carry a free-text month label decoupled
 // from the months table, so this reads like CardTab but the money flows to debt.
-function DebtSpendingTab({ state, onChanged, onGoToBudgeting }) {
+function DebtSpendingTab({ state, onChanged }) {
   const { toast } = useToast();
   const [selectedCat, setSelectedCat] = useState(null);
-  const [chartMonth, setChartMonth] = useState("all"); // scope by month label; "all" = every label
+  const [fromLabel, setFromLabel] = useState("");
+  const [toLabel, setToLabel] = useState("");
   const [debtFilter, setDebtFilter] = useState("all"); // scope by debt id; "all" = every spendable debt
   const [catSort, setCatSort] = useState("value-desc");
   const [groupSort, setGroupSort] = useState("order");
@@ -33,26 +34,29 @@ function DebtSpendingTab({ state, onChanged, onGoToBudgeting }) {
   const categoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "debtCharges");
 
   // Pure aggregations — memoized (above the early return so hook order stays
-  // stable) so they don't re-run on every keystroke in the budget fields.
-  const { trend, scopeLabel, debtScopeLabel, categories, perDebt, maxCat, totalSpend, budgetLabel, budgets } = useMemo(() => {
+  // stable) so they don't re-run on every keystroke.
+  const { trend, scopeLabel, debtScopeLabel, categories, perDebt, maxCat, totalSpend } = useMemo(() => {
     const allIds = new Set(state.debts.filter((d) => d.spendable).map((d) => d.id));
     const ids = debtFilter === "all" ? allIds : new Set([debtFilter]);
-    const scoped = chartMonth === "all" ? charges : charges.filter((c) => c.monthLabel === chartMonth);
+    const hasRange = !!(fromLabel || toLabel);
+    // Orphan labels (a charge whose label matches no real month) fall
+    // outside any custom range by definition — same as Consolidated
+    // Spending's own range scoping.
+    const rangeLabels = hasRange ? new Set(monthsInRange(state.months, fromLabel || null, toLabel || null).map((m) => m.monthLabel)) : null;
+    const scoped = hasRange ? charges.filter((c) => rangeLabels.has(c.monthLabel)) : charges;
     const cats = debtSpendingByCategory(scoped, { include: ids });
-    const lastLabel = state.months.length ? state.months[state.months.length - 1].monthLabel : null;
-    const bLabel = chartMonth === "all" ? lastLabel : chartMonth;
     return {
       trend: debtMonthlyTotals(charges, { include: ids }),
-      scopeLabel: chartMonth === "all" ? "all months" : chartMonth,
+      scopeLabel: hasRange
+        ? `${fromLabel || state.months[0]?.monthLabel} – ${toLabel || state.months[state.months.length - 1]?.monthLabel}`
+        : "all months",
       debtScopeLabel: debtFilter === "all" ? "" : ` (${(state.debts.find((d) => d.id === debtFilter) || {}).name || "this debt"})`,
       categories: cats,
       perDebt: debtSpendByDebt(scoped, [...allIds]),
       maxCat: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
       totalSpend: cats.reduce((s, c) => s + c.total, 0),
-      budgetLabel: bLabel,
-      budgets: debtBudgetReport(charges, bLabel, state.debtBudgets || [], ids, categoryGroups, categoryGroupMembers, state.debtGroupBudgets),
     };
-  }, [state, chartMonth, debtFilter]);
+  }, [state, fromLabel, toLabel, debtFilter]);
 
   if (spendableDebts.length === 0) {
     return (
@@ -313,15 +317,7 @@ function DebtSpendingTab({ state, onChanged, onGoToBudgeting }) {
         )}
       </div>
       <div className="insight-card">
-        <div className="backup-folder" style={{ marginTop: 0 }}>
-          <span className="small-label" style={{ flex: 1 }}>Month</span>
-          <select value={chartMonth} onChange={(e) => setChartMonth(e.target.value)}>
-            <option value="all">All months</option>
-            {state.months.map((m) => (
-              <option key={m.id} value={m.monthLabel}>{m.monthLabel}</option>
-            ))}
-          </select>
-        </div>
+        <MonthRangeFilter months={state.months} fromLabel={fromLabel} toLabel={toLabel} onFromChange={setFromLabel} onToChange={setToLabel} />
         <div className="backup-folder" style={{ marginTop: 8 }}>
           <span className="small-label" style={{ flex: 1 }}>Sort items</span>
           <select value={catSort} onChange={(e) => setCatSort(e.target.value)}>
@@ -362,19 +358,6 @@ function DebtSpendingTab({ state, onChanged, onGoToBudgeting }) {
           </div>
         )}
       </div>
-
-      <Collapsible title="Debt spending budget" icon={<Landmark size={13} />} right={budgetLabel || null}>
-        <BudgetProgressList
-          allowance={budgets.total ? { budget: budgets.total.budget, actual: budgets.total.spent } : null}
-          rows={budgets.categories.map((b) => ({ category: b.category, budget: b.budget, actual: b.spent, members: b.members, memberActualKey: "spent" }))}
-          emptyLabel="No debt spending budget set yet."
-        />
-        {onGoToBudgeting && (
-          <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 8 }} onClick={onGoToBudgeting}>
-            Manage budgets in Budgeting & Planning →
-          </button>
-        )}
-      </Collapsible>
 
       {spendableDebts.length > 1 && debtFilter === "all" && (
         <Collapsible title="Per-debt totals" icon={<Landmark size={13} />}>

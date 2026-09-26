@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, ChevronLeft, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed, LayoutDashboard, Search } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, ChevronLeft, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ShoppingBag, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed, LayoutDashboard, Search, Layers } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, allBudgetPaceAlerts, money, reconcileTabOrder, reconcileTabGroups } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -14,6 +14,7 @@ import { useToast } from "./components/Toast.jsx";
 import { checkForUpdate, installUpdate, restartApp, isNewer } from "./lib/update.js";
 import OverviewTab from "./components/OverviewTab.jsx";
 import MonthsTab from "./components/MonthsTab.jsx";
+import ExpenseTab from "./components/ExpenseTab.jsx";
 import CardTab from "./components/CardTab.jsx";
 import BillsTab from "./components/BillsTab.jsx";
 import CategoriesTab from "./components/CategoriesTab.jsx";
@@ -21,6 +22,7 @@ import GoalsTab from "./components/GoalsTab.jsx";
 import AccountsTab from "./components/AccountsTab.jsx";
 import DebtsTab from "./components/DebtsTab.jsx";
 import DebtSpendingTab from "./components/DebtSpendingTab.jsx";
+import ConsolidatedSpendingTab from "./components/ConsolidatedSpendingTab.jsx";
 import InsightsTab from "./components/InsightsTab.jsx";
 import BudgetingTab from "./components/BudgetingTab.jsx";
 import InvestmentsTab from "./components/InvestmentsTab.jsx";
@@ -41,12 +43,14 @@ const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "
 const TAB_DEFS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, dataTour: "tab-overview", group: "Core" },
   { id: "months", label: "Months", icon: ListChecks, group: "Core" },
+  { id: "consolidatedspending", label: "Consolidated Spending", icon: Layers, dataTour: "tab-consolidatedspending", group: "Spending" },
+  { id: "expense", label: "Expenses", icon: ShoppingBag, dataTour: "tab-expense", group: "Spending" },
   { id: "card", label: "Card Spending", icon: CreditCard, dataTour: "tab-card", group: "Spending" },
-  { id: "bills", label: "Bill Templates", icon: Receipt, dataTour: "tab-bills", group: "Spending" },
-  { id: "categories", label: "Categories", icon: Tag, dataTour: "tab-categories", group: "Spending" },
   { id: "debtspending", label: "Debt Spending", icon: ShoppingCart, dataTour: "tab-debtspending", group: "Spending" },
   { id: "accounts", label: "Accounts", icon: Wallet, dataTour: "tab-accounts", group: "Accounts & debts" },
   { id: "debts", label: "Debts", icon: Landmark, dataTour: "tab-debts", group: "Accounts & debts" },
+  { id: "bills", label: "Bill Templates", icon: Receipt, dataTour: "tab-bills", group: "Planning" },
+  { id: "categories", label: "Categories", icon: Tag, dataTour: "tab-categories", group: "Planning" },
   { id: "goals", label: "Savings Goals", icon: PiggyBank, dataTour: "tab-goals", group: "Planning" },
   { id: "budgeting", label: "Budgeting & Planning", icon: Target, dataTour: "tab-budgeting", group: "Planning" },
   { id: "investments", label: "Investments", icon: LineChart, dataTour: "tab-investments", group: "Planning" },
@@ -87,9 +91,11 @@ const TAB_HELP = {
   accounts: { title: "Accounts", body: "Your bank accounts and cards. Uncheck 'count in the total' for a prepaid spending card you load from other accounts." },
   debts: { title: "Debts", body: "Track balances and APR. Payments reduce principal; charge interest once a month with 'Apply monthly interest'. Tick 'Spendable' to charge purchases to a debt from the Debt Spending tab." },
   debtspending: { title: "Debt Spending", body: "Log purchases charged to your spendable debts, month by month. Each charge raises that debt's balance and touches no bank account. Tick 'Spendable' on a debt first." },
+  consolidatedspending: { title: "Consolidated Spending", body: "A read-only combined view of Expense, Card Spending, and Debt Spending — every category's total across all three, with a custom date range. Add or edit an actual entry in whichever of those tabs it belongs to." },
   budgeting: { title: "Budgeting & Planning", body: "Every monthly budget target in one place — expense categories, card spending, and debt spending — compared against your most recent month, with recent-average and trend context, a multi-month planning grid, goal auto-contributions, what-if scenarios, and a pace-alert banner if you're trending over this month." },
   investments: { title: "Investments", body: "Record each investment account's value at the start of a month — growth since the last one is computed for you. Log dividend payments per month below. The running total adds a second line to the Report's Net worth chart." },
-  insights: { title: "Insights", body: "Net worth, spending by category, budgets, and a forecast projected from your income and recent spending." },
+  insights: { title: "Insights", body: "Net worth and a forecast projected from your income and recent spending. Spending by category moved to the Expenses tab." },
+  expense: { title: "Expenses", body: "Spending by category, scoped to any custom date range — this is the same expense spending Months logs, minus card purchases (see Card Spending for those)." },
   report: { title: "Report", body: "Generate a single styled document covering a month range you pick — open it in any browser, or print it to PDF from there." },
   backups: { title: "Backups", body: "Back up your ledger locally or mirror it to a synced folder. Nothing leaves this computer unless you send it." },
   settings: { title: "Settings", body: "Appearance & layout, which tabs show in the nav, profiles, backups, updates, keyboard shortcuts, and the interactive guide." },
@@ -1912,12 +1918,14 @@ export default function App() {
       {tab === "accounts" && (
         <AccountsTab accounts={state.accounts} balances={balances} consolidated={consolidated} onChanged={reload} onPatch={patchState} />
       )}
-      {tab === "card" && <CardTab state={state} onChanged={reload} onGoToBudgeting={() => setTab("budgeting")} />}
+      {tab === "expense" && <ExpenseTab state={state} />}
+      {tab === "card" && <CardTab state={state} onChanged={reload} />}
       {tab === "debts" && <DebtsTab debts={state.debts} debtHistory={state.debtHistory} months={state.months} onChanged={reload} onPatch={patchState} />}
-      {tab === "debtspending" && <DebtSpendingTab state={state} onChanged={reload} onGoToBudgeting={() => setTab("budgeting")} />}
+      {tab === "debtspending" && <DebtSpendingTab state={state} onChanged={reload} />}
+      {tab === "consolidatedspending" && <ConsolidatedSpendingTab state={state} />}
       {tab === "budgeting" && <BudgetingTab state={state} onChanged={reload} />}
       {tab === "investments" && <InvestmentsTab state={state} onChanged={reload} />}
-      {tab === "insights" && <InsightsTab state={state} ledger={ledger} onGoToBudgeting={() => setTab("budgeting")} />}
+      {tab === "insights" && <InsightsTab state={state} ledger={ledger} />}
       {tab === "report" && <ReportTab state={state} ledger={ledger} theme={theme} accent={accent} appVersion={APP_VERSION} />}
       {tab === "settings" && (
         <SettingsTab

@@ -1,29 +1,19 @@
 import React, { useState, useMemo } from "react";
-import { Download, TrendingUp, Receipt, Target } from "lucide-react";
-import { spendingByCategory, monthlyEndingBalances, buildLedgerCsv, budgetReport, netWorthSnapshot, projectLedger, averageNetChange, withInvestmentTotals, sortRows, money } from "../lib/calc.js";
+import { Download, TrendingUp } from "lucide-react";
+import { monthlyEndingBalances, buildLedgerCsv, netWorthSnapshot, projectLedger, averageNetChange, withInvestmentTotals, money } from "../lib/calc.js";
 import { exportTextFile } from "../lib/backup.js";
-import { Sparkline, Collapsible, BudgetProgressList, GroupedCategoryList } from "./Shared.jsx";
+import { Sparkline, Collapsible } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 
-function InsightsTab({ state, ledger, onGoToBudgeting }) {
+// Net worth and forecast only — spending by category moved to the Expense
+// tab, and the budget glance moved out entirely now that Budgeting &
+// Planning pulls from every source itself (see combinedBudgetReport).
+function InsightsTab({ state, ledger }) {
   const { toast } = useToast();
   const [horizon, setHorizon] = useState(6);
-  const [selectedCat, setSelectedCat] = useState(null); // click a category row to highlight its total
-  const [catMonth, setCatMonth] = useState("all"); // scope the spending-by-category chart
-  const [catSort, setCatSort] = useState("value-desc");
-  const [groupSort, setGroupSort] = useState("order");
-  const [catAllOpen, setCatAllOpen] = useState(false); // groups start collapsed
-  const [catCollapseSignal, setCatCollapseSignal] = useState(null);
-  const toggleCatAll = () => {
-    const next = !catAllOpen;
-    setCatAllOpen(next);
-    setCatCollapseSignal({ open: next, token: Date.now() });
-  };
-  const categoryGroups = (state.categoryGroups || []).filter((g) => g.source === "expenses");
-  const categoryGroupMembers = (state.categoryGroupMembers || []).filter((m) => m.source === "expenses");
 
   // These pure aggregations only depend on state/ledger/horizon.
-  const { series, seriesWithInvest, budgets, latestLabel, nw, avgNet } = useMemo(() => {
+  const { series, seriesWithInvest, nw, avgNet } = useMemo(() => {
     const s = monthlyEndingBalances(state.months, ledger);
     return {
       series: s,
@@ -31,31 +21,10 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
       // Sparkline knows to skip the second line entirely rather than plot a
       // flat $0 one — see withInvestmentTotals's comment in calc.js.
       seriesWithInvest: withInvestmentTotals(s, state.months, state.investmentValues, state.investmentAccounts),
-      budgets: budgetReport(
-        state.months,
-        state.categoryBudgets,
-        (state.categoryGroups || []).filter((g) => g.source === "expenses"),
-        (state.categoryGroupMembers || []).filter((m) => m.source === "expenses"),
-        state.categoryGroupBudgets
-      ),
-      latestLabel: state.months.length ? state.months[state.months.length - 1].monthLabel : null,
       nw: netWorthSnapshot(state.months, ledger, state.debts),
       avgNet: averageNetChange(state.months, ledger),
     };
   }, [state, ledger]);
-
-  // Spending by category, scoped to the selected month (or all months).
-  const { scopedCategories, scopedTotal, scopedMax, catScopeLabel } = useMemo(() => {
-    const cardAccountIds = new Set(state.accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
-    const scoped = catMonth === "all" ? state.months : state.months.filter((m) => m.id === catMonth);
-    const cats = spendingByCategory(scoped, { exclude: cardAccountIds });
-    return {
-      scopedCategories: cats,
-      scopedTotal: cats.reduce((s, c) => s + c.total, 0),
-      scopedMax: cats.length ? Math.max(...cats.map((c) => c.total)) : 0,
-      catScopeLabel: catMonth === "all" ? "all months" : (state.months.find((m) => m.id === catMonth)?.monthLabel || ""),
-    };
-  }, [state, catMonth]);
 
   // Forecast: projected months appended after the real ones (never persisted).
   const { forecastSeries, forecastSeriesWithInvest, projectedSet, projectedRows, firstNegative } = useMemo(() => {
@@ -161,78 +130,6 @@ function InsightsTab({ state, ledger, onGoToBudgeting }) {
               <p className="empty small">Projected to stay positive through the next {horizon} months.</p>
             )}
           </>
-        )}
-      </Collapsible>
-
-      <div className="block-title-row">
-        <h4 className="block-title"><Receipt size={13} /> Spending by category</h4>
-        {categoryGroups.length > 0 && (
-          <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={toggleCatAll}>
-            {catAllOpen ? "Collapse all" : "Expand all"}
-          </button>
-        )}
-      </div>
-      <div className="insight-card">
-        <div className="backup-folder" style={{ marginTop: 0 }}>
-          <span className="small-label" style={{ flex: 1 }}>Month</span>
-          <select value={catMonth} onChange={(e) => setCatMonth(e.target.value)}>
-            <option value="all">All months</option>
-            {state.months.map((m) => (
-              <option key={m.id} value={m.id}>{m.monthLabel}</option>
-            ))}
-          </select>
-        </div>
-        <div className="backup-folder" style={{ marginTop: 8 }}>
-          <span className="small-label" style={{ flex: 1 }}>Sort items</span>
-          <select value={catSort} onChange={(e) => setCatSort(e.target.value)}>
-            <option value="value-desc">Total (high to low)</option>
-            <option value="value-asc">Total (low to high)</option>
-            <option value="alpha">Alphabetical (A–Z)</option>
-            <option value="alpha-desc">Alphabetical (Z–A)</option>
-          </select>
-        </div>
-        {categoryGroups.length > 0 && (
-          <div className="backup-folder" style={{ marginTop: 8 }}>
-            <span className="small-label" style={{ flex: 1 }}>Sort categories</span>
-            <select value={groupSort} onChange={(e) => setGroupSort(e.target.value)}>
-              <option value="order">Default order</option>
-              <option value="value-desc">Total (high to low)</option>
-              <option value="value-asc">Total (low to high)</option>
-              <option value="alpha">Alphabetical (A–Z)</option>
-              <option value="alpha-desc">Alphabetical (Z–A)</option>
-            </select>
-          </div>
-        )}
-        <GroupedCategoryList
-          categories={sortRows(scopedCategories, catSort)}
-          groupSort={groupSort}
-          groups={categoryGroups}
-          members={categoryGroupMembers}
-          selectedCat={selectedCat}
-          onSelect={(cat) => setSelectedCat((s) => (s === cat ? null : cat))}
-          maxTotal={scopedMax}
-          emptyLabel={`No expenses logged for ${catScopeLabel}.`}
-          collapseSignal={catCollapseSignal}
-        />
-        {scopedCategories.length > 0 && (
-          <div className="cat-row cat-total">
-            <span className="cat-name">Total</span>
-            <div className="cat-bar-track" />
-            <span className="cat-amount mono">{money(scopedTotal)}</span>
-          </div>
-        )}
-      </div>
-
-      <Collapsible title="Budgets" icon={<Target size={13} />} right={latestLabel ? `vs ${latestLabel}` : null}>
-        <BudgetProgressList
-          allowance={null}
-          rows={budgets.map((b) => ({ category: b.category, budget: b.budget, actual: b.actual, members: b.members, memberActualKey: "actual" }))}
-          emptyLabel="No budgets set yet."
-        />
-        {onGoToBudgeting && (
-          <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 8 }} onClick={onGoToBudgeting}>
-            Manage budgets in Budgeting & Planning →
-          </button>
         )}
       </Collapsible>
     </div>

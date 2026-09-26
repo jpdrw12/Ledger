@@ -1299,6 +1299,62 @@ export function mergeCategoryTotals(...lists) {
     .sort((a, b) => b.total - a.total);
 }
 
+// A slice of `months` (real, ordered oldest→newest) between two month
+// labels, inclusive — the "from"/"to" of a custom date-range picker.
+// Either bound may be null/undefined for "open on that end" (matches
+// however the array already starts/ends). A label that isn't found (a
+// stale saved selection, a renamed month) collapses the range to empty
+// rather than silently falling back to "all months" — a caller that wants
+// "no range selected" should pass null, not an unmatched label. Pure.
+export function monthsInRange(months, fromLabel, toLabel) {
+  const list = months || [];
+  const fromIdx = fromLabel ? list.findIndex((m) => m.monthLabel === fromLabel) : 0;
+  const toIdx = toLabel ? list.findIndex((m) => m.monthLabel === toLabel) : list.length - 1;
+  if (fromIdx === -1 || toIdx === -1) return [];
+  const [lo, hi] = fromIdx <= toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+  return list.slice(lo, hi + 1);
+}
+
+// The Consolidated Spending tab's report: every category's spend across
+// Expense (card-excluded), Card, and Debt Spending, merged by name (see
+// mergeCategoryTotals) over an optional custom date range — `fromLabel`/
+// `toLabel` are month labels, both omitted meaning "all months". Also
+// returns the same combined monthly trend the tab's own sparkline uses
+// (always the full history, independent of the category range — a trend
+// chart showing only the selected range would just be a flat truncated
+// line). Pure — no I/O.
+export function consolidatedSpendingReport(state, { fromLabel, toLabel } = {}) {
+  const months = state.months || [];
+  const cardAccountIds = new Set((state.accounts || []).filter((a) => a.excludeFromTotal).map((a) => a.id));
+  const scoped = fromLabel || toLabel ? monthsInRange(months, fromLabel, toLabel) : months;
+  const scopedLabels = new Set(scoped.map((m) => m.monthLabel));
+  const scopedCharges = (state.debtCharges || []).filter((c) => scopedLabels.has(c.monthLabel));
+
+  const expenseCats = spendingByCategory(scoped, { exclude: cardAccountIds }, state.bills);
+  const cardCats = spendingByCategory(scoped, { include: cardAccountIds }, state.bills);
+  const debtCats = debtSpendingByCategory(scopedCharges, {});
+  const categories = mergeCategoryTotals(expenseCats, cardCats, debtCats).map((c) => {
+    const key = c.category.toLowerCase();
+    const sources = [];
+    if (expenseCats.some((r) => r.category.toLowerCase() === key && r.total > 0)) sources.push("Expenses");
+    if (cardCats.some((r) => r.category.toLowerCase() === key && r.total > 0)) sources.push("Card Spending");
+    if (debtCats.some((r) => r.category.toLowerCase() === key && r.total > 0)) sources.push("Debt Spending");
+    return { ...c, sources };
+  });
+  const total = categories.reduce((s, c) => s + c.total, 0);
+
+  const expenseTrend = monthlyExpenseTotals(months, { exclude: cardAccountIds }, state.bills);
+  const cardTrend = monthlyExpenseTotals(months, { include: cardAccountIds }, state.bills);
+  const debtTrendByLabel = new Map(debtMonthlyTotals(state.debtCharges || [], {}).map((d) => [d.label, d.value]));
+  const trend = months.map((m, i) => ({
+    id: m.id,
+    label: m.monthLabel,
+    value: (expenseTrend[i]?.value || 0) + (cardTrend[i]?.value || 0) + (debtTrendByLabel.get(m.monthLabel) || 0),
+  }));
+
+  return { categories, total, trend };
+}
+
 // Buckets categoryUsageReport()'s rows into their assigned group, for the
 // Reorders a list of {category, ...} rows for display — used by Card/Debt
 // Spending's category breakdown (valueKey "total") and the Categories tab

@@ -49,6 +49,8 @@ import {
   groupCategoryRows,
   sortRows,
   mergeCategoryTotals,
+  monthsInRange,
+  consolidatedSpendingReport,
   billPaymentTotals,
   debtSpendingByCategory,
   debtMonthlyTotals,
@@ -860,6 +862,85 @@ describe("mergeCategoryTotals", () => {
   it("handles empty/missing lists", () => {
     expect(mergeCategoryTotals()).toEqual([]);
     expect(mergeCategoryTotals([], undefined, [{ category: "X", total: 1 }])).toEqual([{ category: "X", total: 1 }]);
+  });
+});
+
+describe("monthsInRange", () => {
+  const months = ["Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026"].map((monthLabel, i) => makeMonth(`m${i}`, { monthLabel }));
+
+  it("returns the inclusive slice between two labels", () => {
+    expect(monthsInRange(months, "Feb 2026", "Mar 2026").map((m) => m.monthLabel)).toEqual(["Feb 2026", "Mar 2026"]);
+  });
+
+  it("handles the bounds given in either order", () => {
+    expect(monthsInRange(months, "Mar 2026", "Feb 2026").map((m) => m.monthLabel)).toEqual(["Feb 2026", "Mar 2026"]);
+  });
+
+  it("treats a missing 'from' as open at the start", () => {
+    expect(monthsInRange(months, null, "Feb 2026").map((m) => m.monthLabel)).toEqual(["Jan 2026", "Feb 2026"]);
+  });
+
+  it("treats a missing 'to' as open at the end", () => {
+    expect(monthsInRange(months, "Mar 2026", null).map((m) => m.monthLabel)).toEqual(["Mar 2026", "Apr 2026"]);
+  });
+
+  it("returns every month when both bounds are omitted", () => {
+    expect(monthsInRange(months, null, null)).toHaveLength(4);
+  });
+
+  it("returns [] for a label that isn't found, rather than falling back to all months", () => {
+    expect(monthsInRange(months, "Dec 2025", "Feb 2026")).toEqual([]);
+  });
+
+  it("handles a missing months array", () => {
+    expect(monthsInRange(undefined, null, null)).toEqual([]);
+  });
+});
+
+describe("consolidatedSpendingReport", () => {
+  const months = [
+    makeMonth("m1", { monthLabel: "Jan 2026", expensesPay1: [{ category: "Groceries", amount: 100, accountId: "a" }, { category: "Groceries", amount: 20, accountId: "c" }] }),
+    makeMonth("m2", { monthLabel: "Feb 2026", expensesPay1: [{ category: "Groceries", amount: 50, accountId: "a" }] }),
+  ];
+  const state = {
+    months,
+    accounts: [{ id: "a" }, { id: "c", excludeFromTotal: true }],
+    debtCharges: [
+      { debtId: "d1", monthLabel: "Jan 2026", category: "Groceries", amount: 10 },
+      { debtId: "d1", monthLabel: "Feb 2026", category: "Gas", amount: 5 },
+    ],
+    bills: [],
+  };
+
+  it("merges Expense, Card, and Debt Spending by category name, over every month by default", () => {
+    const report = consolidatedSpendingReport(state);
+    // Groceries: 100+50 (Expense) + 20 (Card) + 10 (Debt) = 180; Gas: 5 (Debt).
+    expect(report.categories).toEqual([
+      { category: "Groceries", total: 180, sources: ["Expenses", "Card Spending", "Debt Spending"] },
+      { category: "Gas", total: 5, sources: ["Debt Spending"] },
+    ]);
+    expect(report.total).toBe(185);
+  });
+
+  it("scopes the category totals to a custom date range, but not the trend", () => {
+    const report = consolidatedSpendingReport(state, { fromLabel: "Jan 2026", toLabel: "Jan 2026" });
+    // Only January's spend now: Groceries 100 (Expense) + 20 (Card) + 10 (Debt) = 130.
+    expect(report.categories).toEqual([{ category: "Groceries", total: 130, sources: ["Expenses", "Card Spending", "Debt Spending"] }]);
+    expect(report.total).toBe(130);
+    // Trend still covers both months regardless of the category range.
+    expect(report.trend.map((t) => t.label)).toEqual(["Jan 2026", "Feb 2026"]);
+  });
+
+  it("sums Expense + Card + Debt into one monthly trend value per real month", () => {
+    const report = consolidatedSpendingReport(state);
+    expect(report.trend).toEqual([
+      { id: "m1", label: "Jan 2026", value: 130 }, // 100 + 20 + 10
+      { id: "m2", label: "Feb 2026", value: 55 }, // 50 + 0 + 5
+    ]);
+  });
+
+  it("handles no months at all", () => {
+    expect(consolidatedSpendingReport({ months: [], debtCharges: [] })).toEqual({ categories: [], total: 0, trend: [] });
   });
 });
 

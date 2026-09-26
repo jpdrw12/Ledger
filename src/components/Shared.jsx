@@ -107,6 +107,44 @@ export function ScrollPanel({ className = "scroll-panel", children, ...rest }) {
   );
 }
 
+// A "From"/"To" custom date-range picker for scoping a spending view — the
+// same control across Consolidated Spending, Expense, Card Spending, and
+// Debt Spending, so they all offer the same "just this month", "all
+// months", or an arbitrary range. Both values are month labels (matching
+// monthsInRange in calc.js), empty string meaning "open on that end" —
+// caller decides what an empty fromLabel/toLabel means (usually "all
+// months" when both are empty).
+export function MonthRangeFilter({ months, fromLabel, toLabel, onFromChange, onToChange }) {
+  const hasRange = !!(fromLabel || toLabel);
+  return (
+    <>
+      <div className="backup-folder" style={{ marginTop: 0 }}>
+        <span className="small-label" style={{ flex: 1 }}>From</span>
+        <select value={fromLabel || ""} onChange={(e) => onFromChange(e.target.value)}>
+          <option value="">Start</option>
+          {(months || []).map((m) => (
+            <option key={m.id || m.monthLabel} value={m.monthLabel}>{m.monthLabel}</option>
+          ))}
+        </select>
+      </div>
+      <div className="backup-folder" style={{ marginTop: 8 }}>
+        <span className="small-label" style={{ flex: 1 }}>To</span>
+        <select value={toLabel || ""} onChange={(e) => onToChange(e.target.value)}>
+          <option value="">End</option>
+          {(months || []).map((m) => (
+            <option key={m.id || m.monthLabel} value={m.monthLabel}>{m.monthLabel}</option>
+          ))}
+        </select>
+      </div>
+      {hasRange && (
+        <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 8 }} onClick={() => { onFromChange(""); onToChange(""); }}>
+          Show all months
+        </button>
+      )}
+    </>
+  );
+}
+
 // General-purpose collapsible card. Header = chevron + optional icon + title,
 // with an optional right-aligned slot (e.g. a summary/total). Used to declutter
 // Settings, Insights, Card, and the open-month breakdown behind one consistent
@@ -154,10 +192,10 @@ export function Collapsible({ title, icon, right, defaultOpen = false, className
 // reference so bars stay comparable across groups. Falls back to the old
 // flat list when no groups exist yet, so a tab with none defined looks
 // exactly as it did before this feature.
-export function GroupedCategoryList({ categories, groups, members, selectedCat, onSelect, maxTotal, emptyLabel = "Nothing to show here.", collapseSignal, groupSort = "order" }) {
+export function GroupedCategoryList({ categories, groups, members, selectedCat, onSelect, maxTotal, emptyLabel = "Nothing to show here.", collapseSignal, groupSort = "order", renderRow }) {
   if (!categories.length) return <p className="empty small">{emptyLabel}</p>;
 
-  const catRow = (c) => (
+  const catRow = renderRow || ((c) => (
     <div
       className={`cat-row selectable${selectedCat === c.category ? " selected" : ""}`}
       key={c.category}
@@ -169,7 +207,7 @@ export function GroupedCategoryList({ categories, groups, members, selectedCat, 
       </div>
       <span className="cat-amount mono">{money(c.total)}</span>
     </div>
-  );
+  ));
 
   if (!(groups || []).length) return <>{categories.map(catRow)}</>;
 
