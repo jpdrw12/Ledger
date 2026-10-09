@@ -51,7 +51,11 @@ export function computeLedger(months, accounts) {
 
     const totalIncome = (Number(m.pay1.income) || 0) + (Number(m.pay2.income) || 0);
     const totalAdditions = [...m.pay1.additions, ...m.pay2.additions].reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const totalIncomePay1 = (Number(m.pay1.income) || 0) + m.pay1.additions.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const totalIncomePay2 = (Number(m.pay2.income) || 0) + m.pay2.additions.reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const totalBills = m.billPayments.reduce((s, bp) => s + (Number(bp.amountPaid) || 0), 0);
+    const totalBillsPay1 = m.billPayments.filter((bp) => bp.slot === 1).reduce((s, bp) => s + (Number(bp.amountPaid) || 0), 0);
+    const totalBillsPay2 = m.billPayments.filter((bp) => bp.slot === 2).reduce((s, bp) => s + (Number(bp.amountPaid) || 0), 0);
     // Expenses on excluded (card) accounts are tracked separately (Card tab),
     // so they don't count in the month's expense totals shown in the Months tab.
     const excludedIds = new Set(accounts.filter((a) => a.excludeFromTotal).map((a) => a.id));
@@ -75,7 +79,11 @@ export function computeLedger(months, accounts) {
       byAccount,
       totalIncome,
       totalAdditions,
+      totalIncomePay1,
+      totalIncomePay2,
       totalBills,
+      totalBillsPay1,
+      totalBillsPay2,
       totalExpensesPay1,
       totalExpensesPay2,
       totalGoals,

@@ -526,10 +526,12 @@ function patchAddition(state, monthId, slot, addId, patch) {
 function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatch, onRemove, onCopyForward, onReorder, canReorder, isFirst, isLast, accounts, bills, goals, goalBalances, debts, existingTags, existingCategories, existingNotes, forceOpenPay1 }) {
   const { toast } = useToast();
   if (!computed) return null;
-  const { byAccount, totalIncome, totalAdditions, totalBills, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
+  const { byAccount, totalIncome, totalAdditions, totalIncomePay1, totalIncomePay2, totalBills, totalBillsPay1, totalBillsPay2, totalExpensesPay1, totalExpensesPay2, totalGoals, totalDebtPayments, consolidatedCarryOut } = computed;
   const deficit = consolidatedCarryOut < 0;
   const totalExpenses = totalExpensesPay1 + totalExpensesPay2;
   const outstandingBills = month.billPayments.reduce((s, bp) => s + (bp.paid ? 0 : Number(bp.amountPaid) || 0), 0);
+  const outstandingBillsPay1 = month.billPayments.reduce((s, bp) => s + (!bp.paid && bp.slot === 1 ? Number(bp.amountPaid) || 0 : 0), 0);
+  const outstandingBillsPay2 = month.billPayments.reduce((s, bp) => s + (!bp.paid && bp.slot === 2 ? Number(bp.amountPaid) || 0 : 0), 0);
   // Due dates auto-fill only when the month label parses as "MonthName Year".
   // A custom label (e.g. "House Move") silently leaves them blank.
   const dueDatesWontFill = computeDueDate(month.monthLabel, 1) === "";
@@ -882,6 +884,17 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
             <div className="ms-cell"><span className="ms-label">Outstanding</span><span className={`ms-val mono ${outstandingBills > 0 ? "deficit" : ""}`}>{money(outstandingBills)}</span></div>
             <div className="ms-cell"><span className="ms-label">Expenses</span><span className="ms-val mono">{money(totalExpenses)}</span></div>
             <div className="ms-cell ms-end"><span className="ms-label">Ending</span><span className={`ms-val mono ${deficit ? "deficit" : "surplus"}`}>{money(consolidatedCarryOut)}</span></div>
+          </div>
+
+          <div className="per-account-row">
+            <div className="per-account-chip">
+              <span>Pay 1</span>
+              <span className="small-label mono">Income {money(totalIncomePay1)} · Bills {money(totalBillsPay1)}{outstandingBillsPay1 > 0 ? ` (${money(outstandingBillsPay1)} outstanding)` : ""} · Exp {money(totalExpensesPay1)}</span>
+            </div>
+            <div className="per-account-chip">
+              <span>Pay 2</span>
+              <span className="small-label mono">Income {money(totalIncomePay2)} · Bills {money(totalBillsPay2)}{outstandingBillsPay2 > 0 ? ` (${money(outstandingBillsPay2)} outstanding)` : ""} · Exp {money(totalExpensesPay2)}</span>
+            </div>
           </div>
 
           <Collapsible title="Per-account detail">
