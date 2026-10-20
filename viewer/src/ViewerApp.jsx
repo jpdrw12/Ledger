@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
   BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, CreditCard,
   ShoppingCart, ShoppingBag, FileText, Tag, Target, LineChart,
@@ -15,6 +15,8 @@ import { useToast } from "../../src/components/Toast.jsx";
 import { loadDatabaseFile } from "./lib/sqljs-adapter.js";
 import { setViewerProfileLabel } from "./lib/profiles-shim.js";
 import { mobileCss } from "./lib/mobile-css.js";
+import { readonlyCss } from "./lib/readonly-css.js";
+import { watchReadOnly } from "./lib/readonly.js";
 import { hasFileSystemAccess, listRecentFiles, recordRecentFile, removeRecentFile, getHandle } from "./lib/recent-files.js";
 
 import OverviewTab from "../../src/components/OverviewTab.jsx";
@@ -269,6 +271,15 @@ export default function ViewerApp() {
     [state]
   );
 
+  // Re-applies on every re-render of the tab content (new month expanded,
+  // Collapsible opened, tab switched) — see lib/readonly.js for why this
+  // can't be a one-off querySelectorAll.
+  const tabContentRef = useRef(null);
+  useEffect(() => {
+    if (!state) return undefined;
+    return watchReadOnly(tabContentRef.current);
+  }, [state, tab]);
+
   // These mutate only the in-memory copy of the loaded file (never the
   // original), the same as every other edit in this viewer — see
   // sqljs-adapter.js. Kept so Months behaves normally (Add month, Copy
@@ -342,6 +353,7 @@ export default function ViewerApp() {
       <div className="app app-plain">
         <style>{css}</style>
         <style>{mobileCss}</style>
+        <style>{readonlyCss}</style>
         <div className="viewer-banner" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "8px 16px", background: "var(--surface-2, #eef2f7)", borderBottom: "1px solid var(--border, #d8dee8)", fontSize: 13 }}>
           <Upload size={14} />
           <span style={{ minWidth: 0 }}>
@@ -364,7 +376,7 @@ export default function ViewerApp() {
             ))}
           </select>
         </div>
-        <div className="tab-content" style={{ padding: 16, maxWidth: "100vw", overflowX: "auto" }}>
+        <div ref={tabContentRef} className="tab-content" style={{ padding: 16, maxWidth: "100vw", overflowX: "auto" }}>
           {tab === "overview" && (
             <OverviewTab
               state={state}
