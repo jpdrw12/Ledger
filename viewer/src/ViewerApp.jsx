@@ -233,19 +233,18 @@ export default function ViewerApp() {
             Open a different file
           </button>
         </div>
-        <div className="classic-tabs" style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "8px 16px", borderBottom: "1px solid var(--border, #d8dee8)" }}>
-          {TAB_DEFS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                className={tab === t.id ? "tab-btn active" : "tab-btn"}
-                onClick={() => setTab(t.id)}
-              >
-                <Icon size={14} /> {t.label}
-              </button>
-            );
-          })}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderBottom: "1px solid var(--border, #d8dee8)" }}>
+          <label htmlFor="viewer-tab-select" style={{ fontSize: 13, opacity: 0.7 }}>Section</label>
+          <select
+            id="viewer-tab-select"
+            value={tab}
+            onChange={(e) => setTab(e.target.value)}
+            style={{ fontSize: 14, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border, #d8dee8)", background: "var(--surface, #fff)", minWidth: 220 }}
+          >
+            {TAB_DEFS.map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
         </div>
         <div className="tab-content" style={{ padding: 16 }}>
           {tab === "overview" && (
