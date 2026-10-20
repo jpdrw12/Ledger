@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useRef } from "react";
 import {
   BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, CreditCard,
   ShoppingCart, ShoppingBag, FileText, Tag, Target, LineChart,
-  LayoutDashboard, TrendingUp, Layers, Upload, FolderOpen,
+  LayoutDashboard, TrendingUp, Layers, Upload, FolderOpen, History, X,
 } from "lucide-react";
 import * as db from "../../src/lib/db.js";
 import {
@@ -15,6 +15,7 @@ import { useToast } from "../../src/components/Toast.jsx";
 import { loadDatabaseFile } from "./lib/sqljs-adapter.js";
 import { setViewerProfileLabel } from "./lib/profiles-shim.js";
 import { mobileCss } from "./lib/mobile-css.js";
+import { hasFileSystemAccess, listRecentFiles, recordRecentFile, removeRecentFile, getHandle } from "./lib/recent-files.js";
 
 import OverviewTab from "../../src/components/OverviewTab.jsx";
 import MonthsTab from "../../src/components/MonthsTab.jsx";
@@ -50,9 +51,72 @@ const TAB_DEFS = [
   { id: "report", label: "Report", icon: FileText },
 ];
 
+function formatRecentDate(ts) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " at " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+// A browser-local "Recently viewed" list (see lib/recent-files.js) — never
+// synced anywhere, just localStorage/IndexedDB on this device. On a browser
+// with the File System Access API (Chrome/Edge desktop) an entry can be
+// reopened with one click, pending the browser's own re-grant permission
+// prompt; elsewhere it's a reminder of the name/date only, and reopening it
+// still means choosing the file again below.
+function RecentFiles({ entries, onOpenEntry, onRemove, busy }) {
+  if (!entries.length) return null;
+  return (
+    <div style={{ margin: "22px auto 0", maxWidth: 440, textAlign: "left" }}>
+      <p style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-soft, #7a8577)", textTransform: "uppercase", letterSpacing: "0.4px", margin: "0 0 8px" }}>
+        <History size={13} /> Recently viewed on this browser
+      </p>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        {entries.map((e) => (
+          <li
+            key={e.id}
+            style={{ display: "flex", alignItems: "center", gap: 8, border: "1px solid var(--border, #d8dee8)", borderRadius: 6, padding: "8px 10px", background: "var(--card, #fff)" }}
+          >
+            <button
+              className="btn-secondary"
+              disabled={busy || !e.hasHandle}
+              title={e.hasHandle ? "Reopen (your browser will ask to confirm access)" : "Reopen by choosing the file again below"}
+              style={{ flex: 1, textAlign: "left", opacity: e.hasHandle ? 1 : 0.6, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}
+              onClick={() => e.hasHandle && onOpenEntry(e)}
+            >
+              <span className="mono">{e.name}</span>
+              <span style={{ fontSize: 11, opacity: 0.7 }}>{formatRecentDate(e.openedAt)}</span>
+            </button>
+            <button className="icon-btn" title="Remove from this list" onClick={() => onRemove(e.id)}>
+              <X size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // The file-picker gate shown before any .db is loaded.
-function PickScreen({ onPick, busy, error }) {
+function PickScreen({ onPick, onOpenHandle, busy, error, recent, onRemoveRecent }) {
   const inputRef = useRef(null);
+  const supportsFsAccess = hasFileSystemAccess();
+
+  const choose = async () => {
+    if (!supportsFsAccess) {
+      inputRef.current?.click();
+      return;
+    }
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: "Household Ledger backup", accept: { "application/octet-stream": [".db"] } }],
+      });
+      const file = await handle.getFile();
+      onPick(file, handle);
+    } catch (e) {
+      if (e?.name !== "AbortError") console.error("File picker failed:", e);
+    }
+  };
+
   return (
     <div className="app app-plain">
       <style>{css}</style>
@@ -65,7 +129,7 @@ function PickScreen({ onPick, busy, error }) {
           tab, or one you've synced down from Google Drive). Everything runs in this
           browser tab — the file is read once into memory and never uploaded anywhere.
         </p>
-        <button className="btn-primary" style={{ margin: "0 auto" }} disabled={busy} onClick={() => inputRef.current?.click()}>
+        <button className="btn-primary" style={{ margin: "0 auto" }} disabled={busy} onClick={choose}>
           <FolderOpen size={14} /> {busy ? "Opening…" : "Choose backup file…"}
         </button>
         <input
@@ -76,7 +140,7 @@ function PickScreen({ onPick, busy, error }) {
           onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = "";
-            if (file) onPick(file);
+            if (file) onPick(file, null);
           }}
         />
         {error && (
@@ -84,6 +148,7 @@ function PickScreen({ onPick, busy, error }) {
             {error}
           </p>
         )}
+        <RecentFiles entries={recent} onOpenEntry={onOpenHandle} onRemove={onRemoveRecent} busy={busy} />
       </div>
     </div>
   );
@@ -97,6 +162,7 @@ export default function ViewerApp() {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("overview");
   const [openMonth, setOpenMonth] = useState(null);
+  const [recent, setRecent] = useState(() => listRecentFiles());
 
   const reload = useCallback(async () => {
     try {
@@ -108,7 +174,7 @@ export default function ViewerApp() {
     }
   }, [toast]);
 
-  const openFile = useCallback(async (file) => {
+  const openFile = useCallback(async (file, handle) => {
     setBusy(true);
     setLoadError(null);
     try {
@@ -119,6 +185,8 @@ export default function ViewerApp() {
       setFileName(file.name);
       const full = await db.loadFullState();
       setState(full);
+      await recordRecentFile(file, handle || null);
+      setRecent(listRecentFiles());
     } catch (e) {
       console.error("Failed to open backup file:", e);
       setLoadError(
@@ -129,6 +197,44 @@ export default function ViewerApp() {
     } finally {
       setBusy(false);
     }
+  }, []);
+
+  // Reopening a "Recently viewed" entry: pull its stored handle back out of
+  // IndexedDB and ask the browser to re-grant read access (its own native
+  // permission prompt — nothing here can skip that). Only ever available
+  // for a file originally opened via showOpenFilePicker (see PickScreen).
+  const openFromRecent = useCallback(
+    async (entry) => {
+      setBusy(true);
+      setLoadError(null);
+      try {
+        const handle = await getHandle(entry.id);
+        if (!handle) {
+          setLoadError("That file's handle is no longer available in this browser — choose it again below.");
+          return;
+        }
+        if ((await handle.queryPermission({ mode: "read" })) !== "granted") {
+          const granted = await handle.requestPermission({ mode: "read" });
+          if (granted !== "granted") {
+            setLoadError("Permission to reopen that file was denied.");
+            return;
+          }
+        }
+        const file = await handle.getFile();
+        await openFile(file, handle);
+      } catch (e) {
+        console.error("Failed to reopen recent file:", e);
+        setLoadError(String(e?.message || e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [openFile]
+  );
+
+  const removeRecent = useCallback((id) => {
+    removeRecentFile(id);
+    setRecent(listRecentFiles());
   }, []);
 
   const ledger = useMemo(() => (state ? computeLedger(state.months, state.accounts) : null), [state]);
@@ -219,7 +325,16 @@ export default function ViewerApp() {
   );
 
   if (!state) {
-    return <PickScreen onPick={openFile} busy={busy} error={loadError} />;
+    return (
+      <PickScreen
+        onPick={openFile}
+        onOpenHandle={openFromRecent}
+        busy={busy}
+        error={loadError}
+        recent={recent}
+        onRemoveRecent={removeRecent}
+      />
+    );
   }
 
   return (
