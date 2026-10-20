@@ -1,0 +1,96 @@
+// Mobile-only overrides, layered on top of the desktop app's shared
+// styles.js (../../src/styles.js) via a second <style> tag in ViewerApp.
+// Kept separate rather than edited into styles.js itself, since that file
+// ships in the real Tauri app too — the desktop window is never phone-
+// width, so these rules would just be dead weight there, and keeping them
+// here means a viewer-only concern stays in the viewer.
+//
+// styles.js has no responsive handling at all (no @media queries) — it
+// was written for a resizable desktop window, so several multi-column
+// grids (bill rows, budgeting's 2/3-column grids, the overview dashboard)
+// are hard-coded to fixed pixel columns that just overflow a 375px screen
+// instead of reflowing.
+export const mobileCss = `
+@media (max-width: 680px) {
+  .app-plain { padding: 12px 10px 48px !important; }
+
+  .pay-grid,
+  .grid-2,
+  .grid-3,
+  .overview-grid-top,
+  .overview-grid-bottom {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Bill rows are a fixed 8-column grid (name/category/amount/slot/due/
+     type/edit/delete) — far too dense for a phone. Collapse to a 2-column
+     label/value layout; children keep their own order so each field still
+     reads as a pair. */
+  .bill-card {
+    grid-template-columns: 1fr 1fr !important;
+    font-size: 13px;
+  }
+  .bill-card-header {
+    display: none;
+  }
+
+  /* Fixed-width tables (history, forecast, report) become horizontally
+     scrollable islands instead of blowing out the page width. */
+  .history-table,
+  .forecast-table,
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  .modal-card {
+    max-width: calc(100vw - 32px) !important;
+  }
+
+  /* Each month row on the Months tab is one long nowrap flex row (chevron,
+     title, bill/expense chips, two running balances, reorder/copy/delete
+     buttons) — fine on a desktop window, but at 738px wide against a
+     ~320px phone content area it forces the whole card into horizontal
+     scroll, including the chevron that expands it. Wrapping lets it stack
+     instead; the two balance columns are desktop-only duplicates of what
+     the expanded month-summary already shows, so they're hidden here
+     rather than squeezed. */
+  .stub-head {
+    flex-wrap: wrap;
+  }
+  .stub-head .stub-balance {
+    display: none;
+  }
+  .stub-summary {
+    margin-right: 0;
+  }
+
+  /* Every bill-payment/expense/debt-payment/transfer line inside an open
+     month (checkbox, text/tag input, account select, date, amount,
+     delete) is one more fixed-width nowrap flex row — same problem as
+     .stub-head above, just further down the tree. Wrapping keeps each
+     field tappable instead of sliding off under a horizontal scrollbar. */
+  .ledger-row {
+    flex-wrap: wrap;
+  }
+  .ledger-row .text-input {
+    flex: 2 1 160px;
+    width: auto;
+  }
+  .tag-input,
+  .account-select,
+  .date-input,
+  .amount-input {
+    flex: 1 1 100px;
+    width: auto;
+    max-width: none;
+  }
+
+  .balance-chip,
+  .networth-card {
+    min-width: 0 !important;
+  }
+}
+`;

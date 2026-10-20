@@ -14,6 +14,7 @@ import { ExpandContext } from "../../src/components/Shared.jsx";
 import { useToast } from "../../src/components/Toast.jsx";
 import { loadDatabaseFile } from "./lib/sqljs-adapter.js";
 import { setViewerProfileLabel } from "./lib/profiles-shim.js";
+import { mobileCss } from "./lib/mobile-css.js";
 
 import OverviewTab from "../../src/components/OverviewTab.jsx";
 import MonthsTab from "../../src/components/MonthsTab.jsx";
@@ -55,6 +56,7 @@ function PickScreen({ onPick, busy, error }) {
   return (
     <div className="app app-plain">
       <style>{css}</style>
+      <style>{mobileCss}</style>
       <div className="screen-loading">
         <BookOpen size={34} strokeWidth={1.5} style={{ margin: "0 auto 10px", display: "block" }} />
         <h2 style={{ fontFamily: "Georgia, serif", marginBottom: 4 }}>Household Ledger Viewer</h2>
@@ -224,29 +226,30 @@ export default function ViewerApp() {
     <ExpandContext.Provider value={true}>
       <div className="app app-plain">
         <style>{css}</style>
-        <div className="viewer-banner" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", background: "var(--surface-2, #eef2f7)", borderBottom: "1px solid var(--border, #d8dee8)", fontSize: 13 }}>
+        <style>{mobileCss}</style>
+        <div className="viewer-banner" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "8px 16px", background: "var(--surface-2, #eef2f7)", borderBottom: "1px solid var(--border, #d8dee8)", fontSize: 13 }}>
           <Upload size={14} />
-          <span>
+          <span style={{ minWidth: 0 }}>
             Viewing <strong className="mono">{fileName}</strong> — working on a private in-memory copy; nothing is written back to this file.
           </span>
           <button className="btn-secondary" style={{ marginLeft: "auto" }} onClick={() => { setState(null); setFileName(""); }}>
             Open a different file
           </button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderBottom: "1px solid var(--border, #d8dee8)" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "10px 16px", borderBottom: "1px solid var(--border, #d8dee8)" }}>
           <label htmlFor="viewer-tab-select" style={{ fontSize: 13, opacity: 0.7 }}>Section</label>
           <select
             id="viewer-tab-select"
             value={tab}
             onChange={(e) => setTab(e.target.value)}
-            style={{ fontSize: 14, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border, #d8dee8)", background: "var(--surface, #fff)", minWidth: 220 }}
+            style={{ fontSize: 14, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border, #d8dee8)", background: "var(--surface, #fff)", minWidth: 220, maxWidth: "100%", flex: "1 1 auto" }}
           >
             {TAB_DEFS.map((t) => (
               <option key={t.id} value={t.id}>{t.label}</option>
             ))}
           </select>
         </div>
-        <div className="tab-content" style={{ padding: 16 }}>
+        <div className="tab-content" style={{ padding: 16, maxWidth: "100vw", overflowX: "auto" }}>
           {tab === "overview" && (
             <OverviewTab
               state={state}
