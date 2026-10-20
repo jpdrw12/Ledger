@@ -80,10 +80,10 @@ function RecentFiles({ entries, onOpenEntry, onRemove, busy }) {
           >
             <button
               className="btn-secondary"
-              disabled={busy}
-              title={e.hasHandle ? "Reopen (your browser will ask to confirm access)" : "This browser can't reopen a file by itself — click to choose it again"}
-              style={{ flex: 1, textAlign: "left", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}
-              onClick={() => onOpenEntry(e)}
+              disabled={busy || !e.hasHandle}
+              title={e.hasHandle ? "Reopen (your browser will ask to confirm access)" : "This browser can't reopen a file by itself — choose it again below"}
+              style={{ flex: 1, textAlign: "left", opacity: e.hasHandle ? 1 : 0.6, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}
+              onClick={() => e.hasHandle && onOpenEntry(e)}
             >
               <span className="mono">{e.name}</span>
               <span style={{ fontSize: 11, opacity: 0.7 }}>{formatRecentDate(e.openedAt)}</span>
@@ -119,13 +119,6 @@ function PickScreen({ onPick, onOpenHandle, busy, error, recent, onRemoveRecent 
     }
   };
 
-  // A recent entry with a stored handle reopens directly (pending the
-  // browser's own re-grant prompt); one without a handle — Safari/Firefox,
-  // or a file originally opened through the plain <input> fallback — has
-  // no way to get its bytes back without the user choosing it again, so
-  // this just opens the same chooser `choose()` already uses.
-  const openRecent = (entry) => (entry.hasHandle ? onOpenHandle(entry) : choose());
-
   return (
     <div className="app app-plain">
       <style>{css}</style>
@@ -157,7 +150,7 @@ function PickScreen({ onPick, onOpenHandle, busy, error, recent, onRemoveRecent 
             {error}
           </p>
         )}
-        <RecentFiles entries={recent} onOpenEntry={openRecent} onRemove={onRemoveRecent} busy={busy} />
+        <RecentFiles entries={recent} onOpenEntry={onOpenHandle} onRemove={onRemoveRecent} busy={busy} />
       </div>
     </div>
   );
