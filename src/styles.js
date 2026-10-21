@@ -449,7 +449,7 @@ export const css = `
   /* Custom popup calendar (DateInput in Shared.jsx) — not the native
      <input type="date">, which pulls up WebKitGTK's own GTK-styled picker
      rather than anything resembling a Windows-style calendar flyout. */
-  .date-input { width:126px; display:flex; align-items:center; gap:6px; font-family:ui-monospace, monospace; font-size:12px; padding:6px 8px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); color:var(--ink); cursor:pointer; text-align:left; }
+  .date-input { width:148px; flex-shrink:0; display:flex; align-items:center; gap:6px; font-family:ui-monospace, monospace; font-size:12px; padding:6px 8px; border:1px solid var(--paper-line); border-radius:var(--radius-xs); background:var(--control-bg); color:var(--ink); cursor:pointer; text-align:left; }
   .date-input:hover { border-color:var(--accent); }
   .date-input span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .date-input-placeholder { color:var(--ink-soft); }

@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from "react";
 import { CreditCard, Plus, Trash2, TrendingUp, Receipt, Download, Upload } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, monthsInRange, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows } from "../lib/calc.js";
+import { money, spendingByCategory, monthlyExpenseTotals, spendByAccount, monthsInRange, buildCardCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows, sortByDate, resolveImportMonth, parseFlexibleDate } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, MonthRangeFilter, useShowLimit, ShowLimitControl } from "./Shared.jsx";
+import { AccountSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, MonthRangeFilter, useShowLimit, ShowLimitControl, DateInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -93,7 +93,7 @@ function CardTab({ state, onChanged }) {
         }
         accountId = match.id;
       }
-      await db.addExpense(monthId, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId });
+      await db.addExpense(monthId, 1, { category: r.category, amount: r.amount, tag: r.tag, accountId, date: parseFlexibleDate(r.date) || null });
       imported++;
     }
     return { imported, failed };
@@ -138,17 +138,19 @@ function CardTab({ state, onChanged }) {
       const failed = [];
       const byMonth = new Map();
       for (const r of rows) {
-        if (!r.month) {
-          failed.push("Row missing Month");
+        const resolved = resolveImportMonth(r, state.months, { requireRealMonth: true });
+        if (!resolved) {
+          failed.push(
+            r.month
+              ? `Month "${r.month}" not found`
+              : r.date
+              ? `Date "${r.date}" doesn't fall in any month you've added yet`
+              : "Row missing Month or Date"
+          );
           continue;
         }
-        const month = state.months.find((m) => m.monthLabel.toLowerCase() === r.month.toLowerCase());
-        if (!month) {
-          failed.push(`Month "${r.month}" not found`);
-          continue;
-        }
-        if (!byMonth.has(month.id)) byMonth.set(month.id, []);
-        byMonth.get(month.id).push(r);
+        if (!byMonth.has(resolved.monthId)) byMonth.set(resolved.monthId, []);
+        byMonth.get(resolved.monthId).push(r);
       }
       for (const [monthId, monthRows] of byMonth) {
         const result = await importRowsIntoMonth(monthRows, monthId);
@@ -172,7 +174,7 @@ function CardTab({ state, onChanged }) {
       "Category,Amount,Tag,Account,Month\n" +
       `Coffee,4.50,,${cardAccounts[0].name},${state.months[state.months.length - 1]?.monthLabel || ""}\n` +
       `Gas,40.00,,,${state.months[state.months.length - 1]?.monthLabel || ""}\n` +
-      "# Month is only used by the header 'Import CSV' button — the per-month Import CSV buttons ignore it.\n" +
+      "# Month (or a Date column instead) is only used by the header 'Import CSV' button — the per-month Import CSV buttons ignore it.\n" +
       "# Account picks which card a row lands on; leave blank to use your first card.\n" +
       buildCsvReferenceBlock([
         { label: "cards", names: cardAccounts.map((a) => a.name) },
@@ -186,7 +188,7 @@ function CardTab({ state, onChanged }) {
     }
   };
   const updateExpense = async (e, patch) => {
-    await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, ...patch });
+    await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, date: e.date, ...patch });
     onChanged();
   };
   const removeExpense = async (e, monthId) => {
@@ -238,7 +240,7 @@ function CardTab({ state, onChanged }) {
         <p className="empty">Add a month on the <strong>Months</strong> tab first.</p>
       ) : (
         (monthLimit.showAll ? state.months : state.months.slice(-monthLimit.count)).map((m) => {
-          const exps = cardExpensesFor(m);
+          const exps = sortByDate(cardExpensesFor(m));
           const total = exps.reduce((s, e) => s + (Number(e.amount) || 0), 0);
           return (
             <MonthSection key={m.id} icon={<CreditCard size={13} />} title={m.monthLabel} total={total}>
@@ -249,6 +251,7 @@ function CardTab({ state, onChanged }) {
                     {cardAccounts.length > 1 && (
                       <AccountSelect accounts={cardAccounts} value={e.accountId} onChange={(v) => updateExpense(e, { accountId: v })} />
                     )}
+                    <DateInput className="date-input" defaultValue={e.date} onSave={(v) => updateExpense(e, { date: v })} />
                     <input className="amount-input" type="number" defaultValue={e.amount} onBlur={(ev) => updateExpense(e, { amount: parseNumberInput(ev, e.amount) })} />
                     <button className="icon-btn" onClick={() => removeExpense(e, m.id)}>
                       <Trash2 size={13} />

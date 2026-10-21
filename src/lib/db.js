@@ -443,23 +443,24 @@ export async function deleteTransfer(id) {
   await db.execute("DELETE FROM transfers WHERE id = $1", [id]);
 }
 
-export async function addExpense(monthId, slot, { category, amount, tag, accountId }) {
+export async function addExpense(monthId, slot, { category, amount, tag, accountId, date }) {
   const db = await getDb();
   const id = uid();
   await db.execute(
-    `INSERT INTO expenses (id, month_id, slot, category, amount, tag, account_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [id, monthId, slot, category || "", amount || 0, tag || "", accountId || null]
+    `INSERT INTO expenses (id, month_id, slot, category, amount, tag, account_id, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, monthId, slot, category || "", amount || 0, tag || "", accountId || null, date || null]
   );
   return id;
 }
 
-export async function updateExpense(id, { category, amount, tag, accountId }) {
+export async function updateExpense(id, { category, amount, tag, accountId, date }) {
   const db = await getDb();
-  await db.execute("UPDATE expenses SET category = $1, amount = $2, tag = $3, account_id = $4 WHERE id = $5", [
+  await db.execute("UPDATE expenses SET category = $1, amount = $2, tag = $3, account_id = $4, date = $5 WHERE id = $6", [
     category,
     amount,
     tag,
     accountId,
+    date || null,
     id,
   ]);
 }
@@ -576,27 +577,27 @@ export async function getDebtCharges() {
   return db.select("SELECT * FROM debt_charges ORDER BY created_at");
 }
 
-export async function addDebtCharge(debtId, { monthLabel, category, amount }) {
+export async function addDebtCharge(debtId, { monthLabel, category, amount, date }) {
   const db = await getDb();
   const id = uid();
   const amt = Number(amount) || 0;
   await db.execute(
-    "INSERT INTO debt_charges (id, debt_id, month_label, category, amount) VALUES ($1, $2, $3, $4, $5)",
-    [id, debtId, monthLabel, category || null, amt]
+    "INSERT INTO debt_charges (id, debt_id, month_label, category, amount, date) VALUES ($1, $2, $3, $4, $5, $6)",
+    [id, debtId, monthLabel, category || null, amt, date || null]
   );
   await db.execute("UPDATE debts SET balance = ROUND((balance + $1) * 100) / 100 WHERE id = $2", [amt, debtId]);
   return id;
 }
 
-export async function updateDebtCharge(id, { category, amount }) {
+export async function updateDebtCharge(id, { category, amount, date }) {
   const db = await getDb();
   const rows = await db.select("SELECT * FROM debt_charges WHERE id = $1", [id]);
   if (!rows.length) return;
   const prev = rows[0];
   const amt = Number(amount) || 0;
   await db.execute(
-    "UPDATE debt_charges SET category = $1, amount = $2 WHERE id = $3",
-    [category ?? prev.category, amt, id]
+    "UPDATE debt_charges SET category = $1, amount = $2, date = $3 WHERE id = $4",
+    [category ?? prev.category, amt, date !== undefined ? date || null : prev.date, id]
   );
   const delta = amt - (Number(prev.amount) || 0);
   if (delta !== 0) {
@@ -618,8 +619,8 @@ export async function restoreDebtCharge(charge) {
   const db = await getDb();
   const amt = Number(charge.amount) || 0;
   await db.execute(
-    "INSERT INTO debt_charges (id, debt_id, month_label, category, amount) VALUES ($1, $2, $3, $4, $5)",
-    [charge.id, charge.debtId, charge.monthLabel, charge.category || null, amt]
+    "INSERT INTO debt_charges (id, debt_id, month_label, category, amount, date) VALUES ($1, $2, $3, $4, $5, $6)",
+    [charge.id, charge.debtId, charge.monthLabel, charge.category || null, amt, charge.date || null]
   );
   await db.execute("UPDATE debts SET balance = ROUND((balance + $1) * 100) / 100 WHERE id = $2", [amt, charge.debtId]);
 }
@@ -961,8 +962,8 @@ export async function deleteMonthDebtPayment(id) {
 export async function restoreExpense(monthId, slot, e) {
   const db = await getDb();
   await db.execute(
-    "INSERT INTO expenses (id, month_id, slot, category, amount, tag, account_id) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-    [e.id, monthId, slot, e.category || null, e.amount || 0, e.tag || null, e.accountId || null]
+    "INSERT INTO expenses (id, month_id, slot, category, amount, tag, account_id, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    [e.id, monthId, slot, e.category || null, e.amount || 0, e.tag || null, e.accountId || null, e.date || null]
   );
 }
 
@@ -1200,10 +1201,10 @@ export async function loadFullState() {
         })),
       expensesPay1: expenseRows
         .filter((e) => e.month_id === m.id && e.slot === 1)
-        .map((e) => ({ id: e.id, category: e.category, amount: e.amount, tag: e.tag, accountId: e.account_id })),
+        .map((e) => ({ id: e.id, category: e.category, amount: e.amount, tag: e.tag, accountId: e.account_id, date: e.date })),
       expensesPay2: expenseRows
         .filter((e) => e.month_id === m.id && e.slot === 2)
-        .map((e) => ({ id: e.id, category: e.category, amount: e.amount, tag: e.tag, accountId: e.account_id })),
+        .map((e) => ({ id: e.id, category: e.category, amount: e.amount, tag: e.tag, accountId: e.account_id, date: e.date })),
       goalContributions: goalContribRows
         .filter((g) => g.month_id === m.id)
         .map((g) => ({ id: g.id, goalId: g.goal_id, amount: g.amount, accountId: g.account_id, kind: g.kind || "contribution" })),
@@ -1217,7 +1218,7 @@ export async function loadFullState() {
   });
 
   const debtCharges = debtChargeRows.map((c) => ({
-    id: c.id, debtId: c.debt_id, monthLabel: c.month_label, category: c.category, amount: c.amount,
+    id: c.id, debtId: c.debt_id, monthLabel: c.month_label, category: c.category, amount: c.amount, date: c.date,
   }));
 
   const categoryGroups = categoryGroupRows.map((g) => ({ id: g.id, source: g.source, name: g.name, sortOrder: g.sort_order }));

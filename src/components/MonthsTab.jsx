@@ -638,7 +638,7 @@ function MonthStub({ month, computed, index, isOpen, onToggle, onChanged, onPatc
   };
   const updateExpense = async (e, patch) => {
     onPatch((s) => patchMonthRow(s, month.id, e.id, patch, ["expensesPay1", "expensesPay2"]));
-    await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, ...patch });
+    await db.updateExpense(e.id, { category: e.category, amount: e.amount, tag: e.tag, accountId: e.accountId, date: e.date, ...patch });
     onChanged();
   };
   const removeExpense = async (id) => {

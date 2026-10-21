@@ -29,6 +29,7 @@ const MIGRATIONS = [
   "0021_investments.sql",
   "0022_budget_groups.sql",
   "0023_combined_budgets.sql",
+  "0024_expense_debt_dates.sql",
 ];
 
 // Rewrites the plugin's $1,$2 placeholders to positional ? and reorders the

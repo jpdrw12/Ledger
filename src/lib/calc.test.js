@@ -48,6 +48,7 @@ import {
   categoryUsageReport,
   groupCategoryRows,
   sortRows,
+  sortByDate,
   mergeCategoryTotals,
   monthsInRange,
   consolidatedSpendingReport,
@@ -58,6 +59,13 @@ import {
   estimateMonthlyInterest,
   debtBudgetReport,
   buildDebtSpendingCsv,
+  parseEqBankCardCsv,
+  parseCapitalOneCsv,
+  suggestCategory,
+  matchDebtByCardNo,
+  matchMonthByDate,
+  parseFlexibleDate,
+  resolveImportMonth,
 } from "./calc.js";
 
 // computeLedger expects each month in the nested shape loadFullState() builds.
@@ -654,42 +662,42 @@ describe("parseExpensesCsv", () => {
   it("reads a Category/Amount/Tag header in any order, magnitudes for amounts", () => {
     const csv = "Amount,Category,Tag\n-120,Groceries,food\n-40,Gas,";
     expect(parseExpensesCsv(csv)).toEqual([
-      { category: "Groceries", amount: 120, tag: "food", account: "", debt: "", month: "" },
-      { category: "Gas", amount: 40, tag: "", account: "", debt: "", month: "" },
+      { category: "Groceries", amount: 120, tag: "food", account: "", debt: "", month: "", date: "" },
+      { category: "Gas", amount: 40, tag: "", account: "", debt: "", month: "", date: "" },
     ]);
   });
 
   it("falls back to column order when there's no header", () => {
     expect(parseExpensesCsv("Groceries,55\nGas,30")).toEqual([
-      { category: "Groceries", amount: 55, tag: "", account: "", debt: "", month: "" },
-      { category: "Gas", amount: 30, tag: "", account: "", debt: "", month: "" },
+      { category: "Groceries", amount: 55, tag: "", account: "", debt: "", month: "", date: "" },
+      { category: "Gas", amount: 30, tag: "", account: "", debt: "", month: "", date: "" },
     ]);
   });
 
   it("skips blank rows and ignores currency symbols/separators", () => {
     expect(parseExpensesCsv('Category,Amount\nGroceries,"$1,200.50"\n\n')).toEqual([
-      { category: "Groceries", amount: 1200.5, tag: "", account: "", debt: "", month: "" },
+      { category: "Groceries", amount: 1200.5, tag: "", account: "", debt: "", month: "", date: "" },
     ]);
   });
 
   it("reads optional Account and Debt columns for the Card/Debt spending imports", () => {
     const csv = "Category,Amount,Account,Debt\nCoffee,4.50,Visa card,\nShopping,60,,Store Card\n";
     expect(parseExpensesCsv(csv)).toEqual([
-      { category: "Coffee", amount: 4.5, tag: "", account: "Visa card", debt: "", month: "" },
-      { category: "Shopping", amount: 60, tag: "", account: "", debt: "Store Card", month: "" },
+      { category: "Coffee", amount: 4.5, tag: "", account: "Visa card", debt: "", month: "", date: "" },
+      { category: "Shopping", amount: 60, tag: "", account: "", debt: "Store Card", month: "", date: "" },
     ]);
   });
 
   it("reads an optional Month column for the header-level cross-month imports", () => {
     const csv = "Category,Amount,Month\nCoffee,4.50,January 2026\n";
     expect(parseExpensesCsv(csv)).toEqual([
-      { category: "Coffee", amount: 4.5, tag: "", account: "", debt: "", month: "January 2026" },
+      { category: "Coffee", amount: 4.5, tag: "", account: "", debt: "", month: "January 2026", date: "" },
     ]);
   });
 
   it("skips comment lines (first cell starts with #), so a reference block never imports as data", () => {
     const csv = "Category,Amount\nCoffee,4.50\n\n# Available accounts: Checking, Visa card\n# Available months: January 2026\n";
-    expect(parseExpensesCsv(csv)).toEqual([{ category: "Coffee", amount: 4.5, tag: "", account: "", debt: "", month: "" }]);
+    expect(parseExpensesCsv(csv)).toEqual([{ category: "Coffee", amount: 4.5, tag: "", account: "", debt: "", month: "", date: "" }]);
   });
 });
 
@@ -1842,5 +1850,107 @@ describe("debt spending helpers", () => {
     expect(lines).toContain("June 2026,Groceries,Visa,100");
     expect(lines).toContain("June 2026,Total,,165"); // 100 + 40 + 25
     expect(lines).toContain("July 2026,Total,,60");
+  });
+});
+
+describe("bank statement import (BankImportTab)", () => {
+  it("parseEqBankCardCsv keeps purchases, drops loads, and unwraps the doubled quoting", () => {
+    const csv =
+      'Date,Description,Amount\n' +
+      '20 Oct 2026,"""Load from *****1343""","""$50.00"""\n' +
+      '19 Oct 2026,"""WAL-MART #3101, SYDNEY, NS""","""-$14.24"""\n';
+    const { rows, skipped } = parseEqBankCardCsv(csv);
+    expect(skipped).toEqual([]);
+    expect(rows).toEqual([{ date: "2026-10-19", description: "WAL-MART #3101, SYDNEY, NS", amount: 14.24 }]);
+  });
+
+  it("parseCapitalOneCsv keeps Debit rows and drops Credit/payment rows", () => {
+    const csv =
+      "Transaction Date,Posted Date,Card No.,Description,Category,Debit,Credit\n" +
+      "2026-10-08,2026-10-09,4703,BURGER KING #14390,Dining,11.27,\n" +
+      "2026-10-04,2026-10-05,4703,PAYMENT,Payment/Credit,,40.00\n";
+    const { rows, skipped } = parseCapitalOneCsv(csv);
+    expect(skipped).toEqual([]);
+    expect(rows).toEqual([
+      { date: "2026-10-08", description: "BURGER KING #14390", amount: 11.27, cardNo: "4703", bankCategory: "Dining" },
+    ]);
+  });
+
+  it("suggestCategory matches a bank description to an existing category by its base name", () => {
+    const categories = ["WAL-MART", "WAL-MART - Diapers", "SOBEY'S FAST FUEL - Gas", "TIM HORTONS"];
+    expect(suggestCategory("WAL-MART #3101, SYDNEY, NS", categories)).toBe("WAL-MART"); // prefers the plainer of two matching bases
+    expect(suggestCategory("SOBEY'S FAST FUEL 4611, NEW WATERFORD, NS", categories)).toBe("SOBEY'S FAST FUEL - Gas");
+    expect(suggestCategory("TIM HORTONS #1446, SYDNEY, NS", categories)).toBe("TIM HORTONS");
+    expect(suggestCategory("APPLE.COM/BILL, TORONTO, ON", categories)).toBe("");
+  });
+
+  it("matchDebtByCardNo finds the debt whose name embeds that card number", () => {
+    const debts = [{ id: "d1", name: "JP - Capitol One (4703)" }, { id: "d2", name: "Britt - Capitol One (7701)" }];
+    expect(matchDebtByCardNo("4703", debts)?.id).toBe("d1");
+    expect(matchDebtByCardNo("7701", debts)?.id).toBe("d2");
+    expect(matchDebtByCardNo("9999", debts)).toBe(null);
+  });
+
+  it("matchMonthByDate resolves a transaction date to the real month covering it, by calendar month/year", () => {
+    const months = [
+      { id: "m1", monthLabel: "September 2026" },
+      { id: "m2", monthLabel: "October 2026" },
+    ];
+    expect(matchMonthByDate("2026-10-19", months)?.id).toBe("m2");
+    expect(matchMonthByDate("2026-09-29", months)?.id).toBe("m1");
+    expect(matchMonthByDate("2026-11-01", months)).toBe(null); // no November yet
+  });
+
+  it("matchMonthByDate matches a year-less label ('March', an old/renamed month) on month name alone", () => {
+    const months = [{ id: "m1", monthLabel: "March" }];
+    expect(matchMonthByDate("2026-03-15", months)?.id).toBe("m1");
+  });
+
+  it("matchMonthByDate prefers a label with the matching year over a year-less one", () => {
+    const months = [{ id: "m1", monthLabel: "March" }, { id: "m2", monthLabel: "March 2027" }];
+    expect(matchMonthByDate("2027-03-01", months)?.id).toBe("m2");
+  });
+
+  it("parseFlexibleDate accepts ISO, YYYY/MM/DD, and MM/DD/YYYY, rejects anything else", () => {
+    expect(parseFlexibleDate("2026-10-01")).toBe("2026-10-01");
+    expect(parseFlexibleDate("2026/10/16")).toBe("2026-10-16"); // e.g. an ISO export reformatted by a spreadsheet app
+    expect(parseFlexibleDate("10/01/2026")).toBe("2026-10-01");
+    expect(parseFlexibleDate("1/5/2026")).toBe("2026-01-05");
+    expect(parseFlexibleDate("October 1 2026")).toBe("");
+    expect(parseFlexibleDate("")).toBe("");
+  });
+
+  it("resolveImportMonth: Card Spending (requireRealMonth) accepts a Date only when it lands in a real month", () => {
+    const months = [{ id: "m1", monthLabel: "October 2026" }];
+    expect(resolveImportMonth({ month: "", date: "10/15/2026" }, months, { requireRealMonth: true })).toEqual({ label: "October 2026", monthId: "m1" });
+    expect(resolveImportMonth({ month: "", date: "11/01/2026" }, months, { requireRealMonth: true })).toBe(null);
+    expect(resolveImportMonth({ month: "", date: "" }, months, { requireRealMonth: true })).toBe(null);
+  });
+
+  it("resolveImportMonth: an explicit Month label still wins over Date when both are present", () => {
+    const months = [{ id: "m1", monthLabel: "October 2026" }];
+    expect(resolveImportMonth({ month: "October 2026", date: "09/01/2026" }, months, { requireRealMonth: true })).toEqual({ label: "October 2026", monthId: "m1" });
+  });
+
+  it("resolveImportMonth: Debt Spending (!requireRealMonth) falls back to a freshly formatted label when no real month covers the date", () => {
+    const months = [{ id: "m1", monthLabel: "October 2026" }];
+    expect(resolveImportMonth({ month: "", date: "11/05/2026" }, months, { requireRealMonth: false })).toEqual({ label: "November 2026", monthId: null });
+    expect(resolveImportMonth({ month: "", date: "10/15/2026" }, months, { requireRealMonth: false })).toEqual({ label: "October 2026", monthId: "m1" });
+  });
+
+  it("parseExpensesCsv reads an optional Date column alongside the others", () => {
+    const csv = "Category,Amount,Date\nWAL-MART,14.24,10/19/2026\n";
+    expect(parseExpensesCsv(csv)).toEqual([{ category: "WAL-MART", amount: 14.24, tag: "", account: "", debt: "", month: "", date: "10/19/2026" }]);
+  });
+
+  it("sortByDate orders rows earliest to latest and keeps undated rows after, in their original order", () => {
+    const rows = [
+      { id: "a", date: "2026-10-19" },
+      { id: "b", date: "2026-09-29" },
+      { id: "c", date: null },
+      { id: "d", date: "2026-10-01" },
+      { id: "e", date: "" },
+    ];
+    expect(sortByDate(rows).map((r) => r.id)).toEqual(["b", "d", "a", "c", "e"]);
   });
 });

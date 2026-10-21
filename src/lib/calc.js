@@ -1105,9 +1105,10 @@ export function parseExpensesCsv(text) {
   let acctIdx = -1;
   let debtIdx = -1;
   let monthIdx = -1;
+  let dateIdx = -1;
   let start = 0;
   const header = rows[0].map((h) => h.trim().toLowerCase());
-  if (header.some((h) => ["category", "amount", "tag", "account", "debt", "month"].includes(h))) {
+  if (header.some((h) => ["category", "amount", "tag", "account", "debt", "month", "date"].includes(h))) {
     const ci = header.indexOf("category");
     const ai = header.indexOf("amount");
     const ti = header.indexOf("tag");
@@ -1117,6 +1118,7 @@ export function parseExpensesCsv(text) {
     acctIdx = header.indexOf("account");
     debtIdx = header.indexOf("debt");
     monthIdx = header.indexOf("month");
+    dateIdx = header.indexOf("date");
     start = 1;
   }
   const out = [];
@@ -1128,8 +1130,9 @@ export function parseExpensesCsv(text) {
     const account = acctIdx >= 0 ? (r[acctIdx] || "").trim() : "";
     const debt = debtIdx >= 0 ? (r[debtIdx] || "").trim() : "";
     const month = monthIdx >= 0 ? (r[monthIdx] || "").trim() : "";
+    const date = dateIdx >= 0 ? (r[dateIdx] || "").trim() : "";
     if (!category && !amount) continue;
-    out.push({ category, amount, tag, account, debt, month });
+    out.push({ category, amount, tag, account, debt, month, date });
   }
   return out;
 }
@@ -1381,6 +1384,24 @@ export function sortRows(rows, mode, { nameKey = "category", valueKey = "total" 
   }
 }
 
+// Card/Debt Spending's transaction rows, earliest date first — rows with
+// no date (anything logged by hand rather than through Bank Import, plus
+// everything that existed before the date column did) sort after every
+// dated row, in their original order, rather than landing at the front
+// under an empty-string-sorts-first ISO comparison. Pure, stable (Array.
+// sort is stable in every engine this app targets).
+export function sortByDate(rows, dateKey = "date") {
+  const list = [...(rows || [])];
+  return list.sort((a, b) => {
+    const da = a[dateKey];
+    const db_ = b[dateKey];
+    if (!da && !db_) return 0;
+    if (!da) return 1;
+    if (!db_) return -1;
+    return da < db_ ? -1 : da > db_ ? 1 : 0;
+  });
+}
+
 // Categories tab's collapsible-group display. `groups` and `members` are
 // already scoped to one source (db.js's getCategoryGroups(source) /
 // getCategoryGroupMembers(source) or an equivalent filter of loadFullState's
@@ -1442,4 +1463,243 @@ export function computeDueDate(monthLabel, dueDay) {
   const daysInMonth = new Date(year, idx + 1, 0).getDate();
   const day = Math.min(Number(dueDay), daysInMonth);
   return `${year}-${String(idx + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+// ---------------------------------------------------------------------
+// Bank statement import (BankImportTab) — converts a bank's own exported
+// transaction CSV into the Category/Amount/Tag/Account/Debt/Month shape
+// parseExpensesCsv() already understands, so the result drops straight
+// into Card/Debt Spending's existing "Import across months" button.
+// Pure, no I/O — each parser takes raw file text and returns plain rows;
+// name/id resolution against live accounts/debts happens in the component.
+// ---------------------------------------------------------------------
+
+const ABBR_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "20 Oct 2026" -> "2026-10-20". Returns "" if unparseable (surfaced as a
+// skipped row by the caller rather than guessed at).
+function parseAbbrDate(s) {
+  const m = String(s || "").trim().match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
+  if (!m) return "";
+  const day = Number(m[1]);
+  const monIdx = ABBR_MONTHS.findIndex((a) => a.toLowerCase() === m[2].toLowerCase());
+  if (monIdx === -1) return "";
+  return `${m[3]}-${String(monIdx + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+// EQ's export wraps every field in doubled outer quotes (e.g. a Description
+// cell is literally `"""WAL-MART #3101, SYDNEY, NS"""` in the file) — once
+// parseCsv() unwraps the CSV-level quoting, one literal leading/trailing
+// `"` is left over from that doubling. Strips it, and for Amount also
+// strips the `$`.
+function stripEqQuoting(s) {
+  return String(s || "").trim().replace(/^"+|"+$/g, "").trim();
+}
+
+// EQ Bank Card export: Date,Description,Amount — Amount is signed
+// ($ positive = money loaded onto the card from the linked account,
+// negative = a purchase). Only purchases are spending, so loads (every
+// "Load from ..." row) and non-numeric/zero rows are dropped here rather
+// than left for the caller to filter.
+export function parseEqBankCardCsv(text) {
+  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
+  if (!rows.length) return { rows: [], skipped: [] };
+  const header = rows[0].map((h) => stripEqQuoting(h).toLowerCase());
+  const start = header.includes("date") || header.includes("description") ? 1 : 0;
+  const out = [];
+  const skipped = [];
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i];
+    const description = stripEqQuoting(r[1]);
+    const amountStr = stripEqQuoting(r[2]).replace(/[$,]/g, "");
+    const amount = parseFloat(amountStr);
+    if (!description || Number.isNaN(amount)) {
+      skipped.push({ line: i + 1, reason: "Couldn't parse this row" });
+      continue;
+    }
+    if (amount >= 0) continue; // a load onto the card, not a purchase
+    const date = parseAbbrDate(stripEqQuoting(r[0]));
+    out.push({ date, description, amount: Math.abs(amount) });
+  }
+  return { rows: out, skipped };
+}
+
+// Capital One export: Transaction Date,Posted Date,Card No.,Description,
+// Category,Debit,Credit — a purchase has a Debit amount and a blank
+// Credit; a payment/refund has the reverse (e.g. "PAYMENT") and isn't
+// spending, so rows with no Debit are dropped. Capital One's own Category
+// column is kept as `bankCategory` (a hint only — the household's own
+// category list, matched by suggestCategory(), is what actually gets
+// used, since this household's categories are merchant names, not
+// Capital One's generic buckets like "Dining"/"Merchandise").
+export function parseCapitalOneCsv(text) {
+  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
+  if (!rows.length) return { rows: [], skipped: [] };
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const idx = {
+    date: header.indexOf("transaction date"),
+    cardNo: header.indexOf("card no."),
+    description: header.indexOf("description"),
+    category: header.indexOf("category"),
+    debit: header.indexOf("debit"),
+  };
+  const out = [];
+  const skipped = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const debitStr = (r[idx.debit] || "").trim();
+    if (!debitStr) continue; // a payment/credit, not a purchase
+    const amount = parseFloat(debitStr.replace(/[$,]/g, ""));
+    const description = (r[idx.description] || "").trim();
+    if (!description || Number.isNaN(amount)) {
+      skipped.push({ line: i + 1, reason: "Couldn't parse this row" });
+      continue;
+    }
+    out.push({
+      date: (r[idx.date] || "").trim(),
+      description,
+      amount,
+      cardNo: (r[idx.cardNo] || "").trim(),
+      bankCategory: (r[idx.category] || "").trim(),
+    });
+  }
+  return { rows: out, skipped };
+}
+
+// Matches a bank row's own card-number column against a debt by the
+// number already embedded in its name — e.g. Card No. "4703" against the
+// debt "JP - Capitol One (4703)" — so a Capital One file routes to the
+// right person's card automatically. Exact digit-run match only (a plain
+// "contains" check would also match a 4-digit number appearing by chance
+// elsewhere in the name).
+export function matchDebtByCardNo(cardNo, debts) {
+  const digits = String(cardNo || "").trim();
+  if (!digits) return null;
+  return (debts || []).find((d) => new RegExp(`(^|[^0-9])${digits}([^0-9]|$)`).test(d.name || "")) || null;
+}
+
+function normalizeForMatch(s) {
+  return String(s || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+}
+
+// Suggests one of the household's own existing category names for a bank
+// transaction description, by normalizing both and checking whether a
+// category's "base" (the part before a " - " suffix, e.g. "SOBEY'S FAST
+// FUEL" from "SOBEY'S FAST FUEL - Gas") appears in the description. Several
+// categories can share a base (a plain "WAL-MART" vs "WAL-MART - Diapers");
+// among matches, prefers the shortest/plainest one, since a more specific
+// suffix is a judgment call the merchant name alone can't make. Returns ""
+// if nothing matches — left for manual review rather than guessed at.
+export function suggestCategory(description, knownCategories) {
+  const normDesc = normalizeForMatch(description);
+  if (!normDesc) return "";
+  let best = "";
+  for (const category of knownCategories || []) {
+    const name = String(category || "").trim();
+    if (!name) continue;
+    const base = name.split(/\s+-\s+/)[0];
+    const normBase = normalizeForMatch(base);
+    if (!normBase || !normDesc.includes(normBase)) continue;
+    if (!best || name.length < best.length) best = name;
+  }
+  return best;
+}
+
+// Resolves a transaction's own date (ISO "YYYY-MM-DD") to a real month in
+// `months`, by calendar month/year rather than exact label text — so a
+// bank import doesn't need the person to pick one month for a whole
+// statement (error-prone the moment a billing cycle crosses a month
+// boundary) or type a label matching the app's exact "MonthName Year"
+// convention. Most month labels are "MonthName Year" (addMonth's format),
+// but a few early/renamed ones in the wild are just "MonthName" with no
+// year (see CLAUDE.md's note on month labels being freely renamable) —
+// those match on month name alone, since there's no year to check.
+// Prefers a label with a matching year when more than one candidate
+// matches by month name. Returns null if nothing matches.
+export function matchMonthByDate(dateIso, months) {
+  const m = String(dateIso || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const monthIdx = Number(m[2]) - 1;
+  if (monthIdx < 0 || monthIdx > 11) return null;
+  const monthName = MONTHS[monthIdx];
+  let fallback = null;
+  for (const mo of months || []) {
+    const parts = String(mo.monthLabel || "").trim().split(/\s+/);
+    if (parts[0] !== monthName) continue;
+    const labelYear = parts[1] ? Number(parts[1]) : null;
+    if (labelYear === year) return mo;
+    if (!fallback) fallback = mo;
+  }
+  return fallback;
+}
+
+// Normalizes a Date column cell to ISO "YYYY-MM-DD" for matchMonthByDate().
+// Accepts ISO as-is, "YYYY/MM/DD" (what a spreadsheet app tends to
+// reformat an ISO date cell to under some locales — this is what
+// re-saving one of BankImportTab's own exports from a spreadsheet
+// produced), and "MM/DD/YYYY" or "M/D/YYYY" (the common bank-export
+// style) — not just whatever our own tool happens to write, since a
+// person's own CSV is just as likely to use any of these. Returns "" if
+// unrecognized.
+export function parseFlexibleDate(s) {
+  const str = String(s || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const ymd = str.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (ymd) {
+    const month = Number(ymd[2]);
+    const day = Number(ymd[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${ymd[1]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+  const mdy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) {
+    const month = Number(mdy[1]);
+    const day = Number(mdy[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${mdy[3]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+// "2026-10-01" -> "October 2026" (addMonth's own label format), for a date
+// that doesn't land in any real month yet — used where a label is allowed
+// to be freeform (debt charges aren't tied to a real month row) so an
+// imported charge still gets a conventional-looking label instead of
+// nothing.
+export function monthLabelFromDate(dateIso) {
+  const m = String(dateIso || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!m) return "";
+  const idx = Number(m[2]) - 1;
+  if (idx < 0 || idx > 11) return "";
+  return `${MONTHS[idx]} ${m[1]}`;
+}
+
+// Resolves one parseExpensesCsv() row's Month/Date column to an actual
+// month-routing target, shared by Card and Debt Spending's "Import CSV
+// (all months)" buttons: an explicit Month label is tried first (exact
+// text match, case-insensitive — unchanged, existing behavior), then a
+// Date column is matched to the real month covering it. `requireRealMonth`
+// is true for Card Spending (an expense needs a real month row to attach
+// to) and false for Debt Spending (charges key off a free-text label, so a
+// date with no matching real month still gets a conventionally-formatted
+// label rather than failing). Returns { label, monthId } — monthId is set
+// only when resolved to a real month row — or null if nothing resolved.
+export function resolveImportMonth(row, months, { requireRealMonth }) {
+  const explicit = (row.month || "").trim();
+  if (explicit) {
+    const month = (months || []).find((m) => m.monthLabel.toLowerCase() === explicit.toLowerCase());
+    if (month) return { label: month.monthLabel, monthId: month.id };
+    if (requireRealMonth) return null;
+    return { label: explicit, monthId: null };
+  }
+  const iso = parseFlexibleDate(row.date);
+  if (!iso) return null;
+  const month = matchMonthByDate(iso, months);
+  if (month) return { label: month.monthLabel, monthId: month.id };
+  if (requireRealMonth) return null;
+  const label = monthLabelFromDate(iso);
+  return label ? { label, monthId: null } : null;
 }

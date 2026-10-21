@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from "react";
 import { Landmark, Plus, Trash2, TrendingUp, Receipt, Download, Upload, ShoppingCart } from "lucide-react";
 import * as db from "../lib/db.js";
-import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, monthsInRange, buildDebtSpendingCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows } from "../lib/calc.js";
+import { money, debtSpendingByCategory, debtMonthlyTotals, debtSpendByDebt, monthsInRange, buildDebtSpendingCsv, parseExpensesCsv, buildCsvReferenceBlock, sortRows, sortByDate, resolveImportMonth, parseFlexibleDate } from "../lib/calc.js";
 import { exportTextFile, importTextFile } from "../lib/backup.js";
-import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, MonthRangeFilter, useShowLimit, ShowLimitControl } from "./Shared.jsx";
+import { DebtSelect, MonthSection, Sparkline, ScrollPanel, parseNumberInput, Collapsible, GroupedCategoryList, MonthRangeFilter, useShowLimit, ShowLimitControl, DateInput } from "./Shared.jsx";
 import { useToast } from "./Toast.jsx";
 import { undoableDelete } from "../lib/undo.js";
 
@@ -101,7 +101,7 @@ function DebtSpendingTab({ state, onChanged }) {
         }
         debtId = match.id;
       }
-      await db.addDebtCharge(debtId, { monthLabel, category: r.category, amount: r.amount });
+      await db.addDebtCharge(debtId, { monthLabel, category: r.category, amount: r.amount, date: parseFlexibleDate(r.date) || null });
       imported++;
     }
     return { imported, failed };
@@ -146,13 +146,13 @@ function DebtSpendingTab({ state, onChanged }) {
       const failed = [];
       const byLabel = new Map();
       for (const r of rows) {
-        const label = r.month.trim();
-        if (!label) {
-          failed.push("Row missing Month");
+        const resolved = resolveImportMonth(r, state.months, { requireRealMonth: false });
+        if (!resolved) {
+          failed.push(r.date ? `Couldn't make sense of date "${r.date}"` : "Row missing Month or Date");
           continue;
         }
-        if (!byLabel.has(label)) byLabel.set(label, []);
-        byLabel.get(label).push(r);
+        if (!byLabel.has(resolved.label)) byLabel.set(resolved.label, []);
+        byLabel.get(resolved.label).push(r);
       }
       for (const [label, labelRows] of byLabel) {
         const result = await importRowsIntoLabel(labelRows, label);
@@ -176,7 +176,7 @@ function DebtSpendingTab({ state, onChanged }) {
       "Category,Amount,Debt,Month\n" +
       `Shopping,60.00,${spendableDebts[0].name},${sectionLabels[sectionLabels.length - 1] || ""}\n` +
       `Dining out,25.00,,${sectionLabels[sectionLabels.length - 1] || ""}\n` +
-      "# Month is only used by the header 'Import CSV' button — the per-month Import CSV buttons ignore it.\n" +
+      "# Month (or a Date column instead) is only used by the header 'Import CSV' button — the per-month Import CSV buttons ignore it.\n" +
       "# Debt picks which spendable debt a row lands on; leave blank to use your first one.\n" +
       buildCsvReferenceBlock([
         { label: "debts", names: spendableDebts.map((d) => d.name) },
@@ -190,7 +190,7 @@ function DebtSpendingTab({ state, onChanged }) {
     }
   };
   const updateCharge = async (c, patch) => {
-    await db.updateDebtCharge(c.id, { category: c.category, amount: c.amount, ...patch });
+    await db.updateDebtCharge(c.id, { category: c.category, amount: c.amount, date: c.date, ...patch });
     onChanged();
   };
   const removeCharge = async (c) => {
@@ -263,7 +263,7 @@ function DebtSpendingTab({ state, onChanged }) {
         <p className="empty">Add a month on the <strong>Months</strong> tab first.</p>
       ) : (
         (monthLimit.showAll ? sectionLabels : sectionLabels.slice(-monthLimit.count)).map((label) => {
-          const list = chargesForLabel(label);
+          const list = sortByDate(chargesForLabel(label));
           const total = list.reduce((s, c) => s + (Number(c.amount) || 0), 0);
           return (
             <MonthSection key={label} icon={<ShoppingCart size={13} />} title={label} total={total}>
@@ -274,6 +274,7 @@ function DebtSpendingTab({ state, onChanged }) {
                     {spendableDebts.length > 1 && (
                       <DebtSelect debts={spendableDebts} value={c.debtId} onChange={(v) => updateChargeDebt(c, v)} />
                     )}
+                    <DateInput className="date-input" defaultValue={c.date} onSave={(v) => updateCharge(c, { date: v })} />
                     <input className="amount-input" type="number" defaultValue={c.amount} onBlur={(ev) => updateCharge(c, { amount: parseNumberInput(ev, c.amount) })} />
                     <button className="icon-btn" onClick={() => removeCharge(c)}>
                       <Trash2 size={13} />

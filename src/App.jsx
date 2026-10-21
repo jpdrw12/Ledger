@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, ChevronLeft, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ShoppingBag, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed, LayoutDashboard, Search, Layers } from "lucide-react";
+import { BookOpen, ListChecks, Receipt, PiggyBank, Wallet, Landmark, HardDrive, Save, RotateCcw, FolderSync, Trash2, ChevronDown, ChevronRight, ChevronLeft, Archive, TrendingUp, Settings, CreditCard, ShoppingCart, ShoppingBag, ChevronsLeft, ChevronsRight, FileText, GripVertical, Tag, Target, LineChart, FolderClosed, LayoutDashboard, Search, Layers, FileSpreadsheet } from "lucide-react";
 import * as db from "./lib/db.js";
 import { computeLedger, computeGoalBalances, latestAccountBalances, nextMonthLabel, computeDueDate, dueDayForSlot, billStatus, allBudgetPaceAlerts, money, reconcileTabOrder, reconcileTabGroups } from "./lib/calc.js";
 import { backupNow, listBackups, listFolderBackups, restoreBackup, restoreFromFolder, mirrorBackup, pickBackupFolder, getMirrorFolder, setMirrorFolder, archiveMonth, listArchives, listArchiveContents, restoreFromArchive, deleteArchive, getRetention, setRetention } from "./lib/backup.js";
@@ -26,6 +26,7 @@ import ConsolidatedSpendingTab from "./components/ConsolidatedSpendingTab.jsx";
 import InsightsTab from "./components/InsightsTab.jsx";
 import BudgetingTab from "./components/BudgetingTab.jsx";
 import InvestmentsTab from "./components/InvestmentsTab.jsx";
+import BankImportTab from "./components/BankImportTab.jsx";
 import ReportTab from "./components/ReportTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
 
@@ -54,6 +55,7 @@ const TAB_DEFS = [
   { id: "goals", label: "Savings Goals", icon: PiggyBank, dataTour: "tab-goals", group: "Planning" },
   { id: "budgeting", label: "Budgeting & Planning", icon: Target, dataTour: "tab-budgeting", group: "Planning" },
   { id: "investments", label: "Investments", icon: LineChart, dataTour: "tab-investments", group: "Planning" },
+  { id: "bankimport", label: "Bank Import", icon: FileSpreadsheet, dataTour: "tab-bankimport", group: "Planning" },
   { id: "insights", label: "Insights", icon: TrendingUp, dataTour: "tab-insights", group: "Insights & reports" },
   { id: "report", label: "Report", icon: FileText, dataTour: "tab-report", group: "Insights & reports" },
   { id: "backups", label: "Backups", icon: HardDrive, dataTour: "tab-backups", group: "System" },
@@ -94,6 +96,7 @@ const TAB_HELP = {
   consolidatedspending: { title: "Consolidated Spending", body: "A read-only combined view of Expense, Card Spending, and Debt Spending — every category's total across all three, with a custom date range. Add or edit an actual entry in whichever of those tabs it belongs to." },
   budgeting: { title: "Budgeting & Planning", body: "Every monthly budget target in one place — expense categories, card spending, and debt spending — compared against your most recent month, with recent-average and trend context, a multi-month planning grid, goal auto-contributions, what-if scenarios, and a pace-alert banner if you're trending over this month." },
   investments: { title: "Investments", body: "Record each investment account's value at the start of a month — growth since the last one is computed for you. Log dividend payments per month below. The running total adds a second line to the Report's Net worth chart." },
+  bankimport: { title: "Bank Import", body: "Convert an exported bank transaction report (EQ Bank Card, Capital One) into a CSV ready for Card Spending's or Debt Spending's \"Import CSV\" button — categories are suggested from your existing category names." },
   insights: { title: "Insights", body: "Net worth and a forecast projected from your income and recent spending. Spending by category moved to the Expenses tab." },
   expense: { title: "Expenses", body: "Spending by category, scoped to any custom date range — this is the same expense spending Months logs, minus card purchases (see Card Spending for those)." },
   report: { title: "Report", body: "Generate a single styled document covering a month range you pick — open it in any browser, or print it to PDF from there." },
@@ -1925,6 +1928,7 @@ export default function App() {
       {tab === "consolidatedspending" && <ConsolidatedSpendingTab state={state} />}
       {tab === "budgeting" && <BudgetingTab state={state} onChanged={reload} />}
       {tab === "investments" && <InvestmentsTab state={state} onChanged={reload} />}
+      {tab === "bankimport" && <BankImportTab state={state} existingCategories={existingCategories} />}
       {tab === "insights" && <InsightsTab state={state} ledger={ledger} />}
       {tab === "report" && <ReportTab state={state} ledger={ledger} theme={theme} accent={accent} appVersion={APP_VERSION} />}
       {tab === "settings" && (
