@@ -34,11 +34,15 @@ export const mobileCss = `
     display: none;
   }
 
-  /* Fixed-width tables (history, forecast, report) become horizontally
-     scrollable islands instead of blowing out the page width. */
-  .history-table,
-  .forecast-table,
-  table {
+  /* DebtsTab's history table is a bare <table> with no scroll wrapper —
+     made horizontally scrollable instead of blowing out the page width.
+     NOT a blanket "table" selector: budget-grid/investment-grid (the
+     Budgets section's per-category-per-month grid) are <table> elements
+     already wrapped in their own .table-scroll div (Shared.jsx) that
+     handles this correctly — forcing display:block onto the table
+     itself on top of that broke its row/column layout, which is what
+     made "Budgets" look broken on mobile. */
+  .history-table {
     display: block;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -96,6 +100,26 @@ export const mobileCss = `
     flex: 1 1 100px;
     width: auto;
     max-width: none;
+  }
+
+  /* .cat-row (category spend/budget bars — reused by Budgeting, Card,
+     Debt Spending, Consolidated Spending, Expenses, Categories) packs a
+     140px name + flexible bar-track + 90px actual amount, and on the
+     Budgets grid a 4th fixed-width 90px target .amount-input — more
+     fixed width than a phone row has, pushing the target input off the
+     right edge. Wraps the name onto its own line, letting the bar/
+     amount/target reflow onto a second. */
+  .cat-row {
+    flex-wrap: wrap;
+  }
+  .cat-row .cat-name,
+  .cat-row .cat-name-group {
+    flex: 1 1 100%;
+  }
+  .cat-row .cat-amount,
+  .cat-row .amount-input {
+    flex: 1 1 80px;
+    width: auto;
   }
 
   .balance-chip,
