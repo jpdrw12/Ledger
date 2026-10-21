@@ -20,7 +20,28 @@ export const readonlyCss = `
 .tab-content button:has(svg.lucide-upload),
 .tab-content .stub-head button:has(svg.lucide-arrow-up),
 .tab-content .stub-head button:has(svg.lucide-arrow-down),
-.tab-content .drag-handle {
+.tab-content .drag-handle,
+/* MonthsTab's one-click "quick-add" chips (bill/goal/debt payment/transfer
+   starters) have no distinguishing icon — they're plain labeled buttons —
+   so they're missed by the icon-based rules above and were still live. */
+.tab-content .quick-add,
+/* Debts' "Apply payment" / "Apply monthly interest" buttons — no icon,
+   and unlike most actions neither one is gated by a disabled input:
+   "Apply monthly interest" doesn't read the (disabled) draft field at
+   all, so it would still post a real interest charge. */
+.tab-content .debt-actions,
+/* The shared "add a new budget line" row (category/card/debt budgets, and
+   BudgetingTab's combined one) stages its values in plain inputs with no
+   icon on its own text fields — only its trailing "+ Add budget" button
+   matched the plus-icon rule above, which would've just left disabled,
+   dead-looking inputs and a still-clickable Category/Item toggle sitting
+   there with nothing to submit to. Hiding the whole row avoids that. */
+.tab-content .budget-add,
+/* CategoriesTab's inline-rename triggers open an editable input on click,
+   but that input is immediately disabled by lib/readonly.js, so the
+   trigger itself is a dead end — hidden here rather than left clickable. */
+.tab-content button[title="Click to rename"],
+.tab-content span[title="Click to rename this category"] {
   display: none !important;
 }
 

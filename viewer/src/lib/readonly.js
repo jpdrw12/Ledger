@@ -22,6 +22,20 @@ const DISABLE_SELECTOR = [
   "button.date-input",
 ].join(", ");
 
+// BudgetingTab's "What-if scenarios" (income/spending-change amount
+// inputs) are a pure local sandbox — "nothing here is saved" per its own
+// copy — but they're plain <input class="amount-input">, indistinguishable
+// by class from every persisted amount field the disable pass above is
+// built to catch. Found by the section's own heading text instead, then
+// re-enabled after the blanket pass runs.
+function reenableWhatIf(root) {
+  const header = [...root.querySelectorAll(".collapsible-head")].find((h) => h.textContent.includes("What-if scenarios"));
+  const section = header?.closest(".collapsible");
+  section?.querySelectorAll("input, select").forEach((el) => {
+    el.disabled = false;
+  });
+}
+
 // A one-time querySelectorAll on mount wouldn't catch fields that appear
 // later (expanding a month, opening a Collapsible, switching sections all
 // render new inputs) — so this watches the tab content root and re-applies
@@ -32,6 +46,7 @@ export function watchReadOnly(root) {
     root.querySelectorAll(DISABLE_SELECTOR).forEach((el) => {
       if (!el.disabled) el.disabled = true;
     });
+    reenableWhatIf(root);
   };
   apply();
   const observer = new MutationObserver(apply);
