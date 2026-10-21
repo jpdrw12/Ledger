@@ -45,13 +45,24 @@ export const readonlyCss = `
   display: none !important;
 }
 
-/* Disabled by the JS pass in ViewerApp (see applyReadOnly in
+/* Disabled by the JS pass in ViewerApp (see watchReadOnly in
    lib/readonly.js) — this just gives disabled fields a visibly inert
    look instead of looking editable while silently doing nothing. */
 .tab-content input:disabled,
 .tab-content select:disabled,
 .tab-content textarea:disabled {
   opacity: 0.75;
-  cursor: default;
+  cursor: not-allowed;
+}
+
+/* A disabled checkbox is functionally inert (verified — a real click
+   can't toggle it), but a 13px checkbox with its native checked color
+   barely dims at 0.75 opacity, so a checked one still reads as a live,
+   tappable control rather than a locked value. Desaturating it on top of
+   the opacity drop makes "this is just a value, not a control" obvious
+   at a glance. */
+.tab-content input[type="checkbox"]:disabled {
+  filter: grayscale(1);
+  opacity: 0.5;
 }
 `;

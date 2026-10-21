@@ -79,10 +79,20 @@ export const mobileCss = `
     flex: 2 1 160px;
     width: auto;
   }
-  .tag-input,
-  .account-select,
-  .date-input,
-  .amount-input {
+  /* Scoped to .ledger-row/.bill-card specifically (both row-flex/grid
+     containers) rather than applied globally — .amount-input etc. also
+     render inside .field, a COLUMN-flex wrapper (e.g. Budgeting's
+     What-if inputs), where "flex-basis" sets height, not width; applying
+     this unscoped turned those into ~100px-tall boxes instead of normal
+     text fields. */
+  .ledger-row .tag-input,
+  .ledger-row .account-select,
+  .ledger-row .date-input,
+  .ledger-row .amount-input,
+  .bill-card .tag-input,
+  .bill-card .account-select,
+  .bill-card .date-input,
+  .bill-card .amount-input {
     flex: 1 1 100px;
     width: auto;
     max-width: none;
