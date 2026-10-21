@@ -41,7 +41,19 @@ export const readonlyCss = `
    but that input is immediately disabled by lib/readonly.js, so the
    trigger itself is a dead end — hidden here rather than left clickable. */
 .tab-content button[title="Click to rename"],
-.tab-content span[title="Click to rename this category"] {
+.tab-content span[title="Click to rename this category"],
+/* MonthsTab's bill "paid" toggle is a custom button (className "check"),
+   not a native checkbox — the disable pass in lib/readonly.js only
+   touches input/select/textarea, so this was fully live and is exactly
+   the "checkbox" a real click could still toggle. */
+.tab-content button.check,
+/* A month's debt-payment row has its own "Apply" button (no icon) — the
+   .debt-actions rule above only covers the Debts tab's own apply/interest
+   buttons, not this one. */
+.tab-content button.btn-apply-debt,
+/* Debt history's "undo this payment, restore previous balance" button —
+   no icon, caught separately from the main delete-icon rule above. */
+.tab-content button:has(svg.lucide-rotate-ccw) {
   display: none !important;
 }
 
